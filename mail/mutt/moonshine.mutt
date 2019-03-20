@@ -1,0 +1,68 @@
+# general settings
+color normal     color222 color235 # normal text
+color message    color222 color235 # messages
+color error      color124 color235 # errors
+color markers    color143 color235 # + signes for wrapped text (?)
+color tilde      color143 color235 # filling empty lines with tildes (?)
+color status     color111 color235 # status lines on top and bottom
+color search     color220 color235 # search
+
+# sidebar
+color sidebar_new       color137 color235 # mailboxes with new mail
+color sidebar_divider   color145 color235 # dividing characters
+color sidebar_indicator color109 color235 # selected mailbox
+
+# index
+color tree       color243 color235     # tree arrows
+color indicator  color234 color110     # current selection
+color index      color222 color235  ~A # all messages
+color index      color137 color235  ~N # new messages
+color index      color137 color235  ~U # unread messages
+color index      color240 color235  ~R # read messages
+color index      color243 color235  ~Q # replied messages
+color index      color94  color235  ~O # old messages
+color index      color124 color235  ~D # deleted messages
+color index      color96  color235  ~F # flagged messages
+color index      color229 color235  ~E # expired messages
+color index      color110 color235  ~T # messages tagged
+
+# header
+color hdrdefault color94  color235
+color header     color109 color235 "^Subject"
+color header     color137 color235 "^From"
+color header     color137 color235 "^To"
+
+# url, email and web
+color body  color143 color235 "(finger|ftp|http|https|news|telnet)://[^ >]*"
+color body  color143 color235 "<URL:[^ ]*>"
+color body  color143 color235 "www\\.[-.a-z0-9]+\\.[a-z][a-z][a-z]?([-_./~a-z0-9]+)?"
+color body  color143 color235 "mailto: *[^ ]+\(\\i?subject=[^ ]+\)?"
+color body  color143 color235 "[-a-z_0-9.%$]+@[-a-z_0-9.]+\\.[-a-z][-a-z]+"
+
+# misc body
+color attachment color214 color235  # add-ons to the message
+color signature  color214 color235
+
+# quote levels
+color quoted  color245 color235
+color quoted1 color240 color235
+color quoted2 color245 color235
+color quoted3 color240 color235
+color quoted4 color245 color235
+color quoted5 color240 color235
+color quoted6 color245 color235
+color quoted7 color240 color235
+color quoted8 color245 color235
+color quoted9 color240 color235
+
+# gpg stuff
+color body       color188 color237 "^gpg: Good signature.*"
+color body       color115 color236 "^gpg: BAD signature.*"
+color body       color174 color237 "^gpg: Can't check signature.*"
+color body       color174 color237 "^-----BEGIN PGP SIGNED MESSAGE-----"
+color body       color174 color237 "^-----BEGIN PGP SIGNATURE-----"
+color body       color174 color237 "^-----END PGP SIGNED MESSAGE-----"
+color body       color174 color237 "^-----END PGP SIGNATURE-----"
+color body       color174 color237 "^Version: GnuPG.*"
+color body       color174 color237 "^Comment: .*"
+

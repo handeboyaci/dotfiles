@@ -1,0 +1,12 @@
+*.pyc
+*.zwc
+.zcompdump
+tags
+tmp/
+mail/mutt/aliases
+nvim/bundle
+zsh/syntax-highlight
+zsh/.zcompdumps
+zsh/zsh-completions
+mail/notmuch-vim
+nvim/autoload/plug.vim.old

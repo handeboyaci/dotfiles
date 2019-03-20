@@ -1,0 +1,8 @@
+data.location=~/.task
+include /usr/share/taskwarrior/solarized-dark-256.theme
+
+taskd.server=freecinc.com:53589
+taskd.key=\/home\/sselcuk\/.config\/task\/freecinc_f3e882c0.key.pem
+taskd.certificate=\/home\/sselcuk\/.config\/task\/freecinc_f3e882c0.cert.pem
+taskd.ca=\/home\/sselcuk\/.config\/task\/freecinc_f3e882c0.ca.pem
+taskd.credentials=FreeCinc\/freecinc_f3e882c0\/a239a87d-1438-4487-8c2a-869f74aa35d6

@@ -1,0 +1,19 @@
+# vi: ft=zsh
+
+if [[ -z $SAVEDDIRS ]]; then
+  echo "Please define SAVEDDIRS environment variable for the path of file to save."
+  return -1
+fi
+
+local name=${@//[^0-9a-zA-Z_]/_} # replace the unallowed chars with an underscore
+
+if [[ -n ${(P)name} ]]; then
+  echo "Deleting the existing definition: ${name}=${(P)name}"
+  command sed -i "/^${name}=/d" $SAVEDDIRS
+fi
+
+# write to file
+echo "${name}='${PWD}'" >> $SAVEDDIRS
+
+# make available already.
+eval "${name}='${PWD}'"

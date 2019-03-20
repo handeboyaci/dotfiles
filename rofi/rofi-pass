@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+PASS_DIR=~/.password-store
+
+# Handle argument.
+if [ -n "$@" ]; then
+    PASS_FILE="${PASS_DIR}/$@"
+fi
+
+if [[ -f "${PASS_FILE}" ]]; then
+  coproc ( /usr/bin/pass -c $(basename ${PASS_FILE%.gpg})  >/dev/null 2>&1 )
+  exec 1>&-
+  exit;
+fi
+
+# Print formatted listing
+ls --color=never $PASS_DIR

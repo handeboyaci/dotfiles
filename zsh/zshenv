@@ -1,0 +1,22 @@
+skip_global_compinit=1
+
+export ZDOTDIR="$HOME/.dotfiles/zsh"
+
+export EDITOR=nvim
+export VISUAL=nvim
+export BROWSER=xdg-open
+export LANG=en_US.UTF-8
+
+export TMPDIR=/tmp/$USER
+export TMPPREFIX=/tmp/$USER/zsh
+mkdir -p -m 700 "$TMPDIR"
+mkdir -p -m 700 "$TMPPREFIX"
+
+export PAGER=less
+export LESS='-g -i -M -R -W -z-4'
+export LESSOPEN="|$HOME/.dotfiles/zsh/lesspipe %s"
+export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
+
+export AWKPATH=/opt/software/awkscr
+
+typeset -gU cdpath fpath mailpath path

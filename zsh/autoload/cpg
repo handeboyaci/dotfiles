@@ -1,0 +1,14 @@
+# vi: ft=zsh
+local last=${@: -1}
+
+if [[ $# -lt 2 ]]; then
+  echo "Not enough arguments provided."
+  return -1
+elif [[ -f $last ]]; then
+  echo "$last is a file."
+  return -1
+elif [[ ! -e $last ]]; then
+  command mkdir -p $last
+fi
+
+cp $@ && cd $last

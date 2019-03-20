@@ -1,0 +1,37 @@
+# vi: ft=zsh
+if builtin cd $@ 2> /dev/null; then
+  return 0
+elif [[ -f "$1" ]] && builtin cd "${1%/*}" 2> /dev/null; then
+  echo "This is a file, entered into parent directory"
+  return 0
+fi
+
+if [[ -n $CURRENTSERVER ]]; then
+  local arg="_${1//-/__}"
+
+  if builtin cd "$arg" 2>/dev/null; then
+    echo "Entering the saved job directory"
+    return 0
+  fi
+
+  local jobd
+  jobd=$(squeue -o \'%j %Z\' -u $USER -h|command grep "^$1"|head -1|cut -d' ' -f2)
+
+  if [[ -n "$jobd" ]]; then
+
+    if [[ "$jobd" == *cscr* ]]; then
+      jobd="$HOME/$CURRENTSERVER/cscr/${jobd#*$USER/}"
+    elif [[ "$jobd" == *gpfs* ]]; then
+      jobd="$HOME/$CURRENTSERVER/gpfs/${jobd#*$USER/}"
+    fi
+
+    if builtin cd "$jobd" 2>/dev/null; then
+      eval "${arg}='${PWD}'"
+      echo "Entering job directory, and saving it for the session"
+      return 0
+    fi
+  fi
+fi
+
+echo "Folder not found"
+return 1

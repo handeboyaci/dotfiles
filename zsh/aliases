@@ -1,0 +1,45 @@
+alias clear!='clear&&printf "\e[3J"'
+alias ls='ls --group-directories-first --color=auto'
+alias la='ls -AF'
+alias ll='ls -lhAF'
+alias lx='ls -XB'
+alias cp='cp -ivdRp'
+alias mv='mv -iv'
+alias mkdir='mkdir -p'
+alias sed='sed -r'
+alias grep='grep -P --color=auto'
+alias scp='rsync -azPe "ssh -q"'
+alias rm='rm -i'
+alias ln='ln -i'
+alias type='type -a'
+alias vimdiff='nvim -d'
+alias bc='bc -lq'
+alias units='units -1t'
+alias octave='octave-cli -q'
+alias julia='julia -q'
+if [[ -z $BASH_VERSION ]]; then
+  alias notmuch='noglob notmuch'
+  alias find='noglob find'
+fi
+
+alias dc='cd'
+alias sl='ls'
+
+alias v='nvim'
+alias vi='gvim'
+alias vm="v --cmd 'set rtp^=$HOME/.dotfiles/mail/notmuch-vim' +NotMuch"
+
+alias mutt="export MTMPDIR=\$(mktemp -p $TMPDIR -d mutt.XXXXXXXXXX); mutt; rm -rf \$MTMPDIR"
+alias plot="gnuplot"
+
+alias hgrep="history 0|grep"
+alias xgrep="xargs grep"
+alias xsed="xargs sed"
+
+for index in {1..20}; do
+  alias "$index"="cd +${index}"
+done
+unset index
+alias d='dirs -v'
+
+# vi: ft=zsh

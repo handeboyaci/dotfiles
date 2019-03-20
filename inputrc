@@ -1,0 +1,42 @@
+set editing-mode vi
+set keymap vi-insert
+
+set bell-style visible
+set blink-matching-paren on
+set colored-completion-prefix on
+set colored-stats on # use LS_COLORS on completion
+set completion-ignore-case on
+set completion-map-case on
+set completion-query-items 0
+set convert-meta off
+set expand-tilde on
+set input-meta on
+set mark-modified-lines on
+set mark-symlinked-directories on
+set print-completions-horizontally on
+set show-all-if-ambiguous on
+set show-all-if-unmodified on
+set show-mode-in-prompt on
+set skip-completed-text on
+set vi-cmd-mode-string "[N] "
+set vi-ins-mode-string "[I] "
+set visible-stats on
+
+$if Bash
+  Space: magic-space
+$endif
+
+"\t": menu-complete
+"\C-l": clear-screen
+"\e[A":history-search-backward
+"\eOA":history-search-backward
+"\e[B":history-search-forward
+"\eOB":history-search-forward
+
+set keymap vi-command
+"\t": menu-complete
+"\C-l": clear-screen
+"\e[A":history-search-backward
+"\eOA":history-search-backward
+"\e[B":history-search-forward
+"\eOB":history-search-forward

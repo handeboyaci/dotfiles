@@ -1,0 +1,15 @@
+#!/bin/bash
+
+sudo updatedb
+HOME=${HOME:-/home/sselcuk}
+
+filter () {
+  awk '{ print length, $0 }' | sort -n -s | cut -d' ' -f2|cut -c$((${#HOME}+2))-
+}
+
+if [[ -s $HOME/.dotfiles/rofi/locate_ignore ]]; then
+  ignore="$(cat $HOME/.dotfiles/rofi/locate_ignore|command sed 's/ /\|/g')"
+  locate $HOME|grep -v "$ignore"|filter > $HOME/.cache/rofi_file_db
+else
+  locate $HOME|grep -v "$ignore"|filter > $HOME/.cache/rofi_file_db
+fi

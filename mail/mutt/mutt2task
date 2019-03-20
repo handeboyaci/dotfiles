@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+if (( $# )); then
+  mail=$(cat)
+  id=$(echo "$mail"|sed -n '/^[Mm]essage-[Ii][Dd]:\s*/{s//message-id:/p;q}')
+  sb=$(echo "$mail"|sed -n '/Subject:\s*/{s///p;q}')
+  fr=$(echo "$mail"|sed -n '/From:\s*/{s///;s/"//g;s/ <.*//p;q}')
+  tid=$(/usr/bin/task add +email $fr\;$sb $1|grep -oP '\d+')
+  task $tid annotate $id
+else
+  echo -n "> " >&2
+  read answer
+  if [[ $answer == "" ]]; then
+    printf "push '<pipe-message>$HOME/.config/mutt/mutt2task --'<enter>"
+  else
+    printf "push '<pipe-message>$HOME/.config/mutt/mutt2task $answer'<enter>"
+  fi
+fi

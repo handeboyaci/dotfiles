@@ -1,0 +1,22 @@
+Host cloud
+  Hostname sselcuk.c.googlers.com
+  ForwardX11 yes
+  ForwardX11Trusted yes
+Host ofis
+  Hostname sselcuk24.nyc.corp.google.com
+  ProxyCommand  corp-ssh-helper %h %p
+  ForwardX11 yes
+  ForwardX11Trusted yes
+Host ev
+  Hostname sencer.ddns.us
+  IdentityFile ~/.ssh/id_rsa
+  ForwardX11 yes
+  ForwardX11Trusted yes
+Host github.com
+  IdentityFile ~/.ssh/id_github
+  ControlMaster no
+Host *
+  Compression yes
+  ControlMaster auto
+  ControlPath /tmp/%u/%r@%h:%p
+  ControlPersist 60

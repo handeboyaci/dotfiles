@@ -66,7 +66,7 @@ function namaz_yaz {
 function namaz_kalan {
   local a=( $(namaz_next) )
   local kalan=$((${a[0]}-$(date +%s)))
-  echo $(( $kalan/3600 ))sa$(( ($kalan%3600)/60 ))dk $kalan
+  echo $kalan
 }
 
 if [[ ! -s $DATAFILE ]]; then
@@ -87,7 +87,17 @@ if [[ -s $DATAFILE ]]; then
   elif [[ $1 == next ]]; then
     namaz_next
   elif [[ $1 == kalan ]]; then
-    namaz_kalan
+    kalan=$(namaz_kalan)
+    echo $(( $kalan/3600 ))sa$(( ($kalan%3600)/60 ))dk $kalan
+  elif [[ $1 == i3blocks ]]; then
+    if [[ $BLOCK_BUTTON -eq 1 ]]; then
+      echo "[$(namaz_yaz 1|tail -1)]"
+    else
+      kalan=$(namaz_kalan)
+      echo $(( $kalan/3600 ))sa$(( ($kalan%3600)/60 ))dk
+      [[ $kalan -lt 1800 ]] && exit 33 || exit 0
+    fi
+
   fi
 fi
 

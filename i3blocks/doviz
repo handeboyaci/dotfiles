@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+url="https://forex.1forge.com/1.0.3/quotes?pairs=USDTRY,EURTRY,EURUSD&api_key" 
+data="$(curl -s "$url=$(pass 1forge)" | jq '.[]|[.symbol,.price]|@sh')"
+
+if [[ $BLOCK_BUTTON -eq 1 ]]; then
+  echo "${data}"|tr -d \'|tr -d \"|xargs
+else
+  echo ${data} | awk 'NR==1{printf("%.3f\n---\n", $2);exit}'
+fi

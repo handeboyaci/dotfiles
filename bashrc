@@ -90,4 +90,4 @@ PROMPT_COMMAND='__ps1_update'
 
 PS1="\${PS_LINE:0:$COLUMNS}\[\e[0G\]\[\e[38;2;255;0;0m\]$SUDO$GREEN\u\$HOST$RESET\[\e[1m\] | $GREEN\w \[\e[\$((COLUMNS-CHARS))G\]$RED\$JOBS \$EXIT\n${RESET}${ORANGE}❯${RESET} "
 
-export PATH=$HOME/.dotfiles/bin:$HOME/.cargo/bin:/opt/conda/bin:$PATH
+export PATH=$HOME/.dotfiles/bin:$HOME/.cargo/bin:$HOME/.local/share/conda/bin:$PATH

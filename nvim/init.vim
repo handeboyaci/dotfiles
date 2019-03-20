@@ -66,6 +66,7 @@ Plug 'kassio/neoterm'
 call plug#end()
 
 set background=dark
+set cursorline
 colorscheme gruvbox
 set termguicolors
 if has('nvim')

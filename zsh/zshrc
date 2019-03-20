@@ -82,7 +82,7 @@ zstyle -e ':completion:*:hosts' hosts 'reply=(
 # ${=${(f)"$(cat /etc/hosts(|)(N) <<(ypcat hosts 2> /dev/null))"}%%(\#${_etc_host_ignores:+|${(j:|:)~_etc_host_ignores}})*}
 
 # Don't complete uninteresting users...
-zstyle ':completion:*' users sselcuk root
+zstyle ':completion:*:*:*:users' users $USER root
 
 # ... unless we really want to.
 zstyle '*' single-ignored show

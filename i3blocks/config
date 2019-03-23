@@ -29,7 +29,7 @@ color=#FFFFFF
 [separator]
 
 [weather]
-command=curl -Ss 'https://wttr.in?0&T&Q' | cut -c 16- | head -2 | xargs echo
+command=curl -s wttr.in/?0FnqTQ|cut -c16-|head -2|command sed 's/\.\.+\?/ - /'|xargs
 interval=3600
 color=#A4C2F4
 [separator]
@@ -42,11 +42,24 @@ color=#FFFFFF
 signal=2
 [separator]
 
+[Brightness]
+full_text=Brightness
+command=$HOME/.config/i3blocks/screenlight
+interval=once
+color=#FFFFFF
+signal=3
+[separator]
+
 [kb]
 command=$HOME/.config/i3blocks/layout
 interval=once
 signal=1
 color=#FFFFFF
+[separator]
+
+[power]
+command=$HOME/.config/i3blocks/battery
+interval=60
 [separator]
 
 [shutdown]

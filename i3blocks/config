@@ -31,12 +31,12 @@ color=#FFFFFF
 [weather]
 command=curl -s wttr.in/?0FnqTQ|cut -c16-|head -2|command sed 's/\.\.+\?/ - /'|xargs
 interval=3600
-color=#A4C2F4
+color=#FFFFFF
 [separator]
 
 [vol]
 full_text=Volume
-command=$HOME/.config/i3blocks/vol
+command=$HOME/.config/i3blocks/volume
 interval=once
 color=#FFFFFF
 signal=2

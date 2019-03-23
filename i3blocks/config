@@ -29,7 +29,7 @@ color=#FFFFFF
 [separator]
 
 [weather]
-command=curl -Ss 'https://wttr.in?0&T&Q' | cut -c 16- | head -2 | xargs echo
+command=curl -s wttr.in/?0FnqTQ|cut -c16-|head -2|command sed 's/\.\.+\?/ - /'|xargs
 interval=3600
 color=#A4C2F4
 [separator]

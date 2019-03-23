@@ -337,12 +337,6 @@ RPS1=$'%B%(0?..%{\e[38;2;255;0;0m%}%?%f)%(1j.%{\e[38;2;255;100;0m%} %j bg jobs%f
 tabs -2
 # }}}
 
-# syntax highlighting {{{
-source $ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh
-FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
-FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
-# }}}
-
 HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
@@ -378,5 +372,10 @@ autoload -Uz compinit  && compinit -i -d ~/.dotfiles/tmp/zcompdump
     zcompile "$zcomp"
   fi
 } &!
-
 #}}}
+
+# syntax highlighting {{{
+source $ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh
+FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
+FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
+# }}}

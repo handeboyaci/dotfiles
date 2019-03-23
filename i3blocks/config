@@ -31,7 +31,7 @@ color=#FFFFFF
 [weather]
 command=curl -s wttr.in/?0FnqTQ|cut -c16-|head -2|command sed 's/\.\.+\?/ - /'|xargs
 interval=3600
-color=#A4C2F4
+color=#FFFFFF
 [separator]
 
 [vol]

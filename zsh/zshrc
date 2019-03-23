@@ -341,6 +341,11 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
+set-term-title () {
+  print -Pn "\e]0;%~ $1\a"
+}
+add-zsh-hook preexec set-term-title
+
 path=($HOME/.dotfiles/bin $HOME/.cargo/bin $HOME/.local/share/conda/bin $path)
 
 fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
@@ -357,7 +362,6 @@ KEYTIMEOUT=10
 PROMPT_EOL_MARK=' [no EOL]'
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
 
 # load some 'features' {{{
 autoload -U zmv

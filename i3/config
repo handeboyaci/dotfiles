@@ -185,6 +185,6 @@ bindsym XF86MonBrightnessDown exec --no-startup-id "BLOCK_BUTTON=5 $HOME/.config
 exec --no-startup-id setxkbmap -option "ctrl:nocaps"
 exec --no-startup-id "xautolock -time 5 -locker 'i3lock -c 000000' &"
 exec --no-startup-id "compton -b --config ~/.config/compton.conf &"
-exec --no-startup-id "/usr/bin/blueman-applet"
+exec --no-startup-id "/usr/bin/blueman-applet &"
 exec --no-startup-id "feh --bg-fill $HOME/.config/wallpaper.jpg &"
 exec_always --no-startup-id "xrdb -merge -DHOME=$HOME $HOME/.dotfiles/Xresources &"

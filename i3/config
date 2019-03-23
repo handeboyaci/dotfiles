@@ -159,11 +159,11 @@ for_window [class="^.*"] border pixel 1
 client.focused #555555 #555555 #ffffff #2e9ef4     #CC0000
 
 
-bindsym --release Print exec "scrot -s $HOME/Desktop/%b%d_%H:%M:%S.png"
-bindsym --release Shift+Print exec "scrot -m $HOME/Desktop/%b%d_%H:%M:%S.png"
-bindsym --release $mod+Shift+Print exec "scrot -u -d 4 $HOME/Desktop/%b%d_%H:%M:%S.png"
-bindsym $alt+space exec "BLOCK_BUTTON=1 $HOME/.config/i3blocks/layout; pkill -SIGRTMIN+1 i3blocks"
-bindsym $alt+Ctrl+Delete exec i3lock -c 000000
+bindsym --release Print exec --nostartup-id "scrot -s $HOME/Desktop/%b%d_%H:%M:%S.png"
+bindsym --release Shift+Print exec --no-startup-id "scrot -m $HOME/Desktop/%b%d_%H:%M:%S.png"
+bindsym --release $mod+Shift+Print exec --no-startup-id "scrot -u -d 4 $HOME/Desktop/%b%d_%H:%M:%S.png"
+bindsym $alt+space exec --no-startup-id "BLOCK_BUTTON=1 $HOME/.config/i3blocks/layout; pkill -SIGRTMIN+1 i3blocks"
+bindsym $alt+Ctrl+Delete exec --no-startup-id i3lock -c 000000
 
 bindsym $mod+m move scratchpad
 bindsym $mod+Shift+m scratchpad show

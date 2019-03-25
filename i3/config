@@ -23,6 +23,9 @@ bindsym $mod+Return exec i3-sensible-terminal
 
 # kill focused window
 bindsym $mod+w kill
+bindsym $mod+q kill
+bindsym $mod+Shift+w exec --no-startup-id $HOME/.dotfiles/i3blocks/shutdown
+bindsym $mod+Shift+q exec --no-startup-id $HOME/.dotfiles/i3blocks/shutdown
 
 # start dmenu (a program launcher)
 bindsym $mod+Shift+space exec --no-startup-id rofi -show run

@@ -69,7 +69,7 @@ bindsym $mod+bracketright layout toggle splitv splith tabbed stacking
 bindsym $mod+bracketleft floating toggle
 
 # change focus between tiling / floating windows
-bindsym $mod+braceleft focus mode_toggle
+bindsym $mod+Shift+bracketleft focus mode_toggle
 
 # focus the parent container
 bindsym $mod+a focus parent

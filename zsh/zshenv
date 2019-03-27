@@ -17,6 +17,8 @@ export LESS='-g -i -M -R -W -z-4'
 export LESSOPEN="|$HOME/.dotfiles/zsh/lesspipe %s"
 export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
 
+export P4DIFF='nvim -d'
+
 export AWKPATH=/opt/software/awkscr
 
 typeset -gU cdpath fpath mailpath path

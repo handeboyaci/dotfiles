@@ -158,7 +158,9 @@ bindkey -M viins "\C-s" prepend-sudo
 # dotdotdot {{{
 function expand-dot-to-parent-directory-path {
   if [[ $ZLE_STATE == *insert* ]]; then
-    if [[ $LBUFFER = *.. ]]; then
+    if [[ $LBUFFER == p4*" ".. ]]; then
+      LBUFFER+='.'
+    elif [[ $LBUFFER == *.. ]]; then
       LBUFFER+='/..'
     else
       LBUFFER+='.'

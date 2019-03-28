@@ -36,7 +36,7 @@ color=#FFFFFF
 
 [vol]
 full_text=Volume
-command=$HOME/.config/i3blocks/vol
+command=$HOME/.config/i3blocks/volume
 interval=once
 color=#FFFFFF
 signal=2

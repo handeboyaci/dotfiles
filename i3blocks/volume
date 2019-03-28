@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+STEP=5
+
+sink=$(pacmd list-sinks | awk '/index:/{i++} /* index:/{print i; exit}')
+vol=$(pacmd list-sinks | awk '/^\svolume:/{i++} i=='$sink'{print gensub("%", "", 1, $5); exit}')
+
+case $BLOCK_BUTTON in
+1|3) pactl set-sink-mute $sink toggle;; 
+  5) pactl set-sink-volume $sink $((vol+STEP));;
+  4) pactl set-sink-volume $sink $((vol-STEP));; 
+esac
+
+echo "🔊 ${vol}%"

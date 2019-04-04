@@ -1,4 +1,8 @@
 # vi: fdm=marker
+if [[ -z $TMUX ]]
+then
+  exec tmux
+fi
 
 # set shell options {{{
 eval "$(dircolors $ZDOTDIR/dircolors)"
@@ -228,7 +232,7 @@ for mode in viins vicmd; do
   bindkey -M $mode "$terminfo[kcbt]"  reverse-menu-complete
   bindkey -M $mode "$terminfo[kdch1]" delete-char
   bindkey -M $mode "$terminfo[kbs]"   backward-delete-char
-  bindkey -M $mode "\C-?"   backward-delete-char
+  bindkey -M $mode "\C-?"             backward-delete-char
   bindkey -M $mode "\C-q"             push-input
   bindkey -M $mode "\eq"              get-line
 done
@@ -238,7 +242,7 @@ bindkey -M viins "\e[1;5C" forward-word        #  ctrl right
 bindkey -M viins "\e[3;6~" kill-word           #  ctrl shift del
 bindkey -M viins "\e[3;5~" backward-kill-word  #  ctrl del
 bindkey -M viins "\e[3;3~" backward-kill-line  #  alt  del
-bindkey -M viins "\C-z" undo
+bindkey -M viins "\C-z"    undo
 
 # add surround-operation to zle {{{
 autoload -Uz surround
@@ -343,12 +347,13 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
+#  add some hooks {{{
 set-term-title () {
   print -Pn "\e]2;%~ $1\a"
 }
-autoload -Uz add-zsh-hook
-add-zsh-hook preexec set-term-title
+preexec_functions+=(set-term-title)
 
+# }}}
 path=($HOME/.dotfiles/bin $HOME/.cargo/bin $HOME/.local/share/conda/bin $path)
 
 fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)

@@ -20,12 +20,13 @@ floating_modifier $mod
 
 # start a terminal
 bindsym $mod+Return exec i3-sensible-terminal
+bindsym $mod+Shift+Return exec google-chrome --remote-debugging-port=9222
 
 # kill focused window
 bindsym $mod+w kill
 bindsym $mod+q kill
 bindsym $mod+Shift+w exec --no-startup-id $HOME/.dotfiles/i3blocks/shutdown
-bindsym $mod+Shift+q exec --no-startup-id $HOME/.dotfiles/i3blocks/shutdown
+bindsym $mod+Shift+q exec --no-startup-id sel=Shutdown $HOME/.dotfiles/i3blocks/shutdown
 
 # start dmenu (a program launcher)
 bindsym $mod+Shift+space exec --no-startup-id rofi -show run
@@ -75,7 +76,7 @@ bindsym $mod+Shift+bracketleft focus mode_toggle
 bindsym $mod+a focus parent
 
 # focus the child container
-#bindsym $mod+d focus child
+bindsym $mod+d focus child
 
 # Define names for default workspaces for which we configure key bindings later on.
 # We use variables to avoid repeating the names in multiple places.
@@ -123,21 +124,15 @@ bindsym $mod+Shift+x exec "i3-nagbar -t warning -m 'Exit?' -B 'Yes, exit i3' 'i3
 
 # resize window (you can also use the mouse for that)
 mode "resize" {
-# These bindings trigger as soon as you enter the resize mode
 
-# Pressing left will shrink the window’s width.
-# Pressing right will grow the window’s width.
-# Pressing up will shrink the window’s height.
-# Pressing down will grow the window’s height.
   bindsym h resize shrink width 5 px or 5 ppt
-    bindsym j resize grow height 5 px or 5 ppt
-    bindsym k resize shrink height 5 px or 5 ppt
-    bindsym l resize grow width 5 px or 5 ppt
+  bindsym j resize grow height 5 px or 5 ppt
+  bindsym k resize shrink height 5 px or 5 ppt
+  bindsym l resize grow width 5 px or 5 ppt
 
-# back to normal: Enter or Escape or $mod+r
-    bindsym Return mode "default"
-    bindsym Escape mode "default"
-    bindsym $mod+r mode "default"
+  bindsym Return mode "default"
+  bindsym Escape mode "default"
+  bindsym $mod+r mode "default"
 }
 
 bindsym $mod+r mode "resize"
@@ -148,7 +143,7 @@ bar {
     position top
     status_command i3blocks
     colors {
-        background #000000
+        background #2C394C
         statusline #ffffff
         separator #666666
 

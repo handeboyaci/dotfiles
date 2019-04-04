@@ -29,7 +29,7 @@ color=#FFFFFF
 [separator]
 
 [weather]
-command=curl -s wttr.in/?0FnqTQ|cut -c16-|head -2|command sed 's/\.\.+\?/ - /'|xargs
+command=curl -s wttr.in/?0mTQ|cut -c16-|head -2|command sed 's/\.\.+\?/ - /'|xargs
 interval=3600
 color=#FFFFFF
 [separator]

@@ -1,43 +1,40 @@
 #!/usr/bin/env bash
 
-# Menu with keys/commands
-typeset -A menu
-menu=(
-  [Shutdown]="systemctl poweroff"
-  [Reboot]="systemctl reboot"
-  [Hibernate]="systemctl hibernate"
-  [Lock]="i3lock --color=000000"
-  [Logout]="i3-msg exit"
-)
-menu_nrows=${#menu[@]}
-
 # Menu entries that may trigger a confirmation message
 menu_confirm="Shutdown Reboot Hibernate Logout"
+opts=(-fullscreen true -font "Fira Mono 30" -dmenu -i)
 
-launcher_options=(-fullscreen true
-                  -font "Fira Mono 30"
-                  -dmenu
-                  -i
-                  )
+if [[ -z $sel ]]; then
+  # Menu with keys/commands
+  typeset -A menu
 
+  menu=([Shutdown]="systemctl poweroff"
+        [Reboot]="systemctl reboot"
+        [Hibernate]="systemctl hibernate"
+        [Lock]="i3lock --color=000000"
+        [Logout]="i3-msg exit")
 
-launcher=(rofi -lines "${menu_nrows}" -p "Options" "${launcher_options[@]}")
-selection="$(printf '%s\n' "${!menu[@]}" | sort | "${launcher[@]}")"
+  menu_nrows=${#menu[@]}
 
-function ask_confirmation() {
-  confirmed=$(echo -e "Yes\nNo" |\
-    rofi  "${launcher_options[@]}" -lines 2 -p "${selection}?")
-  [ "${confirmed}" == "Yes" ] && confirmed=0
+  launcher=(rofi -lines "${menu_nrows}" -p "Options" "${opts[@]}")
+  sel="$(printf '%s\n' "${!menu[@]}" | sort | "${launcher[@]}")"
+
+fi
+
+function ask_confirmation ()
+{
+  confirmed=$(echo -e "Yes\nNo" | rofi  "${opts[@]}" -lines 2 -p "${sel}?")
+  [[ "${confirmed}" == "Yes" ]] && confirmed=0
 
   if [ "${confirmed}" == 0 ]; then
-    i3-msg -q "exec ${menu[${selection}]}"
+    i3-msg -q "exec ${menu[${sel}]}"
   fi
 }
 
-if [[ $? -eq 0 && ! -z ${selection} ]]; then
-  if [[ ${menu_confirm} =~ (^|[[:space:]])"${selection}"($|[[:space:]]) ]]; then
+if [[ $? -eq 0 && ! -z ${sel} ]]; then
+  if [[ ${menu_confirm} =~ (^|[[:space:]])"${sel}"($|[[:space:]]) ]]; then
     ask_confirmation
   else
-    i3-msg -q "exec ${menu[${selection}]}"
+    i3-msg -q "exec ${menu[${sel}]}"
   fi
 fi

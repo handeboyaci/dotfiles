@@ -3,7 +3,7 @@
 TZ="America/New_York"
 WIDTH=${WIDTH:-20}
 HEIGHT=${HEIGHT:-20}
-DATEFMT=${DATEFMT:-"+%a %d.%m.%Y"}
+DATEFMT=${DATEFMT:-"+%A, %B %d,"}
 
 OPTIND=1
 while getopts ":f:W:H:" opt; do

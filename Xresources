@@ -1,22 +1,21 @@
-rofi.modi:              window,run,ssh,drun,combi,windowcd,pass:HOME/.dotfiles/rofi/rofi-pass,locate:HOME/.dotfiles/rofi/rofi-locate
 rofi.width:             80
 rofi.lines:             6
 rofi.columns:           3
 rofi.font:              Fira Mono 24
 rofi.location:          2
-rofi.yoffset:           200
 rofi.fixed-num-lines:   false
 rofi.line-margin:       15
 rofi.parse-known-hosts: true
 rofi.max-history-size:  250
-! rofi.eh: row height in chars, seems like integer only
 rofi.fullscreen:        false
-rofi.sidebar-mode:      true
-! rofi.matching: fuzzy
-! rofi.bw: 0 # border width
+rofi.sidebar-mode:      false
 rofi.color-enabled:     true
 rofi.color-window:      argb:B0435e75, argb:D0435e75, argb:D0435e75
-rofi.color-normal:      argb:00435e75, argb:FF9dbeda, argb:00486883, argb:A02C3E4F, argb:D09dbeda
-rofi.color-active:      argb:00435e75, argb:FF936395, argb:00486883, argb:A02C3E4F, argb:FF936395
-rofi.color-urgent:      argb:00435e75, argb:D0b9524e, argb:00486883, argb:A02C3E4F, argb:D0b9524e
+rofi.color-normal:      argb:00435e75, argb:FF9dbeda, argb:00486883, argb:A02C3EAF, argb:D09dbeda
+rofi.color-active:      argb:00435e75, argb:FF936395, argb:00486883, argb:A02C3EAF, argb:FF936395
+rofi.color-urgent:      argb:00435e75, argb:D0b9524e, argb:00486883, argb:A02C3EAF, argb:D0b9524e
+/* rofi.color-window:      argb:B0 #435e75, argb:D0 #435e75, argb:D0 #435e75 */
+/* rofi.color-normal:      argb:00 #435e75, argb:FF #9dbeda, argb:00 #486883, argb:A0 #2C3EaF, argb:D0 #9dbeda */
+/* rofi.color-active:      argb:00 #435e75, argb:FF #936395, argb:00 #486883, argb:A0 #2C3EaF, argb:FF #936395 */
+/* rofi.color-urgent:      argb:00 #435e75, argb:D0 #b9524e, argb:00 #486883, argb:A0 #2C3EaF, argb:D0 #b9524e */
 rofi.hide-scrollbar:    true

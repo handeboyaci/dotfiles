@@ -1,0 +1,25 @@
+#!/bin/bash
+
+pkill -f -0 xautolock
+status=$?
+
+if [[ $BLOCK_BUTTON -eq 1 ]]
+then
+  if (( $status ))
+  then
+    i3-msg exec "xautolock -detectsleep -time 5 -locker '/usr/share/goobuntu-desktop-files/xsecurelock.sh'" &>/dev/null
+    status=0
+  else
+    pkill -9 xautolock
+    status=1
+  fi
+  pkill -SIGRTMIN+9 i3blocks
+fi
+
+if (( $status ))
+then
+  echo 👁
+else
+  echo 💤
+fi
+

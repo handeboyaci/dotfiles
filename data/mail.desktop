@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Gmail
+Icon=email
+Exec=google-chrome --app=http://mail.google.com/ --remote-debugging-port=9222 
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Hangouts;Chat

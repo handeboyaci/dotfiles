@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 
-url="https://forex.1forge.com/1.0.3/quotes?pairs=USDTRY,EURTRY,EURUSD&api_key" 
-data="$(curl -s "$url=$(pass 1forge)" | jq '.[]|[.symbol,.price]|@sh')"
+url="https://api.exchangeratesapi.io/latest?base=TRY&symbols=USD,EUR" 
+raw_data="$(curl -s "$url" |\
+            jq -r '.rates |
+                   map_values(1/.) |
+                   to_entries |
+                   map("[\(.key)]=\(.value)") |
+                   .[]' |\
+            xargs)"
 
-if [[ $BLOCK_BUTTON -eq 1 ]]; then
-  echo "${data}"|tr -d \'|tr -d \"|xargs
+declare -A data="(${raw_data[@]})"
+
+if [[ $BLOCK_BUTTON -gt 1 ]]; then
+  printf "USD %.3f, EUR %.3f" ${data[USD]} ${data[EUR]}
 else
-  echo ${data} | awk 'NR==1{printf("%.3f\n---\n", $2);exit}'
+  printf "%.3f" ${data[USD]}
 fi

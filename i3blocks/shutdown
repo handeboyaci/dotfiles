@@ -1,40 +1,33 @@
 #!/usr/bin/env bash
 
 # Menu entries that may trigger a confirmation message
-menu_confirm="Shutdown Reboot Hibernate Logout"
-opts=(-fullscreen true -font "Fira Mono 30" -dmenu -i)
+menu_nrows=6
+confirm="Shutdown Reboot Hibernate Logout"
+opts=(-yoffset -300 -width 100 -padding $(($(xwininfo -root |awk '/Height/ { print $2}')/2)) -dmenu -i -font "Fira Mono 30")
+
+typeset -A menu
+menu=(
+[0 Sleep]="systemctl suspend"
+[1 Hibernate]="systemctl hibernate"
+[2 Shutdown]="systemctl poweroff"
+[3 Reboot]="systemctl reboot"
+[4 Logout]="i3-msg exit"
+[5 Lock]="i3lock --color=000000"
+)
 
 if [[ -z $sel ]]; then
-  # Menu with keys/commands
-  typeset -A menu
-
-  menu=([Shutdown]="systemctl poweroff"
-        [Reboot]="systemctl reboot"
-        [Hibernate]="systemctl hibernate"
-        [Lock]="i3lock --color=000000"
-        [Logout]="i3-msg exit")
-
-  menu_nrows=${#menu[@]}
-
-  launcher=(rofi -lines "${menu_nrows}" -p "Options" "${opts[@]}")
-  sel="$(printf '%s\n' "${!menu[@]}" | sort | "${launcher[@]}")"
-
+  sel="$(printf '%s\n' "${!menu[@]}" | sort | \
+    rofi -lines "${menu_nrows}" -p "Options" "${opts[@]}")"
 fi
 
-function ask_confirmation ()
-{
-  confirmed=$(echo -e "Yes\nNo" | rofi  "${opts[@]}" -lines 2 -p "${sel}?")
-  [[ "${confirmed}" == "Yes" ]] && confirmed=0
+[[ -z $sel ]] && exit 0
 
-  if [ "${confirmed}" == 0 ]; then
-    i3-msg -q "exec ${menu[${sel}]}"
+if [[ ${confirm} == *${sel}* ]]; then
+  confirmed=$(echo -e "Yes\nNo" |\
+    rofi  "${opts[@]}" -lines 2 -p "${sel}?")
+  if [[ "${confirmed}" == "Yes" ]]; then
+    ${menu[${sel}]}
   fi
-}
-
-if [[ $? -eq 0 && ! -z ${sel} ]]; then
-  if [[ ${menu_confirm} =~ (^|[[:space:]])"${sel}"($|[[:space:]]) ]]; then
-    ask_confirmation
-  else
-    i3-msg -q "exec ${menu[${sel}]}"
-  fi
+else
+  ${menu[${sel}]}
 fi

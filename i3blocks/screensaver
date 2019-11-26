@@ -1,0 +1,25 @@
+#!/bin/bash
+
+pkill -f -0 gnome-screensaver
+status=$?
+
+if [[ $BLOCK_BUTTON -eq 1 ]]
+then
+  if (( $status ))
+  then
+    nohup gnome-screensaver 1>/dev/null 2>&1 &
+    status=0
+  else
+    gnome-screensaver-command --exit
+    status=1
+  fi
+  pkill -SIGRTMIN+9 i3blocks
+fi
+
+if (( $status ))
+then
+  echo 👁
+else
+  echo 💤
+fi
+

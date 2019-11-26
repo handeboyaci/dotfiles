@@ -34,36 +34,11 @@ interval=3600
 color=#FFFFFF
 [separator]
 
-[vol]
-full_text=Volume
-command=$HOME/.config/i3blocks/vol
-interval=once
-color=#FFFFFF
-signal=2
-[separator]
+# [vol]
+# full_text=Volume
+# command=$HOME/.config/i3blocks/vol
+# interval=once
+# color=#FFFFFF
+# signal=2
+# [separator]
 
-[Brightness]
-full_text=Brightness
-command=$HOME/.config/i3blocks/screenlight
-interval=once
-color=#FFFFFF
-signal=3
-[separator]
-
-[kb]
-command=$HOME/.config/i3blocks/layout
-interval=once
-signal=1
-color=#FFFFFF
-[separator]
-
-[power]
-command=$HOME/.config/i3blocks/battery
-interval=60
-[separator]
-
-[shutdown]
-full_text=⏻
-command=$HOME/.config/i3blocks/shutdown
-color=#FFFFFF
-[separator]

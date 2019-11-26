@@ -350,7 +350,6 @@ tabs -2
 HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
-# COMP_WORDBREAKS=$'"\'@><=,-;|&(:' 
 
 #  add some hooks {{{
 set-term-title () {

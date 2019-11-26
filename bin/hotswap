@@ -1,0 +1,56 @@
+#!/bin/bash
+
+sr_www=0
+qrewrite=0
+
+build=""
+hotswap=""
+while (( $# ))
+do
+  if [[ $1 == -s ]]
+  then
+    if [[ -n $hotswap ]]
+    then
+      hotswap="$hotswap,"
+    fi
+    hotswap="${hotswap}superroot:/bns/ij/borg/ij/bns/sselcuk/web_mixer.serve"
+    build="$build //superroot/servers:sr_www"
+    sr_www=1
+    shift
+  elif [[ $1 == -q ]]
+  then
+    if [[ -n $hotswap ]]
+    then
+      hotswap="$hotswap,"
+    fi
+    hotswap="${hotswap}qrewrite:/bns/jm/borg/jm/bns/sselcuk/experiment_qrewrite.web"
+    build="$build //quality/qrewrite:qrewrite"
+    qrewrite=1
+    shift
+  else
+    echo "don't know about that."
+    exit 1
+  fi
+done
+
+if [[ -z "$build" ]]
+then
+  echo "how can I help you sir?"
+  exit 1
+fi
+if blaze build -c opt $build
+then
+
+  (( $qrewrite )) && (
+  echo Bringing qrewrite up.
+  borgcfg production/borg/qrewrite-experiments/testing.borg --vars=binary='blaze-bin/quality/qrewrite/qrewrite' reload experiment_qrewrite --skip_confirmation
+  )
+
+  (( $sr_www )) && (
+  echo Bringing sr_www up
+  hb tap_sync superroot,superroot.opt.binary
+  borgcfg --vars="sr_binary=$PWD/blaze-bin/superroot/servers/sr_www,cell=ij" production/borg/superroot/templates/nonprod_template.borg reload --skip_confirmation
+  )
+
+  echo hotswaps="$hotswap"
+fi

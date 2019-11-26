@@ -1,0 +1,15 @@
+#!/bin/bash
+
+read var
+
+if [[ "$var" == http* ]]
+then
+  xdg-open "$var" &>/dev/null
+elif [[ "$var" == go/* || "$var" == b/* || "$var" == cl/* ]]
+then
+  xdg-open http://"$var" &>/dev/null
+elif [[ "$var" == "Change "*  || "$var" == "CL "* ]]; then
+  xdg-open http://cl/"${var#* }" &>/dev/null
+else
+  tmux paste-buffer
+fi

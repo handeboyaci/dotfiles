@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+opts=(-width 100 -location 3 -yoffset -200 -font "Fira Mono 30"
+      -dmenu -i -padding $(($(xwininfo -root |awk '/Height/ { print $2}')/2)))
+
+typeset -A menu
+menu=([0 Sleep]="systemctl suspend-then-hibernate"
+      [1 Shutdown]="systemctl poweroff"
+      [2 Reboot]="systemctl reboot"
+      [3 Hibernate]="systemctl hibernate"
+      [4 Lock]="/usr/share/goobuntu-desktop-files/xsecurelock.sh"
+      [5 Logout]="i3-msg exit")
+
+if [[ -z $sel ]]; then
+  sel="$(printf '%s\n' "${!menu[@]}" |
+        sort |
+        rofi -fixed-num-lines -lines "${#menu[@]}" -p "Choose" "${opts[@]}")"
+fi
+
+[[ -z $sel ]] && exit
+
+# Menu entries that may trigger a confirmation message
+confirmation_required="Shutdown Reboot Hibernate Logout"
+# if confirmation is not required; or it is obtained
+set -x
+if [[ ${confirmation_required} != *${sel:2}* || \
+  $(echo -e "Yes\nNo" | rofi  "${opts[@]}" -lines 2 -p "${sel}?") == Yes ]]
+then
+    ${menu[${sel}]}
+fi

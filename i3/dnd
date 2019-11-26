@@ -1,0 +1,22 @@
+#!/bin/bash
+
+status=$(gsettings get org.gnome.gnome-flashback notifications)
+
+if [[ $BLOCK_BUTTON -eq 1 ]]; then
+  if $($status); then
+    # TRUE, set to FALSE
+    gsettings set org.gnome.gnome-flashback notifications false
+    status=false
+  else
+    gsettings set org.gnome.gnome-flashback notifications true
+    status=true
+  fi
+  pkill -SIGRTMIN+8 i3blocks
+fi
+
+if $($status); then
+  echo 🕭
+else
+  echo 🔕
+fi
+

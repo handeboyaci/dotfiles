@@ -7,7 +7,7 @@ if [[ $BLOCK_BUTTON -eq 1 ]]
 then
   if (( $status ))
   then
-    i3-msg exec "xautolock -detectsleep -time 5 -locker '/usr/share/goobuntu-desktop-files/xsecurelock.sh'" &>/dev/null
+    i3-msg exec "xautolock -detectsleep -time 1 -locker '/usr/share/goobuntu-desktop-files/xsecurelock.sh'" &>/dev/null
     status=0
   else
     pkill -9 xautolock

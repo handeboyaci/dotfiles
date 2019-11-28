@@ -1,12 +1,4 @@
 # vi: fdm=marker
-if [[ -z $SSH_TTY && -z $TMUX ]]
-then
-  local detached
-  detached=($(tmux ls|grep -v attached|cut -d: -f1))
-  (( $#detached )) && exec tmux attach -t $detached[1] || exec tmux
-fi
-
-prodcertstatus -q -nocheck_loas || prodaccess
 
 # set shell options {{{
 eval "$(dircolors $ZDOTDIR/dircolors)"
@@ -166,9 +158,7 @@ bindkey -M viins "\C-s" prepend-sudo
 # dotdotdot {{{
 function expand-dot-to-parent-directory-path {
   if [[ $ZLE_STATE == *insert* ]]; then
-    if [[ $LBUFFER == "g4 "*" .."  || $LBUFFER == "blaze "*" .." ]]; then
-      LBUFFER+='.'
-    elif [[ $LBUFFER == *.. ]]; then
+    if [[ $LBUFFER == *.. ]]; then
       LBUFFER+='/..'
     else
       LBUFFER+='.'
@@ -336,7 +326,7 @@ zle -N zle-keymap-select
 # #}}}
 
 # theme {{{
-PS1=$'%{\e[38;2;114;178;51m%}%(1v.$CITC_CLIENT%f%b (CL = $(echo $CL|tr -s "\\n" ":") Synced @ $CL_SYNCED) %B| %{\e[38;2;114;178;51m%}%1v.%d)%f
+PS1=$'%{\e[38;2;114;178;51m%}%d%f
 $PROMPT_COLOR❯%b%f '
 if [[ -n $SSH_CONNECTION ]]; then
   PS1=$'%B%{\e[38;2;255;0;0m%}%(!.%# .)%f%{\e[38;2;114;178;51m%}%n@%M%f | '$PS1
@@ -355,67 +345,17 @@ SAVEHIST=10000
 set-term-title () {
   print -Pn "\e]2;%~ $1\a"
 }
-
-update-cl-synced-flag () {
-  [[ $2 =~ "g4 sync|change"* || $2 =~ "hg sync" ]] && CL_SYNC_UPDATE=1
-}
-
-preexec_functions+=(set-term-title update-cl-synced-flag)
-
-update-cl-synced () {
-  if (( $CL_SYNC_UPDATE )); then
-    CL_SYNCED=$(srcfs get_readonly)
-    CL_SYNC_UPDATE=0
-  fi
-}
-
-precmd_functions+=(update-cl-synced)
-
-set-google3-folder () {
-  if [[ $PWD =~ "/google/src/cloud/$USER/(.+)/google3(.*)" ]]
-  then
-    LAST_CITC_CLIENT="$CITC_CLIENT"
-    LAST_CITC_PATH="$CITC_PATH"
-    LAST_CITC_ROOT="$CITC_ROOT"
-
-    CITC_CLIENT=${match[1]}
-    CITC_PATH=${match[2]#/}
-    CITC_ROOT=/google/src/cloud/$USER/$CITC_CLIENT/google3/
-
-    alias -g //=${CITC_ROOT}
-    psvar=( "//${CITC_PATH}" )
-    unset MATCH
-
-    if [[ $LAST_CITC_CLIENT != $CITC_CLIENT ]]; then
-      # TODO fix for Fig
-      CL=$(p4 -F'%change%' changes -s pending -c "$(p4 -F'%clientName%' info)")
-      CL_SYNCED=$(srcfs get_readonly)
-    fi
-
-  elif [[ ! -z $CITC_CLIENT ]]
-  then
-    LAST_CITC_CLIENT="$CITC_CLIENT"
-    LAST_CITC_PATH="$CITC_PATH"
-    LAST_CITC_ROOT="$CITC_ROOT"
-    unset CITC_CLIENT
-    unset CITC_PATH
-    unset CITC_ROOT
-    unset psvar
-  fi
-}
-set-google3-folder
-chpwd_functions+=(set-google3-folder)
+preexec_functions+=(set-term-title)
 
 # }}}
 path=($HOME/.dotfiles/bin $HOME/.cargo/bin $path)
 
-fpath=($(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion) $ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
+fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
 source $ZDOTDIR/aliases
 
 source "$ZDOTDIR/sshfs-manager/setup.zsh"
-source /etc/bash_completion.d/g4d
 
 SAVEDDIRS="$HOME/.dotfiles/tmp/dirs"
 source "$ZDOTDIR/savedir/setup.zsh"
@@ -446,16 +386,18 @@ source $ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/usr/local/google/home/sselcuk/.local/share/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+__conda_setup="$('/home/sselcuk/.local/share/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/usr/local/google/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh" ]; then
-        . "/usr/local/google/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh"
+    if [ -f "/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh" ]; then
+        . "/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh"
     else
-        export PATH="/usr/local/google/home/sselcuk/.local/share/conda/bin:$PATH"
+        export PATH="/home/sselcuk/.local/share/conda/bin:$PATH"
     fi
 fi
 unset __conda_setup
 # <<< conda initialize <<<
+
+
 

@@ -22,7 +22,6 @@ fi
 # Menu entries that may trigger a confirmation message
 confirmation_required="Shutdown Reboot Hibernate Logout"
 # if confirmation is not required; or it is obtained
-set -x
 if [[ ${confirmation_required} != *${sel:2}* || \
   $(echo -e "Yes\nNo" | rofi  "${opts[@]}" -p "${sel}?") == Yes ]]
 then

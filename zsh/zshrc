@@ -442,6 +442,10 @@ autoload -Uz compinit  && compinit -i -d ~/.dotfiles/tmp/zcompdump
 
 # syntax highlighting {{{
 source $ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh
+FAST_HIGHLIGHT_STYLES[globbing]='fg=magenta,underlined'
+FAST_HIGHLIGHT_STYLES[history-expansion]='fg=magenta,bold'
+FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
+FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
 # }}}
 
 # >>> conda initialize >>>

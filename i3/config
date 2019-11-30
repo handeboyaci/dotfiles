@@ -29,7 +29,7 @@ bindsym $mod+space exec --no-startup-id rofi -show drun -show-icons
 bindsym $mod+Tab exec --no-startup-id $HOME/.dotfiles/rofi/chrome-switch-tabs
 bindsym $alt+Tab exec --no-startup-id rofi -show window -show-icons -filter "-Google-chrome "
 
-bindsym $mod+p exec --no-startup-id rofi -modi pass:$HOME/.dotfiles/rofi/rofi-pass -show pass -auto-select
+bindsym $mod+p exec --no-startup-id rofi -modi pass:$HOME/.dotfiles/rofi/rofi-pass -show pass
 bindsym $mod+b exec --no-startup-id rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
 
 # change focus

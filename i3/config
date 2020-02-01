@@ -72,7 +72,10 @@ bindsym $mod+a focus parent
 # focus the child container
 bindsym $mod+d focus child
 
-bindsym Ctrl+$alt+Delete --release exec "xautolock -locknow"
+# make window sticky
+bindsym $mod+s sticky toggle
+
+bindsym Ctrl+$alt+Delete --release exec "xset dpms force off"
 
 # Define names for default workspaces for which we configure key bindings later on.
 # We use variables to avoid repeating the names in multiple places.

@@ -1,4 +1,43 @@
 # vi: fdm=marker
+prodcertstatus -q -nocheck_loas || prodaccess
+
+if [[ -z $TMUX ]]
+then
+  local tmux_sessions
+  local choice
+  local format_tmux_session () {
+    name=$(echo $1|cut -f1 -d,)
+    (( $(echo $1|cut -f2 -d,) )) && attached="+" || attached="-"
+    created=$(date +"%A %H:%M" -d @$(echo $1|cut -f3 -d,))
+    last_attached=$(date +"%A %H:%M" -d @$(echo $1|cut -f4 -d,))
+
+    printf "%s %-10s : Created %s | Last Attached %s\n" \
+      $attached $name $created $last_attached
+  }
+  tmux_sessions=($(tmux list-sessions -F "#S,#{session_attached},#{session_created},#{session_last_attached}" 2>/dev/null))
+
+  if [[ ${#tmux_sessions} -eq 0 ]]; then
+    exec tmux new
+  else
+
+    choice=$(
+      (
+        echo "Create new session"
+        for session in $tmux_sessions
+        do
+          format_tmux_session $session
+        done
+        ) | $HOME/.fzf/bin/fzf | cut -d' ' -f 2)
+
+    if [[ $choice == "new" ]]
+    then
+      exec tmux new
+    elif [[ ! -z $choice ]]
+    then
+      exec tmux attach -t $choice
+    fi
+  fi
+fi
 
 # set shell options {{{
 eval "$(dircolors $ZDOTDIR/dircolors)"

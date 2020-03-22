@@ -7,3 +7,6 @@
 [submodule "tmux/tmux-fingers"]
 	path = tmux/tmux-fingers
 	url = https://github.com/Morantron/tmux-fingers
+[submodule "tmux/tmux-open"]
+	path = tmux/tmux-open
+	url = https://github.com/tmux-plugins/tmux-open

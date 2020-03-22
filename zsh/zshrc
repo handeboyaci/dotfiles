@@ -1,12 +1,12 @@
 # vi: fdm=marker
-if [[ -z $SSH_TTY && -z $TMUX ]]
-then
-  local detached
-  detached=($(tmux ls|grep -v attached|cut -d: -f1))
-  (( $#detached )) && exec tmux attach -t $detached[1] || exec tmux
-fi
-
 prodcertstatus -q -nocheck_loas || prodaccess
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+export FZF_DEFAULT_COMMAND="fd --type f"
+export FZF_DEFAULT_OPTS="--border --layout=reverse"
+export FZF_CTRL_T_OPTS="--preview='less {}'"
+
+source "$ZDOTDIR/tmux-selector/tmux-selector.zsh"
 
 # set shell options {{{
 eval "$(dircolors $ZDOTDIR/dircolors)"
@@ -423,8 +423,6 @@ source "$ZDOTDIR/savedir/setup.zsh"
 KEYTIMEOUT=10
 PROMPT_EOL_MARK=' [no EOL]'
 
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
 # load some 'features' {{{
 autoload -U zmv
 zmodload zsh/pcre
@@ -462,4 +460,3 @@ else
 fi
 unset __conda_setup
 # <<< conda initialize <<<
-

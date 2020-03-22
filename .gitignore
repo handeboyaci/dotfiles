@@ -8,3 +8,4 @@ nvim/bundle
 zsh/.zcompdumps
 mail/notmuch-vim
 nvim/autoload/plug.vim.old
+ssh/known_hosts

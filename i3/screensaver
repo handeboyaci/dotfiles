@@ -1,6 +1,6 @@
 #!/bin/bash
 
-pkill -f -0 xautolock
+pkill -0 xautolock
 status=$?
 
 if [[ $BLOCK_BUTTON -eq 1 ]]

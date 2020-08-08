@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Gmail
-Icon=email
+Icon=chrome-pjkljhegncpnkpknbcohdijeoejaedia-Profile_3
 Exec=google-chrome --app=http://mail.google.com/ --remote-debugging-port=9222 
 Terminal=false
 Type=Application

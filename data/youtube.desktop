@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Youtube
+Icon=chrome-adnlfjpnmidfimlkaohpidplnoimahfh-Profile_3
+Exec=google-chrome --app=http://www.youtube.com/ --remote-debugging-port=9222 
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Video;Youtube

@@ -384,13 +384,6 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
-#  add some hooks {{{
-set-term-title () {
-  print -Pn "\e]2;%~ $1\a"
-}
-preexec_functions+=(set-term-title)
-
-# }}}
 path=($HOME/.dotfiles/bin $HOME/.cargo/bin $path)
 
 fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)

@@ -6,4 +6,4 @@ Terminal=false
 Type=Application
 StartupNotify=true
 Categories=GNOME;GTK;Settings;
-Keywords=Preferences;Settings;Sound;Audio
+Keywords=Preferences;Settings;Audio;Sound;Volume;Microphone;Speaker;

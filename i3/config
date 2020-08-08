@@ -105,23 +105,51 @@ bindsym $mod+Shift+8 move container to workspace number 8; workspace number 8
 bindsym $mod+Shift+9 move container to workspace number 9; workspace number 9
 bindsym $mod+Shift+0 move container to workspace number 10; workspace number 10
 
+# move between monitors
+bindsym $mod+Up move workspace to output up
+bindsym $mod+Down move workspace to output down
+bindsym $mod+Left move workspace to output left
+bindsym $mod+Right move workspace to output right
+
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+Shift+r restart
 
 # resize window (you can also use the mouse for that)
-mode "resize" {
+mode "topleft" {
+  bindsym h     resize grow   left 5 px or 5 ppt
+  bindsym l     resize shrink left 5 px or 5 ppt
+  bindsym Left  resize grow   left 5 px or 5 ppt
+  bindsym Right resize shrink left 5 px or 5 ppt
 
-  bindsym h resize shrink width 5 px or 5 ppt
-  bindsym j resize grow height 5 px or 5 ppt
-  bindsym k resize shrink height 5 px or 5 ppt
-  bindsym l resize grow width 5 px or 5 ppt
+  bindsym k    resize grow   up 5 px or 5 ppt
+  bindsym j    resize shrink up 5 px or 5 ppt
+  bindsym Up   resize grow   up 5 px or 5 ppt
+  bindsym Down resize shrink up 5 px or 5 ppt
 
+  bindsym space  mode "bottomright"
   bindsym Return mode "default"
   bindsym Escape mode "default"
   bindsym $mod+r mode "default"
 }
 
-bindsym $mod+r mode "resize"
+mode "bottomright" {
+  bindsym l     resize grow   right 5 px or 5 ppt
+  bindsym h     resize shrink right 5 px or 5 ppt
+  bindsym Right resize grow   right 5 px or 5 ppt
+  bindsym Left  resize shrink right 5 px or 5 ppt
+
+  bindsym j    resize grow   down 5 px or 5 ppt
+  bindsym k    resize shrink down 5 px or 5 ppt
+  bindsym Down resize grow   down 5 px or 5 ppt
+  bindsym Up   resize shrink down 5 px or 5 ppt
+
+  bindsym space  mode "topleft"
+  bindsym Return mode "default"
+  bindsym Escape mode "default"
+  bindsym $mod+r mode "default"
+}
+
+bindsym $mod+r mode "topleft"
 
 mode "move" {
     bindsym $mod+Tab focus right

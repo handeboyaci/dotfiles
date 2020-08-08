@@ -384,7 +384,7 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
-path=($HOME/.dotfiles/bin $HOME/.cargo/bin $path)
+path=($HOME/.local/bin $HOME/.dotfiles/bin $HOME/.cargo/bin $path)
 
 fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i

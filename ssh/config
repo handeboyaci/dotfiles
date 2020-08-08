@@ -7,6 +7,7 @@ Host ofis
   ProxyCommand  corp-ssh-helper %h %p
   ForwardX11 yes
   ForwardX11Trusted yes
+  Ciphers aes192-ctr,aes128-ctr
 Host ev
   Hostname sencer.ddns.us
   IdentityFile ~/.ssh/id_rsa

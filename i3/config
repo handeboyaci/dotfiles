@@ -177,12 +177,13 @@ bindsym $mod+plus bar mode toggle
 # finds out, if available)
 bar {
     position top
-    status_command py3status -c ~/.config/i3/py3status.config -b
+    i3bar_command i3bar -t
+    status_command py3status -c ~/.config/i3/py3status.config  #-b
 
     tray_output primary
     tray_padding 3
     colors {
-        background #2C394C
+        background #2C394Ca0
         statusline #ffffff
         separator #666666
 
@@ -203,10 +204,15 @@ for_window [class="Gnome-clocks"] floating enable
 for_window [instance="calendar.google.com"] floating enable
 for_window [class="Nautilus"] floating enable
 for_window [class="Dconf-editor"] floating enable
+for_window [class="Geary"] floating enable
 for_window [class="vlc"] floating enable
-for_window [class="^.*"] border pixel 1
+for_window [class="^.*"] border pixel 3
 for_window [instance="www.google.com__calendar_event"] floating enable
 client.focused #555555 #555555 #ffffff #2e9ef4 #CC0000
+
+gaps inner 7
+smart_gaps on
+smart_borders on
 
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
@@ -214,3 +220,4 @@ workspace_auto_back_and_forth yes
 exec --no-startup-id i3-notifier
 exec --no-startup-id xss-lock -n '/usr/lib/x86_64-linux-gnu/xsecurelock/dimmer' -l -- '/usr/share/goobuntu-desktop-files/xsecurelock.sh'
 exec --no-startup-id xautolock -detectsleep -time 10 -locker '/usr/share/goobuntu-desktop-files/xsecurelock.sh'
+exec --no-startup-id compton

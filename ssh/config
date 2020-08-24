@@ -13,9 +13,6 @@ Host ev
   IdentityFile ~/.ssh/id_rsa
   ForwardX11 yes
   ForwardX11Trusted yes
-Host github.com
-  IdentityFile ~/.ssh/id_github
-  ControlMaster no
 Host *
   Compression yes
   ControlMaster auto

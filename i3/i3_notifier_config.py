@@ -59,7 +59,7 @@ config_list = [
     Gmail,
     Chat,
     Meet,
-    ChromeAppFactory("WhatsApp", "web.whatsapp.com", "web-whatsapp", "summary"),
+    ChromeAppFactory("WhatsApp", "web.whatsapp.com", "whatsapp", "summary"),
     ChromeAppFactory("Twitter", "twitter.com", "twitter"),
     ChromeAppFactory("Instagram", "www.instagram.com", "photos"),
     NotifySend,

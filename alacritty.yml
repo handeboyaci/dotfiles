@@ -1,3 +1,5 @@
+background_opacity: 0.90
+
 window:
   decorations: none
 
@@ -14,7 +16,7 @@ font:
     family: Hasklig
     style: Semibold Italic
 
-  size: 14
+  size: 12
 
 colors:
   # Default colors
@@ -51,7 +53,5 @@ scrolling:
   multiplier: 3
   faux-multiplier: 3
 
-# key_bindings:
-#   - { key: Key0,   mods: Control, action: ResetFontSize }
-#   - { key: Equals, mods: Control, action: IncreaseFontSize }
-#   - { key: Minus,  mods: Control, action: DecreaseFontSize }
+mouse_bindings:
+  - { mouse: Middle, action: PasteSelection }

@@ -53,9 +53,5 @@ scrolling:
   multiplier: 3
   faux-multiplier: 3
 
-# key_bindings:
-#   - { key: Key0,   mods: Control, action: ResetFontSize }
-#   - { key: Equals, mods: Control, action: IncreaseFontSize }
-#   - { key: Minus,  mods: Control, action: DecreaseFontSize }
 mouse_bindings:
   - { mouse: Middle, action: PasteSelection }

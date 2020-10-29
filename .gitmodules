@@ -4,9 +4,6 @@
 [submodule "zsh/zsh-completions"]
 	path = zsh/zsh-completions
 	url = https://github.com/zsh-users/zsh-completions.git
-[submodule "tmux/tmux-open"]
-	path = tmux/tmux-open
-	url = https://github.com/tmux-plugins/tmux-open
 [submodule "tmux/tmux-thumbs"]
 	path = tmux/tmux-thumbs
 	url = https://github.com/fcsonline/tmux-thumbs

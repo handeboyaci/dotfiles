@@ -16,5 +16,8 @@ Host ev
 Host *
   Compression yes
   ControlMaster auto
-  ControlPath /tmp/%u/%r@%h:%p
-  ControlPersist 60
+  ControlPath /tmp/%u/%C
+  ControlPersist 0
+  IdentityFile ~/.ssh/id_github
+  IdentityFile ~/.ssh/id_rsa
+  IdentityFile ~/.ssh/id_rsa_1

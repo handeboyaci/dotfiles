@@ -36,23 +36,37 @@ def ChromeAppFactory(title, url, icon=None, second_key="body"):
     return ChromeApp
 
 
+class Chrome(DefaultConfig):
+    def should_apply(notification):
+        return notification.app_name == "Google Chrome"
+
+    def update_notification(notification):
+        splitted = notification.body.split("\n")
+        notification.app_name = splitted[0]
+        notification.app_icon = "google-chrome"
+        notification.body = "\n".join(splitted[2:])
+
+    def get_keys(notification):
+        return notification.app_name
+
+
 class NotifySend(DefaultConfig):
     expires = True
 
     def should_apply(notification):
         return notification.app_name == "notify-send"
 
+    def update_notification(notification):
+        notification.app_icon = "plugin-notification"
+
 
 Gmail = ChromeAppFactory("Gmail", "mail.google.com", "gmail")
-Gmail.pre_close_hooks = ["ignore"]
 Gmail.post_close_hooks = ["ignore"]
 
 Chat = ChromeAppFactory("Chat", "chat.google.com", "google-chat")
-Chat.pre_close_hooks = ["ignore"]
 Chat.post_close_hooks = ["ignore"]
 
 Meet = ChromeAppFactory("Meet", "meet.google.com", "meet")
-Meet.pre_close_hooks = ["ignore"]
 Meet.post_close_hooks = ["ignore"]
 
 config_list = [
@@ -62,6 +76,9 @@ config_list = [
     ChromeAppFactory("WhatsApp", "web.whatsapp.com", "whatsapp", "summary"),
     ChromeAppFactory("Twitter", "twitter.com", "twitter"),
     ChromeAppFactory("Instagram", "www.instagram.com", "photos"),
+    Chrome,
     NotifySend,
     DefaultConfig,
 ]
+
+theme = "widget"

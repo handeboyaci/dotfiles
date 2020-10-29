@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Display upcoming Google Calendar events.
 
@@ -29,25 +28,25 @@ Configuration parameters:
     force_lowercase: Sets whether to force all event output to lower case.
         (default False)
     format: The format for module output.
-        (default '{events}|\?color=event \u2687')
+        (default '{events}|\\?color=event \u2687')
     format_date: The format for date related format placeholders.
         May be any Python strftime directives for dates.
         (default '%a %d-%m')
     format_event: The format for each event. The information can be toggled
         with 'button_toggle' based on the value of 'is_toggled'.
-        *(default '[\?color=event {summary}][\?if=is_toggled  ({start_time}'
+        *(default '[\\?color=event {summary}][\\?if=is_toggled  ({start_time}'
         ' - {end_time}, {start_date})|[ ({location})][ {format_timer}]]')*
     format_notification: The format for event warning notifications.
         (default '{summary} {start_time} - {end_time}')
     format_separator: The string used to separate individual events.
-        (default ' \| ')
+        (default ' \\| ')
     format_time: The format for time-related placeholders except `{format_timer}`.
         May use any Python strftime directives for times.
         (default '%I:%M %p')
     format_timer: The format used for the {format_timer} placeholder to display
         time until an event starts or time until an event in progress is over.
-        *(default '\?color=time ([\?if=days {days}d ][\?if=hours {hours}h ]'
-        '[\?if=minutes {minutes}m])[\?if=is_current  left]')*
+        *(default '\\?color=time ([\\?if=days {days}d ][\\?if=hours {hours}h ]'
+        '[\\?if=minutes {minutes}m])[\\?if=is_current  left]')*
     ignore_all_day_events: Sets whether to display all day events or not.
         (default False)
     num_events: The maximum number of events to display.
@@ -168,18 +167,18 @@ class Py3status:
     client_secret = "~/.config/py3status/google_calendar.client_secret"
     events_within_hours = 12
     force_lowercase = False
-    format = "{events}|\?color=event \u2687"
+    format = "{events}|\\?color=event \u2687"
     format_date = "%a %d-%m"
     format_event = (
-        "[\?color=event {summary}][\?if=is_toggled  ({start_time}"
+        r"[\?color=event {summary}][\?if=is_toggled  ({start_time}"
         " - {end_time}, {start_date})|[ ({location})][ {format_timer}]]"
     )
     format_notification = "{summary} {start_time} - {end_time}"
-    format_separator = " \| "
+    format_separator = r" \| "
     format_time = "%I:%M %p"
     format_timer = (
-        "\?color=time ([\?if=days {days}d ][\?if=hours {hours}h ]"
-        "[\?if=minutes {minutes}m])[\?if=is_current  left]"
+        r"\?color=time ([\?if=days {days}d ][\?if=hours {hours}h ]"
+        r"[\?if=minutes {minutes}m])[\?if=is_current  left]"
     )
     ignore_all_day_events = False
     num_events = 3
@@ -283,21 +282,22 @@ class Py3status:
             return re.sub(regex, "", location)
 
         try:
-            eventsResult = (
+            eventsResult =sum(( 
                 self.service.events()
                 .list(
-                    calendarId="primary",
+                    calendarId=calId,
                     timeMax=time_max.isoformat() + "Z",  # 'Z' indicates UTC time
                     timeMin=time_min.isoformat() + "Z",  # 'Z' indicates UTC time
                     singleEvents=True,
                     orderBy="startTime",
                 )
-                .execute(num_retries=5)
-            )
+                .execute(num_retries=5).get("items", [])
+                for calId in ("sselcuk@google.com", "sencerselcuk@gmail.com", "uascu98o47lnh6dok458uanm8ps14abv@import.calendar.google.com")
+                ), [])
         except Exception:
             return self.events or events
         else:
-            for event in eventsResult.get("items", []):
+            for event in eventsResult:
                 # filter out events that we did not accept (default)
                 # unless we organized them with no attendees
                 i_organized = event.get("organizer", {}).get("self", False)
@@ -378,7 +378,7 @@ class Py3status:
 
     def _format_timedelta(self, index, time_delta, is_current):
         """
-        Formats the dict time_to containg days/hours/minutes until an
+        Formats the dict time_to containing days/hours/minutes until an
         event starts into a composite according to time_to_formatted.
 
         Returns: A formatted composite.
@@ -400,7 +400,7 @@ class Py3status:
 
     def _build_response(self):
         """
-        Builds the composite reponse to be output by the module by looping
+        Builds the composite response to be output by the module by looping
         through all events and formatting the necessary strings.
 
         Returns: A composite containing the individual response for each event.
@@ -506,7 +506,7 @@ class Py3status:
         if self.is_authorized and self.events is not None:
             """
             If button_refresh is clicked, we allow the events to be updated
-            if the last event update occured at least 1 second ago. This
+            if the last event update occurred at least 1 second ago. This
             prevents a bug that can crash py3status since refreshing the
             module too fast results in incomplete event information being
             fetched as _get_events() is called repeatedly.

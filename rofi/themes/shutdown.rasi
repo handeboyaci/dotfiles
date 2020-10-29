@@ -1,0 +1,35 @@
+@import "shutdown-common.rasi"
+
+#window {
+  children: [dummy, container, dummy];
+}
+
+#container {
+  children: [dummy, horibox, dummy];
+  orientation: horizontal;
+}
+
+#horibox {
+  children: [textbox-prompt-colon, container2];
+  expand: false;
+  width: 34em;
+}
+
+#container2 {
+  children: [dummy, listview, dummy];
+}
+
+#textbox-prompt-colon {
+  font: "feather 48";
+  expand: false;
+  str: "";
+  border-radius: 100%;
+  background-color: @border;
+  text-color: @background;
+  padding: 1.5em;
+}
+
+#listview {
+  expand: false;
+  padding: 0 0 0 2em;
+}

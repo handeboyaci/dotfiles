@@ -19,6 +19,6 @@ export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
 
 export P4DIFF='nvim -d'
 
-export AWKPATH=/opt/software/awkscr
+export SUDO_ASKPASS=/usr/lib/openssh/gnome-ssh-askpass
 
 typeset -gU cdpath fpath mailpath path

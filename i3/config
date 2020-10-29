@@ -184,14 +184,14 @@ bar {
     tray_padding 3
     colors {
         background #2C394Ca0
-        statusline #ffffff
+        statusline #ffeedd
         separator #666666
 
-        focused_workspace  #4c7899 #285577 #ffffff
-        active_workspace   #333333 #5f676a #ffffff
-        inactive_workspace #333333 #222222 #888888
-        urgent_workspace   #2f343a #000000 #FF0000
-        binding_mode       #2f343a #900000 #ffffff
+        focused_workspace  #4c7899ff  #285577ff #ffffffff
+        active_workspace   #333333ff  #5f676aff #ffffffff
+        inactive_workspace #333333ff  #222222ff #888888ff
+        urgent_workspace   #2C394Ca0  #2C394Ca0 #ff9f9fff
+        binding_mode       #2f343aff  #900000ff #ffffffff
     }
 }
 
@@ -205,19 +205,30 @@ for_window [instance="calendar.google.com"] floating enable
 for_window [class="Nautilus"] floating enable
 for_window [class="Dconf-editor"] floating enable
 for_window [class="Geary"] floating enable
+for_window [class="Geary"] resize set 1600, 800
+for_window [class="Geary"] move absolute position center
 for_window [class="vlc"] floating enable
 for_window [class="^.*"] border pixel 3
 for_window [instance="www.google.com__calendar_event"] floating enable
-client.focused #555555 #555555 #ffffff #2e9ef4 #CC0000
+for_window [instance="crx_jgeocpdicgmkeemopbanhokmhcgcflmi"] floating enable
+for_window [instance="crx_jgeocpdicgmkeemopbanhokmhcgcflmi"] resize set 600 800
+
+
+client.unfocused        #4c4c4c   #4c4c4c   #4c4c4c   #4c4c4c
+client.focused          #CC0000   #CC0000   #CC0000   #3eaeff
+client.focused_inactive #CC000066 #CC000066 #CC000066 #3eaeff66
+client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 
 gaps inner 7
+gaps outer -7
 smart_gaps on
 smart_borders on
 
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec --no-startup-id i3-notifier
+exec --no-startup-id i3-notifier --debug
 exec --no-startup-id xss-lock -n '/usr/lib/x86_64-linux-gnu/xsecurelock/dimmer' -l -- '/usr/share/goobuntu-desktop-files/xsecurelock.sh'
 exec --no-startup-id xautolock -detectsleep -time 10 -locker '/usr/share/goobuntu-desktop-files/xsecurelock.sh'
+exec --no-startup-id $HOME/.dotfiles/bin/mute-on-lock.sh
 exec --no-startup-id compton

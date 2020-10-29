@@ -1,0 +1,15 @@
+#compdef ras
+
+local -a args
+
+args=(
+'-d[do a dry run]'
+'-e[escape glob patterns]'
+'-s server[specify a server manually]'
+'-t[allocate tty to ssh connection]'
+'-h --help[help screen]'
+)
+
+_arguments $args \
+  '(-):command: _command_names -e' \
+  '*::arguments: _normal'

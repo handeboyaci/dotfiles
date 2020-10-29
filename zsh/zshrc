@@ -379,7 +379,7 @@ function set-theme {
   # bold (pink # if sudo) green name (@ host if SSH) | green
   local cl='%F{black}⬞%f'
   PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@%m}%f | $GREEN"
-  PS1+='%(1v.$CITC_NAME %f%b(%(2v.'$cl'%2v.📤) @'$cl'%1v ) %B| .)'
+  PS1+='%(1v.$CITC_NAME %f%b(%(2v.'$cl'%2v. 📤) @'$cl'%1v ) %B| .)'
   PS1+='$GREEN%(1v.//$CITC_PWD.%d)'
   PS1+=$'\n%{\r%}$PROMPT_COLOR❯%b%f '
 
@@ -393,62 +393,6 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
-#  add some hooks {{{
-
-update-cl-synced-flag () {
-  [[ $2 =~ "g4 sync|change"* || $2 =~ "hg sync" ]] && CL_SYNC_UPDATE=1
-}
-
-preexec_functions+=(update-cl-synced-flag)
-
-update-cl-synced () {
-  if (( $CL_SYNC_UPDATE )); then
-    CL_SYNCED=$(srcfs get_readonly)
-    CL_SYNC_UPDATE=0
-  fi
-}
-
-precmd_functions+=(update-cl-synced)
-
-_PYTHONPATH=$PYTHONPATH
-set-google3-folder () {
-  if [[ $PWD =~ "/google/src/cloud/$USER/(.+)/google3(.*)" ]]
-  then
-    export LAST_CITC_CLIENT="$CITC_CLIENT"
-    export LAST_CITC_PATH="$CITC_PATH"
-    export LAST_CITC_ROOT="$CITC_ROOT"
-
-    export CITC_CLIENT=${match[1]}
-    export CITC_PATH=${match[2]#/}
-    export CITC_ROOT=/google/src/cloud/$USER/$CITC_CLIENT/google3/
-    export PYTHONPATH=/google/src/cloud/$USER/$CITC_CLIENT:$_PYTHONPATH
-
-    alias -g //=${CITC_ROOT}
-    psvar=( "//${CITC_PATH}" )
-    unset MATCH
-
-    if [[ $LAST_CITC_CLIENT != $CITC_CLIENT ]]; then
-      # TODO fix for Fig
-      export CL=$(p4 -F'%change%' changes -s pending -c "$(p4 -F'%clientName%' info)")
-      export CL_SYNCED=$(srcfs get_readonly)
-    fi
-
-  elif [[ ! -z $CITC_CLIENT ]]
-  then
-    export PYTHONPATH=$_PYTHONPATH
-    export LAST_CITC_CLIENT="$CITC_CLIENT"
-    export LAST_CITC_PATH="$CITC_PATH"
-    export LAST_CITC_ROOT="$CITC_ROOT"
-    unset CITC_CLIENT
-    unset CITC_PATH
-    unset CITC_ROOT
-    unset psvar
-  fi
-}
-set-google3-folder
-chpwd_functions+=(set-google3-folder)
-
-# }}}
 path=($HOME/.local/bin $HOME/.dotfiles/bin $HOME/.cargo/bin $path)
 
 fpath=($(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)

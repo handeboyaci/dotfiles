@@ -1,4 +1,5 @@
 # vi: fdm=marker
+runloas
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 export FZF_DEFAULT_COMMAND="fd --type f"
 export FZF_DEFAULT_OPTS="--border --layout=reverse"
@@ -374,24 +375,12 @@ zle -N zle-keymap-select
 
 # theme {{{
 function set-theme {
-  # function link_ {
-  #   echo "%{\e]8;;%}$1%{\a%}$2%{\e]8;;\a%}"
-  # }
-  # local citc_link="$(link_ 'http://cider/$CITC_NAME' '$CITC_NAME')"
-  # local cl_link="$(link_ 'http://cl/%2v' '%2v')"
-  # local cl_sync_link="$(link_ 'http://cl/%1v' '%1v')"
-  # local citc_path_link="$(link_ 'file:///$CITC_ROOT/$CITC_PWD' '//$CITC_PWD')"
-  # local -a prefix=('file:///' 'sftp://$HOST/')
-  # local local_path_link="$(link_ $prefix[$[${SSH_CONNECTION+1}+1]]%d %d)"
-  # unfunction link_
 
   # bold (pink # if sudo) green name (@ host if SSH) | green
   local cl='%F{black}⬞%f'
   PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@%m}%f | $GREEN"
   PS1+='%(1v.$CITC_NAME %f%b(%(2v.'$cl'%2v.📤) @'$cl'%1v ) %B| .)'
   PS1+='$GREEN%(1v.//$CITC_PWD.%d)'
-  # PS1+="%(1v.$citc_link %f%b(%(2v.$cl_link.📤) @ $cl_sync_link) %B| .)"
-  # PS1+="$GREEN%(1v.$citc_path_link.$local_path_link)"
   PS1+=$'\n%{\r%}$PROMPT_COLOR❯%b%f '
 
   RPS1='%B$PINK%(0?..%?%(1j. %f|$PINK .))%(1j.%j bg jobs.)%f%b'
@@ -406,12 +395,15 @@ SAVEHIST=10000
 
 path=($HOME/.local/bin $HOME/.dotfiles/bin $HOME/.cargo/bin $path)
 
-fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
+fpath=($(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)
+       $ZDOTDIR/autoload
+       $ZDOTDIR/zsh-completions/src
+       $fpath)
+
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
 source $ZDOTDIR/aliases
 
-export PROD_PROXY=ofis
 source "$ZDOTDIR/g4d/setup.zsh"
 
 SAVEDDIRS="$HOME/.dotfiles/tmp/dirs"
@@ -445,14 +437,14 @@ FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/home/sselcuk/.local/share/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+__conda_setup="$('/usr/local/google/home/sselcuk/.local/share/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh" ]; then
-        . "/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh"
+    if [ -f "/usr/local/google/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh" ]; then
+        . "/usr/local/google/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh"
     else
-        export PATH="/home/sselcuk/.local/share/conda/bin:$PATH"
+        export PATH="/usr/local/google/home/sselcuk/.local/share/conda/bin:$PATH"
     fi
 fi
 unset __conda_setup

@@ -18,7 +18,7 @@ setopt AUTO_PUSHD
 setopt BRACE_CCL
 setopt CDABLE_VARS
 setopt COMBINING_CHARS
-setopt COMPLETE_ALIASES
+setopt NO_COMPLETE_ALIASES
 setopt COMPLETE_IN_WORD
 setopt CORRECT
 setopt EXTENDED_GLOB
@@ -181,6 +181,7 @@ function expand-or-complete-with-indicator {
 }
 zle -N expand-or-complete-with-indicator
 bindkey -M viins "\C-I" expand-or-complete-with-indicator
+bindkey -M viins "\C-x " expand-word
 # }}}
 
 # prepend sudo {{{
@@ -339,15 +340,16 @@ done
 }
 # }}}
 
+typeset -x GREEN=$'%F{#72B233}' ORANGE=$'%F{#FF6400}' PURPLE=$'%F{#6400FF}' PINK=$'%F{#FF0064}'
 function _mode_indicator {
   if [[ $KEYMAP == "main" || $KEYMAP == "viins" ]]; then
     if [[ $ZLE_STATE == *insert* ]]; then
-      PROMPT_COLOR=$'%{\e[38;2;255;100;0m%}'
+      PROMPT_COLOR=$ORANGE
     else
-      PROMPT_COLOR=$'%{\e[38;2;100;255;0m%}'
+      PROMPT_COLOR=$PINK
     fi
   else
-    PROMPT_COLOR=$'%{\e[38;2;100;0;255m%}'
+    PROMPT_COLOR=$PURPLE
   fi
   zle reset-prompt
 }
@@ -372,14 +374,18 @@ zle -N zle-keymap-select
 # #}}}
 
 # theme {{{
-PS1=$'%{\e[38;2;114;178;51m%}%(1v.$CITC_CLIENT%f%b (CL = $(echo $CL|tr -s "\\n" ":") Synced @ $CL_SYNCED) %B| %{\e[38;2;114;178;51m%}%1v.%d)%f
-$PROMPT_COLOR❯%b%f '
-if [[ -n $SSH_CONNECTION ]]; then
-  PS1=$'%B%{\e[38;2;255;0;0m%}%(!.%# .)%f%{\e[38;2;114;178;51m%}%n@%M%f | '$PS1
-else
-  PS1=$'%B%{\e[38;2;255;0;0m%}%(!.%# .)%f%{\e[38;2;114;178;51m%}%n%f | '$PS1
-fi
-RPS1=$'%B%(0?..%{\e[38;2;255;0;0m%}%?%f)%(1j.%{\e[38;2;255;100;0m%} %j bg jobs%f.)%b'
+function set-theme {
+
+  # bold (pink # if sudo) green name (@ host if SSH) | green
+  local cl='%F{black}⬞%f'
+  PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@%m}%f | $GREEN"
+  PS1+='%(1v.$CITC_NAME %f%b(%(2v.'$cl'%2v.📤) @'$cl'%1v ) %B| .)'
+  PS1+='$GREEN%(1v.//$CITC_PWD.%d)'
+  PS1+=$'\n%{\r%}$PROMPT_COLOR❯%b%f '
+
+  RPS1='%B$PINK%(0?..%?%(1j. %f|$PINK .))%(1j.%j bg jobs.)%f%b'
+}
+set-theme
 tabs -2
 # }}}
 
@@ -445,13 +451,16 @@ chpwd_functions+=(set-google3-folder)
 # }}}
 path=($HOME/.local/bin $HOME/.dotfiles/bin $HOME/.cargo/bin $path)
 
-fpath=($(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion) $ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
+fpath=($(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)
+       $ZDOTDIR/autoload
+       $ZDOTDIR/zsh-completions/src
+       $fpath)
+
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
 source $ZDOTDIR/aliases
 
-source "$ZDOTDIR/sshfs-manager/setup.zsh"
-source /etc/bash_completion.d/g4d
+source "$ZDOTDIR/g4d/setup.zsh"
 
 SAVEDDIRS="$HOME/.dotfiles/tmp/dirs"
 source "$ZDOTDIR/savedir/setup.zsh"

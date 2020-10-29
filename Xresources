@@ -1,21 +1,21 @@
-rofi.width:             80
-rofi.lines:             6
-rofi.columns:           3
-rofi.font:              Fira Mono 24
-rofi.location:          2
-rofi.fixed-num-lines:   false
-rofi.line-margin:       15
-rofi.parse-known-hosts: true
-rofi.max-history-size:  250
-rofi.fullscreen:        false
-rofi.sidebar-mode:      false
-rofi.color-enabled:     true
-/* rofi.color-window:      argb:B0 #435e75, argb:D0 #435e75, argb:D0 #435e75 */
-rofi.color-window:      argb:B0435e75, argb:D0435e75, argb:D0435e75
-/* rofi.color-normal:      argb:00 #435e75, argb:FF #9dbeda, argb:00 #486883, argb:A0 #2C3EaF, argb:D0 #9dbeda */
-rofi.color-normal:      argb:00435e75, argb:FF9dbeda, argb:00486883, argb:A02C3EAF, argb:D09dbeda
-/* rofi.color-active:      argb:00 #435e75, argb:FF #936395, argb:00 #486883, argb:A0 #2C3EaF, argb:FF #936395 */
-rofi.color-active:      argb:00435e75, argb:FF936395, argb:00486883, argb:A02C3EAF, argb:FF936395
-/* rofi.color-urgent:      argb:00 #435e75, argb:D0 #b9524e, argb:00 #486883, argb:A0 #2C3EaF, argb:D0 #b9524e */
-rofi.color-urgent:      argb:00435e75, argb:D0b9524e, argb:00486883, argb:A02C3EAF, argb:D0b9524e
-rofi.hide-scrollbar:    true
+/* rofi.width:             80 */
+/* rofi.lines:             6 */
+/* rofi.columns:           3 */
+/* rofi.font:              Fira Mono 24 */
+/* rofi.location:          2 */
+/* rofi.fixed-num-lines:   false */
+/* rofi.line-margin:       15 */
+/* rofi.parse-known-hosts: true */
+/* rofi.max-history-size:  250 */
+/* rofi.fullscreen:        false */
+/* rofi.sidebar-mode:      false */
+/* rofi.color-enabled:     true */
+/* /1* rofi.color-window:      argb:B0 #435e75, argb:D0 #435e75, argb:D0 #435e75 *1/ */
+/* rofi.color-window:      argb:FF435e75, argb:FF435e75, argb:FF435e75 */
+/* /1* rofi.color-normal:      argb:FF #435e75, argb:FF #9dbeda, argb:FF #486883, argb:A0 #2C3EaF, argb:D0 #9dbeda *1/ */
+/* rofi.color-normal:      argb:FF435e75, argb:FF9dbeda, argb:FF486883, argb:FF2C3EAF, argb:FF9dbeda */
+/* /1* rofi.color-active:      argb:FF #435e75, argb:FF #936395, argb:FF #486883, argb:A0 #2C3EaF, argb:FF #936395 *1/ */
+/* rofi.color-active:      argb:FF435e75, argb:FF936395, argb:FF486883, argb:FF2C3EAF, argb:FF936395 */
+/* /1* rofi.color-urgent:      argb:FF #435e75, argb:D0 #b9524e, argb:FF #486883, argb:A0 #2C3EaF, argb:D0 #b9524e *1/ */
+/* rofi.color-urgent:      argb:FF435e75, argb:FFb9524e, argb:FF486883, argb:FF2C3EAF, argb:FFb9524e */
+/* rofi.hide-scrollbar:    true */

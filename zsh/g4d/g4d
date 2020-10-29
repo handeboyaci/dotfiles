@@ -1,0 +1,56 @@
+# vi: ft=zsh
+local force
+zparseopts -D -- f=force
+
+if ! gcertstatus --nocheck_ssh --quiet
+then
+  >&2 echo "Please run gcert."
+  return
+fi
+
+if [[ $# == 0 ]]
+then
+  if [[ -n $CITC_ROOT ]]
+  then
+    cd $CITC_ROOT
+    return 0
+  else
+    return 1
+  fi
+fi
+
+local citclist=$(command ls /google/src/cloud/$USER)
+local fullpath
+local arg=(${(s/@/)1})  # get alias if it exists
+local target=$arg[1]
+local alias_=$arg[2]
+
+if [[ -n $citclist[(r)$target] ]]
+then
+  full_path="/google/src/cloud/$USER/$target/google3"
+elif [[ "$target" =~ ^[0-9]+$ ]]
+then
+  full_path=$(p4 g4d $target)
+elif (( $+force[1] ))
+then
+  full_path=$(p4 g4d -f $target)
+fi
+
+
+if [[ -n $full_path ]]
+then
+  if [[ -n $alias_ ]]
+  then
+    typeset +g -A g4d_aliases
+    g4d_aliases=(${=${${(@M)${(f)"$(cat $HOME/.g4d 2>/dev/null)"}:#alias @*}#alias @}})
+    if (( $+g4d_aliases[$alias_] ))
+    then
+      full_path="$full_path/$g4d_aliases[$alias_]"
+    else
+      >&2 echo "Alias $alias_ was not found in $HOME/.g4d"
+    fi
+  fi
+  builtin cd $full_path
+else
+  >&2 echo "Cannot cd into $target"
+fi

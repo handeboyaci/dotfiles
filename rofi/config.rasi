@@ -1,0 +1,14 @@
+// vi: ft=css
+
+configuration {
+  icon-theme: "Papirus";
+  location: 2;
+  columns: 3;
+  font: "Fira Mono 24";
+  width: 80;
+  lines: 6;
+  show-icons: true;
+  hide-scrollbar: true;
+  max-history-size: 2500;
+  theme: "default";
+}

@@ -1,29 +1,32 @@
 #!/usr/bin/env bash
 typeset -A menu
-menu=([0 Sleep]="systemctl suspend-then-hibernate"
-      [1 Shutdown]="systemctl poweroff"
-      [2 Reboot]="systemctl reboot"
-      [3 Hibernate]="systemctl hibernate"
-      [4 Lock]="/usr/share/goobuntu-desktop-files/xsecurelock.sh"
-      [5 Logout]="i3-msg exit")
+symbols=(    )
+actions=(Sleep Shutdown Reboot Lock Logout)
+cmds=("systemctl suspend-then-hibernate"
+      "systemctl poweroff"
+      "systemctl reboot"
+      "/usr/share/goobuntu-desktop-files/xsecurelock.sh"
+      "i3-msg exit")
 
-opts=(-width 100 -location 3 -yoffset -200 -font "Fira Mono 30"
-      -fixed-num-lines -lines "${#menu[@]}" -dmenu -i 
-      -padding $(($(xwininfo -root |awk '/Height/ { print $2}')/2)))
+
+
+shutdown=""
+reboot=""
+lock=""
+suspend=""
+logout=""
 
 if [[ -z $sel ]]; then
-  sel="$(printf '%s\n' "${!menu[@]}" |
-        sort |
-        rofi -p "Choose" "${opts[@]}")"
+  sel="$(printf '%s\n' "${symbols[@]}" | rofi -theme shutdown -dmenu -format i)"
 fi
 
 [[ -z $sel ]] && exit
 
 # Menu entries that may trigger a confirmation message
-confirmation_required="Shutdown Reboot Hibernate Logout"
+confirmation_required="1 2 4"
 # if confirmation is not required; or it is obtained
-if [[ ${confirmation_required} != *${sel:2}* || \
-  $(echo -e "Yes\nNo" | rofi  "${opts[@]}" -p "${sel}?") == Yes ]]
+if [[ ${confirmation_required} != *${sel}* || \
+  $(echo -e "✓\n✗" | rofi -format i -dmenu -theme shutdown-confirm -p "${actions[${sel}]}") == 0 ]]
 then
-    ${menu[${sel}]}
+  ${cmds[${sel}]}
 fi

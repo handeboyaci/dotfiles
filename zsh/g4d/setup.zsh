@@ -26,8 +26,8 @@ function cl-precmd {
     return
   elif [[ $VCS == g4 ]]
   then
-    cl=$(ras p4 -F '%change%' changes -s pending \
-                     -c "$(ras p4 -F'%clientName%' info)")
+    cl=$(p4 -F '%change%' changes -s pending \
+                     -c "$(p4 -F'%clientName%' info)")
   elif [[ $VCS == hg ]]
   then
     cl=$(hg exportedcl)

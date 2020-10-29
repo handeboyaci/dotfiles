@@ -1,4 +1,7 @@
 function! prose#setup()
+
+  setlocal thesaurus+=~/.config/nvim/dictionaries/moby
+  setlocal dictionary+=/usr/share/dict/words
   setlocal wrap
   setlocal spell
   setlocal foldlevel=99

@@ -34,18 +34,18 @@ function _tmux_selector() {
      ) | fzf | cut -d' ' -f 2
   }
 
-  local tmux_sessions=($(tmux list-sessions -F $_session_format 2>/dev/null))
+  local tmux_sessions=($(tmx2 list-sessions -F $_session_format 2>/dev/null))
 
-  [[ ${#tmux_sessions} -eq 0 ]] && exec tmux
+  [[ ${#tmux_sessions} -eq 0 ]] && exec tmx2
 
   local choice=$(run_selector)
 
   if [[ $choice == "new" ]]
   then
-    exec tmux new
+    exec tmx2 new
   elif [[ ! -z $choice ]]
   then
-    exec tmux attach -t $choice
+    exec tmx2 attach -t $choice
   fi
 
 }

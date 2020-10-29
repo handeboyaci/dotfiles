@@ -74,7 +74,7 @@ let &cpo = s:save_cpo | unlet s:save_cpo
 "                                fold method                                 "
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-function! FoldText()
+function! FoldText() abort
 
   let s:reg='{{'.'{\d\='
 

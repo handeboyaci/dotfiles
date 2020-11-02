@@ -1,4 +1,5 @@
 # vi: ft=zsh
+# set -x
 local force
 zparseopts -D -- f=force
 
@@ -19,7 +20,7 @@ then
   fi
 fi
 
-local citclist=$(command ls /google/src/cloud/$USER)
+local citclist=($(command ls /google/src/cloud/$USER))
 local fullpath
 local arg=(${(s/@/)1})  # get alias if it exists
 local target=$arg[1]

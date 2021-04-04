@@ -1,0 +1,52 @@
+#!/bin/zsh
+# A script to automated selection & run of blaze targets
+
+if ! (( $+CITC_ROOT ))
+then
+  >&2 echo "Not in CITC directory."
+  return 1
+fi
+
+local mode=$1
+local file=$2  # can be relative path to file
+local relpath=$(dirname $file)
+local filename=$(basename $file)
+
+if [[ $relpath == "." ]]
+then
+  relpath=""
+fi
+
+local builddir="$CITC_PWD/$file"
+while [[ ! -f "$CITC_ROOT/$builddir/BUILD" && -n "$builddir" ]]
+do
+  builddir="$(dirname $builddir)"
+done
+local relpath_wrt_build="${${filepath#$builddir}#/}"
+
+# At this point:
+# builddir is the path, relative to $CITC_ROOT for the BUILD file of interest
+# relpath is the path, relative to BUILD file for the target directory
+# filename is the name of file
+
+local src="//$builddir:${relpath_wrt_build}${relpath_wrt_build:+/}$filename"
+
+function query () {
+  blaze query "$@" 2>/dev/null
+}
+
+case $mode in
+  test)
+    blaze test $(query "tests('$relpath:*')")
+    ;;
+  build)
+    blaze build -c opt $(query "attr('srcs', '$src', '$relpath:*') union attr('hdrs', '$src', '$relpath:*')")
+    ;;
+  build-direct)
+    target=$(query "attr('srcs', '$src', '$relpath:*') union attr('hdrs', '$src', '$relpath:*')")
+    blaze build -c opt $(query "same_pkg_direct_rdeps('$target')")
+    ;;
+  build-binaries)
+    blaze build -c opt $(query "binaries('$relpath:*')")
+    ;;
+esac

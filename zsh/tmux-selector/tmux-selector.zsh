@@ -1,7 +1,6 @@
 [[ -n $TMUX ]] && return
 
 function _tmux_selector() {
-
   local get_session_format () {
     local sep='},#{'
     local session_format=(session_name

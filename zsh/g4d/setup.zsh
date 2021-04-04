@@ -58,7 +58,7 @@ function set_current_client {
     CITC_NAME=$splitted[2]
     CITC_PWD=${(j,/,)splitted[4,-1]}
     CITC_ROOT="$prefix/$CITC_USER/$CITC_NAME/google3"
-    PYTHONPATH=$CITC_ROOT/..:$_PYTHONPATH
+    PYTHONPATH=$(realpath $CITC_ROOT/..):$_PYTHONPATH
     [[ -f $CITC_ROOT/../.citc/p4_client_name ]] && VCS=g4 || VCS=hg
     unset MATCH
   else

@@ -1,0 +1,16 @@
+#!/bin/bash
+set -x
+for client in $(tmux list-clients -F '#{client_tty}')
+do
+  tmux refresh-client -t $client -l
+done
+
+active_hosts=($(ps u|command sed -rn 's/.*(ssh|mosh-client( -[^ ]*)?) ([^ ]*).*/\3/p'|sort|uniq))
+for host in ${active_hosts[@]}
+do
+  ssh -O check $host &>/dev/null
+  (( $? )) && continue
+
+  ssh $host 'bash -c "for client in $(tmux list-clients -F \"#{client_tty}\"); do tmux refresh-client -t \$client -l; done"'
+
+done

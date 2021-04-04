@@ -1,5 +1,4 @@
 # vi: ft=zsh
-# set -x
 local force
 zparseopts -D -- f=force
 

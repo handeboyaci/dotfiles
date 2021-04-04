@@ -1,11 +1,11 @@
 # vi: ft=zsh
-zparseopts -D -- d=dry i=onlyif e=escape t=term h:=host -help=help
+zparseopts -D -- d=dry i=onlyif e=noescape t=term h:=host -help=help
 
 function usage {
   cat << EOF
   ras [-d] [-e] [-t] [-s server] command
   -d         dry run
-  -e         escape special chars
+  -e         do not escape special chars
   -t         run ssh as ssh -t (with a terminal)
   -s server  specify a server manually
   -i         run local command if no server is found [doesn't make sense with -s]
@@ -17,10 +17,10 @@ if (( $+term[1] )); then
   term='-t'
 fi
 
-if (( $+escape[1] )); then
-  cmd="${(@qqq)@}"
-else
+if (( $+noescape[1] )); then
   cmd="${@}"
+else
+  cmd="${(@qqq)@}"
 fi
 
 if (( $+host[2] )); then

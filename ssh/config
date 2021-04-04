@@ -2,12 +2,6 @@ Host cloud
   Hostname sselcuk.c.googlers.com
   ForwardX11 yes
   ForwardX11Trusted yes
-Host ofis
-  Hostname sselcuk24.nyc.corp.google.com
-  ProxyCommand  corp-ssh-helper %h %p
-  ForwardX11 yes
-  ForwardX11Trusted yes
-  Ciphers aes192-ctr,aes128-ctr
 Host ev
   Hostname sencer.ddns.us
   IdentityFile ~/.ssh/id_rsa
@@ -17,7 +11,7 @@ Host *
   Compression yes
   ControlMaster auto
   ControlPath /tmp/%u/%C
-  ControlPersist 0
+  ControlPersist yes
   IdentityFile ~/.ssh/id_github
   IdentityFile ~/.ssh/id_rsa
   IdentityFile ~/.ssh/id_rsa_1

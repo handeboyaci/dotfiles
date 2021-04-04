@@ -61,13 +61,10 @@ class NotifySend(DefaultConfig):
 
 
 Gmail = ChromeAppFactory("Gmail", "mail.google.com", "gmail")
-Gmail.post_close_hooks = ["ignore"]
 
 Chat = ChromeAppFactory("Chat", "chat.google.com", "google-chat")
-Chat.post_close_hooks = ["ignore"]
 
 Meet = ChromeAppFactory("Meet", "meet.google.com", "meet")
-Meet.post_close_hooks = ["ignore"]
 
 config_list = [
     Gmail,

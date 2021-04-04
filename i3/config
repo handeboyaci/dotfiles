@@ -178,7 +178,7 @@ bindsym $mod+plus bar mode toggle
 bar {
     position top
     i3bar_command i3bar -t
-    status_command py3status -c ~/.config/i3/py3status.config  #-b
+    status_command ~/.local/bin/py3status -c ~/.config/i3/py3status.config  #-b
 
     tray_output primary
     tray_padding 3
@@ -212,6 +212,7 @@ for_window [class="^.*"] border pixel 3
 for_window [instance="www.google.com__calendar_event"] floating enable
 for_window [instance="crx_jgeocpdicgmkeemopbanhokmhcgcflmi"] floating enable
 for_window [instance="crx_jgeocpdicgmkeemopbanhokmhcgcflmi"] resize set 600 800
+for_window [instance="web.whatsapp.com"] resize set 635 800
 
 
 client.unfocused        #4c4c4c   #4c4c4c   #4c4c4c   #4c4c4c

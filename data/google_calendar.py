@@ -1,4 +1,5 @@
-"""
+# -*- coding: utf-8 -*-
+r"""
 Display upcoming Google Calendar events.
 
 This module will display information about upcoming Google Calendar events
@@ -28,25 +29,25 @@ Configuration parameters:
     force_lowercase: Sets whether to force all event output to lower case.
         (default False)
     format: The format for module output.
-        (default '{events}|\\?color=event \u2687')
+        (default '{events}|\?color=event \u2687')
     format_date: The format for date related format placeholders.
         May be any Python strftime directives for dates.
         (default '%a %d-%m')
     format_event: The format for each event. The information can be toggled
         with 'button_toggle' based on the value of 'is_toggled'.
-        *(default '[\\?color=event {summary}][\\?if=is_toggled  ({start_time}'
+        *(default '[\?color=event {summary}][\?if=is_toggled  ({start_time}'
         ' - {end_time}, {start_date})|[ ({location})][ {format_timer}]]')*
     format_notification: The format for event warning notifications.
         (default '{summary} {start_time} - {end_time}')
     format_separator: The string used to separate individual events.
-        (default ' \\| ')
+        (default ' \| ')
     format_time: The format for time-related placeholders except `{format_timer}`.
         May use any Python strftime directives for times.
         (default '%I:%M %p')
     format_timer: The format used for the {format_timer} placeholder to display
         time until an event starts or time until an event in progress is over.
-        *(default '\\?color=time ([\\?if=days {days}d ][\\?if=hours {hours}h ]'
-        '[\\?if=minutes {minutes}m])[\\?if=is_current  left]')*
+        *(default '\?color=time ([\?if=days {days}d ][\?if=hours {hours}h ]'
+        '[\?if=minutes {minutes}m])[\?if=is_current  left]')*
     ignore_all_day_events: Sets whether to display all day events or not.
         (default False)
     num_events: The maximum number of events to display.
@@ -167,11 +168,11 @@ class Py3status:
     client_secret = "~/.config/py3status/google_calendar.client_secret"
     events_within_hours = 12
     force_lowercase = False
-    format = "{events}|\\?color=event \u2687"
+    format = "{events}|\?color=event \u2687"
     format_date = "%a %d-%m"
     format_event = (
         r"[\?color=event {summary}][\?if=is_toggled  ({start_time}"
-        " - {end_time}, {start_date})|[ ({location})][ {format_timer}]]"
+        " - {end_time}, {start_date})|[\?if=location ({location})|][ {format_timer}]]"
     )
     format_notification = "{summary} {start_time} - {end_time}"
     format_separator = r" \| "
@@ -223,7 +224,8 @@ class Py3status:
 
         if not credentials or credentials.invalid:
             try:
-                flow = client.flow_from_clientsecrets(self.client_secret, SCOPES)
+                flow = client.flow_from_clientsecrets(
+                    self.client_secret, SCOPES)
                 flow.user_agent = APPLICATION_NAME
                 if flags:
                     credentials = tools.run_flow(flow, store, flags)
@@ -261,28 +263,31 @@ class Py3status:
         """
         self.last_update = datetime.datetime.now()
         time_min = datetime.datetime.utcnow()
-        time_max = time_min + datetime.timedelta(hours=self.events_within_hours)
+        time_max = time_min + \
+            datetime.timedelta(hours=self.events_within_hours)
         events = []
 
         def parse_location(location):
-            regex = re.compile("\s*\(\d+\) \[GVC[^]]*\]")
+            regex = re.compile(r"\s*\(\d+\) \[GVC[^]]*\]")
             locations = location.split(", ")
 
             great_location_prefix = "NYC-9TH-"
-            great_locations = [re.sub(regex, "", loc[len(great_location_prefix):]) for loc in locations if loc.startswith(great_location_prefix)]
+            great_locations = [re.sub(regex, "", loc[len(great_location_prefix):])
+                               for loc in locations if loc.startswith(great_location_prefix)]
 
             if great_locations:
                 return ", ".join(great_locations)
 
             good_location_prefix = "NYC-"
-            good_locations = [re.sub(regex, "", loc[len(good_location_prefix):]) for loc in locations if loc.startswith(good_location_prefix)]
+            good_locations = [re.sub(regex, "", loc[len(good_location_prefix):])
+                              for loc in locations if loc.startswith(good_location_prefix)]
             if good_locations:
                 return ", ".join(good_locations)
 
             return re.sub(regex, "", location)
 
         try:
-            eventsResult =sum(( 
+            eventsResult = sum((
                 self.service.events()
                 .list(
                     calendarId=calId,
@@ -292,8 +297,8 @@ class Py3status:
                     orderBy="startTime",
                 )
                 .execute(num_retries=5).get("items", [])
-                for calId in ("sselcuk@google.com", "sencerselcuk@gmail.com", "uascu98o47lnh6dok458uanm8ps14abv@import.calendar.google.com")
-                ), [])
+                for calId in ("sselcuk@google.com", "sencerselcuk@gmail.com")
+            ), [])
         except Exception:
             return self.events or events
         else:
@@ -341,7 +346,8 @@ class Py3status:
         warn_threshold. If True, issue a warning with self.py3.notify_user.
         """
         if time_to["total_minutes"] <= self.warn_threshold:
-            warn_message = self.py3.safe_format(self.format_notification, event_dict)
+            warn_message = self.py3.safe_format(
+                self.format_notification, event_dict)
             self.py3.notify_user(warn_message, "warning", self.warn_timeout)
 
     def _gstr_to_date(self, date_str):
@@ -423,17 +429,22 @@ class Py3status:
                 start_dt = self._gstr_to_date(event["start"].get("date"))
                 end_dt = self._gstr_to_date(event["end"].get("date"))
             else:
-                start_dt = self._gstr_to_datetime(event["start"].get("dateTime"))
+                start_dt = self._gstr_to_datetime(
+                    event["start"].get("dateTime"))
                 end_dt = self._gstr_to_datetime(event["end"].get("dateTime"))
 
-            if end_dt < datetime.datetime.now(tzlocal()):
+            if end_dt < datetime.datetime.now(tzlocal()) or end_dt - start_dt > datetime.timedelta(hours=23, minutes=59):
                 continue
 
-            event_dict["start_time"] = self._datetime_to_str(start_dt, self.format_time)
-            event_dict["end_time"] = self._datetime_to_str(end_dt, self.format_time)
+            event_dict["start_time"] = self._datetime_to_str(
+                start_dt, self.format_time)
+            event_dict["end_time"] = self._datetime_to_str(
+                end_dt, self.format_time)
 
-            event_dict["start_date"] = self._datetime_to_str(start_dt, self.format_date)
-            event_dict["end_date"] = self._datetime_to_str(end_dt, self.format_date)
+            event_dict["start_date"] = self._datetime_to_str(
+                start_dt, self.format_date)
+            event_dict["end_date"] = self._datetime_to_str(
+                end_dt, self.format_date)
 
             time_delta = self._delta_time(start_dt)
             if time_delta["days"] < 0:
@@ -529,7 +540,8 @@ class Py3status:
             elif button == self.button_open:
                 if self.event_urls:
                     self.py3.command_run(
-                        "google-chrome --app={}".format(self.event_urls[button_index])
+                        "google-chrome --app={}".format(
+                            self.event_urls[button_index])
                     )
                 self.py3.prevent_refresh()
             else:

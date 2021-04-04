@@ -1,5 +1,8 @@
 # vi: fdm=marker
-runloas
+if ! gcertstatus --nocheck_ssh --quiet
+then
+  gcert
+fi
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 export FZF_DEFAULT_COMMAND="fd --type f"
 export FZF_DEFAULT_OPTS="--border --layout=reverse"
@@ -313,30 +316,46 @@ done
 #}}}
 
 # clipboard integration {{{
-[[ -n $DISPLAY && -z $SSH_CONNECTION ]] && (( $+commands[xclip] )) && {
-function cutbuffer() {
-  zle .$WIDGET
-  echo $CUTBUFFER | xclip -selection clipboard
-}
 
-zle_cut_widgets=( vi-backward-delete-char vi-change vi-change-eol
-vi-change-whole-line vi-delete vi-delete-char vi-kill-eol vi-substitute
-vi-yank vi-yank-eol kill-word backward-kill-word vi-backward-kill-word
-vi-kill-line )
+if [[ -n $TMUX ]]
+then
+  function cutbuffer() {
+    zle .$WIDGET
+    printf "\033]52;c;$(printf "%s" "$CUTBUFFER" | base64)\a"
+  }
 
-for widget in $zle_cut_widgets; do
-  zle -N $widget cutbuffer
-done
+  function putbuffer() {
+    zle copy-region-as-kill "$(tmux save-buffer -)"
+    zle .$WIDGET
+  }
+elif [[ -n $DISPLAY && -z $SSH_CONNECTION ]] && (( $+commands[xclip] ))
+then
+  function cutbuffer() {
+    zle .$WIDGET
+    echo $CUTBUFFER | xclip -selection clipboard
+  }
 
-function putbuffer() {
-  zle copy-region-as-kill "$(xclip -selection clipboard -o)"
-  zle .$WIDGET
-}
+  function putbuffer() {
+    zle copy-region-as-kill "$(xclip -selection clipboard -o)"
+    zle .$WIDGET
+  }
+fi
 
-zle_put_widgets=( vi-put-after vi-put-before )
-for widget in $zle_put_widgets; do
-  zle -N $widget putbuffer
-done
+(( $+functions[cutbuffer] )) && {
+  zle_cut_widgets=( vi-backward-delete-char vi-change vi-change-eol
+  vi-change-whole-line vi-delete vi-delete-char vi-kill-eol vi-substitute
+  vi-yank vi-yank-eol kill-word backward-kill-word vi-backward-kill-word
+  vi-kill-line )
+
+  for widget in $zle_cut_widgets; do
+    zle -N $widget cutbuffer
+  done
+
+
+  zle_put_widgets=( vi-put-after vi-put-before )
+  for widget in $zle_put_widgets; do
+    zle -N $widget putbuffer
+  done
 }
 # }}}
 
@@ -383,7 +402,9 @@ function set-theme {
   PS1+='$GREEN%(1v.//$CITC_PWD.%d)'
   PS1+=$'\n%{\r%}$PROMPT_COLOR❯%b%f '
 
-  RPS1='%B$PINK%(0?..%?%(1j. %f|$PINK .))%(1j.%j bg jobs.)%f%b'
+  b=" %f|$PINK "
+  RPS1='%B$PINK${CONDA_PREFIX_1+$CONDA_PREFIX:t%(0?.%(1j.$b.).$b)}'
+  RPS1+='%(0?..%?%(1j.$b.))%(1j.%j bg jobs.)%f%b'
 }
 set-theme
 tabs -2
@@ -393,7 +414,13 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
-path=($HOME/.local/bin $HOME/.dotfiles/bin $HOME/.cargo/bin $path)
+for p in $HOME/.cargo/bin $HOME/.dotfiles/bin $HOME/.local/bin 
+do
+  if ! (( $path[(I)$p] ))
+  then
+    path=($p $path)
+  fi
+done
 
 fpath=($(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)
        $ZDOTDIR/autoload

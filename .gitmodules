@@ -7,3 +7,6 @@
 [submodule "tmux/tmux-thumbs"]
 	path = tmux/tmux-thumbs
 	url = https://github.com/fcsonline/tmux-thumbs
+[submodule "nvim"]
+	path = nvim
+	url = git@github.com:sencer/nvim.git

@@ -5,6 +5,8 @@ then
   return 1
 fi
 
+source ${0:h}/aliases.zsh
+
 typeset -x CITC_NAME CITC_PWD CITC_ROOT CITC_USER PYTHONPATH _PYTHONPATH \
            CL CL_SYNCED VCS
 

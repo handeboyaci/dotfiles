@@ -1,3 +1,15 @@
+[user]
+	name = Sencer Selcuk
+	email = sencerselcuk@gmail.com
+[difftool]
+	prompt = true
+[diff]
+	tool = nvimdiff
+[difftool "nvimdiff"]
+	cmd = "nvim -d \"$LOCAL\" \"$REMOTE\""
 [merge]
 	tool = nvimdiff
 	conflictstyle = diff3
+[alias]
+	d = difftool
+	m = mergetool

@@ -1,4 +1,4 @@
-apt install build-essential cmake autoconf pkg-config git i3 jq xautolock aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build gettext unzip curl fzf flex bison check automake meson libglib2.0-dev libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock compton dconf-editor gnome-calendar npm python3-venv
+apt install build-essential cmake autoconf pkg-config git i3 jq xautolock aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build gettext unzip curl fzf flex bison check automake meson libglib2.0-dev libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock compton dconf-editor gnome-calendar npm python3-venv hub
 pip install --user --break-system-packages py3status ipython numpy scipy pandas seaborn matplotlib i3-notifier py3notifier google-api-python-client oauth2client pynvim python-daemon
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -31,6 +31,7 @@ sudo update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emula
 cd ~
 scp -r sselcuk3.nyc.corp.google.com:.dotfiles/ .
 rm -f .zshenv
+ln -s ~/.dotfiles/gitconfig .gitconfig
 ln -s ~/.dotfiles/zsh/zshenv .zshenv
 ln -s ~/.dotfiles/tmux.conf .tmux.conf
 ln -s ~/.dotfiles/fonts .fonts

@@ -9,3 +9,5 @@ mail/notmuch-vim
 ssh/known_hosts
 ssh/known_hosts.old
 ssh/sk-passwords
+tmp/
+!tmp/.create-dir

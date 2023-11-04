@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-if ! (( ${ZSH_VERSION:-0} ))
+if [[ -z ${ZSH_VERSION} ]]
 then
   >&2 echo "These scripts use zsh specific syntax."
   return 1
@@ -34,7 +34,7 @@ function cl-precmd {
   then
     cl=$(hg exportedcl)
   fi
-  echo "$(srcfs get_readonly)\n$cl"
+  echo "${$(srcfs get_readonly):-ERROR}\n$cl"
 }
 
 function async-cl-precmd {
@@ -58,9 +58,15 @@ function set_current_client {
     splitted=(${(s,/,)PWD#$prefix})
     CITC_USER=$splitted[1]
     CITC_NAME=$splitted[2]
-    CITC_PWD=${(j,/,)splitted[4,-1]}
+    if [[ ${#splitted} -eq 3 ]]
+    then
+      CITC_PWD="."
+    else
+      CITC_PWD=${(j,/,)splitted[4,-1]}
+    fi
+
     CITC_ROOT="$prefix/$CITC_USER/$CITC_NAME/google3"
-    PYTHONPATH=$(realpath $CITC_ROOT/..):$_PYTHONPATH
+    PYTHONPATH=$_PYTHONPATH:$(realpath $CITC_ROOT/..):$(realpath $CITC_ROOT/third_party/py)
     [[ -f $CITC_ROOT/../.citc/p4_client_name ]] && VCS=g4 || VCS=hg
     unset MATCH
   else
@@ -71,6 +77,13 @@ function set_current_client {
     VCS=""
     PYTHONPATH=$_PYTHONPATH
   fi
+}
+
+zshaddhistory () {
+  local cmd=${${(z)1}[1]}
+  [[ -z $CITC_NAME || ( $cmd != blaze && $cmd != borgcfg ) ]] && return 0
+  print -sr -- "${${1%%$'\n'}%%  \# Client:*}  # Client:$CITC_NAME Snapshot:$(<$CITC_ROOT/../.citc/snapshot_version)"
+  return 1
 }
 
 typeset -g -a chpwd_functions

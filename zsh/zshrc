@@ -1,9 +1,18 @@
 # vi: fdm=marker
-if ! gcertstatus --nocheck_ssh --quiet
+if [[ "$WORKSTATION_NAME" != "laptop" ]] 
 then
-  gcert
+  # If machine has prod access, make sure it is logged in.
+  if ! gcertstatus --nocheck_ssh --quiet
+  then
+    gcert --disable_svelte
+  fi
+else
+  # ...else, set a proxy for prod access.
+  export PROD_PROXY=cloud
 fi
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# Set FZF before running tmux-selector as the latter uses the former.
+[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && source /usr/share/doc/fzf/examples/key-bindings.zsh
 export FZF_DEFAULT_COMMAND="fd --type f"
 export FZF_DEFAULT_OPTS="--border --layout=reverse"
 export FZF_CTRL_T_OPTS="--preview='less {}'"
@@ -223,6 +232,22 @@ bindkey -M viins  "." expand-dot-to-parent-directory-path
 bindkey -M isearch . self-insert 2>/dev/null # necessary? don't expand during incsearch
 # }}}
 
+# make multiline {{{
+function break-spaces-to-new-lines {
+  BUFFER="${(pj: \\\n  :)${(s: :)BUFFER}}"
+}
+zle -N break-spaces-to-new-lines
+bindkey -M vicmd "\C-w" break-spaces-to-new-lines
+bindkey -M viins "\C-w" break-spaces-to-new-lines
+
+function break-flags-to-new-lines {
+  BUFFER="${(pj: \\\n  -:)${(s: -:)BUFFER}}"
+}
+zle -N break-flags-to-new-lines
+bindkey -M vicmd "\C-e" break-flags-to-new-lines
+bindkey -M viins "\C-e" break-flags-to-new-lines
+# }}}
+
 # copy the earlier word {{{
 autoload -Uz copy-earlier-word
 zle -N copy-earlier-word
@@ -279,6 +304,8 @@ for mode in viins vicmd; do
   bindkey -M $mode "\C-?"             backward-delete-char
   bindkey -M $mode "\C-q"             push-input
   bindkey -M $mode "\eq"              get-line
+  bindkey -M $mode "\ek" history-beginning-search-backward
+  bindkey -M $mode "\ej" history-beginning-search-forward
 done
 
 bindkey -M viins "\e[1;5D" backward-word       #  ctrl left
@@ -394,12 +421,11 @@ zle -N zle-keymap-select
 
 # theme {{{
 function set-theme {
-
   # bold (pink # if sudo) green name (@ host if SSH) | green
-  local cl='%F{black}⬞%f'
-  PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@%m}%f | $GREEN"
+  local cl='%F{black} %f'
+  PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@$WORKSTATION_NAME}%f | $GREEN"
   PS1+='%(1v.$CITC_NAME %f%b(%(2v.'$cl'%2v. 📤) @'$cl'%1v ) %B| .)'
-  PS1+='$GREEN%(1v.//$CITC_PWD.%d)'
+  PS1+='$GREEN%(1v.${CITC_PWD+//$CITC_PWD}.%d)'
   PS1+=$'\n%{\r%}$PROMPT_COLOR❯%b%f '
 
   b=" %f|$PINK "
@@ -422,15 +448,19 @@ do
   fi
 done
 
-fpath=($(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)
-       $ZDOTDIR/autoload
-       $ZDOTDIR/zsh-completions/src
-       $fpath)
+fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
+
+if [[ -f /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion ]]
+then
+  fpath=(
+    $(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)
+    $fpath
+  )
+fi
 
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
-source $ZDOTDIR/aliases
-
+source "$ZDOTDIR/aliases"
 source "$ZDOTDIR/g4d/setup.zsh"
 
 SAVEDDIRS="$HOME/.dotfiles/tmp/dirs"
@@ -444,7 +474,10 @@ autoload -U zmv
 zmodload zsh/pcre
 #source /etc/zsh_command_not_found
 disable r # do not use shell built-in r for repeating last command
-autoload -Uz compinit  && compinit -i -d ~/.dotfiles/tmp/zcompdump
+autoload -Uz compinit
+for dump in ~/.dotfiles/tmp/zcompdump(N.mh+24); do
+  compinit -C -i -d ~/.dotfiles/tmp/zcompdump
+done
 # compile zcompdump
 {
   zcomp="$HOME/.dotfiles/tmp/zcompdump" 
@@ -457,22 +490,24 @@ autoload -Uz compinit  && compinit -i -d ~/.dotfiles/tmp/zcompdump
 # syntax highlighting {{{
 source $ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh
 FAST_HIGHLIGHT[chroma-ssh]=""
+FAST_HIGHLIGHT[chroma-make]=""
 FAST_HIGHLIGHT_STYLES[globbing]='fg=magenta,underlined'
 FAST_HIGHLIGHT_STYLES[history-expansion]='fg=magenta,bold'
 FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
 FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
+FAST_HIGHLIGHT_STYLES[comment]='fg=101'
 # }}}
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/usr/local/google/home/sselcuk/.local/share/conda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+__conda_setup="$($HOME/.local/share/conda/bin/conda 'shell.zsh' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/usr/local/google/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh" ]; then
-        . "/usr/local/google/home/sselcuk/.local/share/conda/etc/profile.d/conda.sh"
+    if [ -f "$HOME/.local/share/conda/etc/profile.d/conda.sh" ]; then
+        . "$HOME/.local/share/conda/etc/profile.d/conda.sh"
     else
-        export PATH="/usr/local/google/home/sselcuk/.local/share/conda/bin:$PATH"
+        export PATH="$HOME/.local/share/conda/bin:$PATH"
     fi
 fi
 unset __conda_setup

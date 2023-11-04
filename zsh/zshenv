@@ -2,6 +2,8 @@ skip_global_compinit=1
 
 export ZDOTDIR="$HOME/.dotfiles/zsh"
 
+source $ZDOTDIR/workstation
+
 export EDITOR=nvim
 export VISUAL=nvim
 export BROWSER=xdg-open
@@ -14,12 +16,14 @@ mkdir -p -m 700 "$TMPDIR"
 mkdir -p -m 700 "$TMPPREFIX"
 
 export PAGER=less
-export LESS='-g -i -M -R -W -z-4'
+export LESS='XFgiMRWz-4-x2'
 export LESSOPEN="|$HOME/.dotfiles/zsh/lesspipe %s"
 export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
 
 export P4DIFF='nvim -d'
+export P4MERGE='$HOME/.dotfiles/bin/p4merge'
 
 export SUDO_ASKPASS=/usr/lib/openssh/gnome-ssh-askpass
 
 typeset -gU cdpath fpath mailpath path
+export G4PENDINGSTYLE=relativepath

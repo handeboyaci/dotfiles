@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Meet
+Icon=google-meet
+Exec=google-chrome --app=http://meet.google.com/ --remote-debugging-port=9222 
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Meet;Video;Hangout;Chat

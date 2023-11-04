@@ -45,6 +45,7 @@ TERM tmux-256color
 TERM screen-256color-bce
 TERM vt100
 TERM Eterm
+TERM alacritty
 # Below are the color init strings for the basic file types. A color init
 # string consists of one or more of the following numeric codes:
 # Attribute codes:

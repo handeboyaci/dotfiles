@@ -1,3 +1,4 @@
+alias fd='noglob fd -g'
 alias clear!='clear&&printf "\e[3J"'
 alias ls='ls --group-directories-first --color=auto'
 alias la='ls -AF'
@@ -26,7 +27,7 @@ alias dc='cd'
 alias sl='ls'
 
 alias v='nvim'
-alias vi='gvim'
+alias vi='nvim'
 alias vm="v --cmd 'set rtp^=$HOME/.dotfiles/mail/notmuch-vim' +NotMuch"
 
 alias mutt="export MTMPDIR=\$(mktemp -p $TMPDIR -d mutt.XXXXXXXXXX); mutt; rm -rf \$MTMPDIR"

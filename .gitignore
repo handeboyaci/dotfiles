@@ -9,3 +9,5 @@ zsh/.zcompdumps
 mail/notmuch-vim
 nvim/autoload/plug.vim.old
 ssh/known_hosts
+ssh/known_hosts.old
+ssh/sk-passwords

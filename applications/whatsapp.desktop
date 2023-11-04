@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Whatsapp
+Icon=whatsapp
+Exec=google-chrome --app=http://web.whatsapp.com/ --remote-debugging-port=9222 --profile-directory="Profile 1"
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Whatsapp

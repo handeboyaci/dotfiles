@@ -1,0 +1,45 @@
+*ft-proto.txt*	Protobuf and textformat filetype settings
+                                                                    *ft-proto*
+
+==============================================================================
+CONTENTS                                                   *ft-proto-contents*
+  1. Introduction.............................................|ft-proto-intro|
+  2. Configuration...........................................|ft-proto-config|
+
+==============================================================================
+INTRODUCTION                                                  *ft-proto-intro*
+
+Vim support for the proto and textpb filetypes.
+
+See go/proto-lang for details about protocol buffer syntax. See go/stubby for
+details about stubby.
+
+This plugin provides:
+  * syntax highlighting,
+  * folding, and
+  * multiline string wrapping support.
+
+Textpb-compatible multiline string wrapping is provided through "gq" (whereas
+"gw" is always Vim's built-in wrapping).
+
+==============================================================================
+CONFIGURATION                                                *ft-proto-config*
+
+This plugin uses maktaba flags for configuration. Install Glaive
+(https://github.com/google/glaive) and use the |:Glaive| command to configure
+them.
+
+                                                    *ft-proto:ftplugin[proto]*
+Configures whether ftplugin/proto.vim should be loaded.
+Default: 1 `
+
+                                                   *ft-proto:ftplugin[textpb]*
+Configures whether ftplugin/textpb.vim should be loaded.
+Default: 1 `
+
+                                                               *ft-proto:fold*
+Enable folding for proto and textpb files.
+Default: 0 `
+
+
+vim:tw=78:ts=8:ft=help:norl:

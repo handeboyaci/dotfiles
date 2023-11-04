@@ -2,7 +2,6 @@
 *.zwc
 .zcompdump
 tags
-tmp/
 mail/mutt/aliases
 nvim/bundle
 zsh/.zcompdumps

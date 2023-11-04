@@ -1,21 +1,3 @@
-/* rofi.width:             80 */
-/* rofi.lines:             6 */
-/* rofi.columns:           3 */
-/* rofi.font:              Fira Mono 24 */
-/* rofi.location:          2 */
-/* rofi.fixed-num-lines:   false */
-/* rofi.line-margin:       15 */
-/* rofi.parse-known-hosts: true */
-/* rofi.max-history-size:  250 */
-/* rofi.fullscreen:        false */
-/* rofi.sidebar-mode:      false */
-/* rofi.color-enabled:     true */
-/* /1* rofi.color-window:      argb:B0 #435e75, argb:D0 #435e75, argb:D0 #435e75 *1/ */
-/* rofi.color-window:      argb:FF435e75, argb:FF435e75, argb:FF435e75 */
-/* /1* rofi.color-normal:      argb:FF #435e75, argb:FF #9dbeda, argb:FF #486883, argb:A0 #2C3EaF, argb:D0 #9dbeda *1/ */
-/* rofi.color-normal:      argb:FF435e75, argb:FF9dbeda, argb:FF486883, argb:FF2C3EAF, argb:FF9dbeda */
-/* /1* rofi.color-active:      argb:FF #435e75, argb:FF #936395, argb:FF #486883, argb:A0 #2C3EaF, argb:FF #936395 *1/ */
-/* rofi.color-active:      argb:FF435e75, argb:FF936395, argb:FF486883, argb:FF2C3EAF, argb:FF936395 */
-/* /1* rofi.color-urgent:      argb:FF #435e75, argb:D0 #b9524e, argb:FF #486883, argb:A0 #2C3EaF, argb:D0 #b9524e *1/ */
-/* rofi.color-urgent:      argb:FF435e75, argb:FFb9524e, argb:FF486883, argb:FF2C3EAF, argb:FFb9524e */
-/* rofi.hide-scrollbar:    true */
+Xft.dpi: 162
+rofi.dpi: 162
+

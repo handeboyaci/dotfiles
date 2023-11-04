@@ -1,0 +1,3 @@
+[merge]
+	tool = nvimdiff
+	conflictstyle = diff3

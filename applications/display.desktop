@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Displays
+Icon=video-display-symbolic
+Exec=gnome-control-center display
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Settings;
+Keywords=Preferences;Settings;Devices;Display;Screen;Monitor

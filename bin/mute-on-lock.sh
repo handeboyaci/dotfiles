@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[[ $(pgrep mute-on-lock.sh | wc -l) -gt 1 ]] && exit 0
+[[ $(pgrep mute-on-lock.sh | wc -l) -gt 2 ]] && exit 0
 
 gdbus monitor -y -d org.freedesktop.login1 | \
   command grep -oP "(?<='LockedHint': <)[^>]*" --line-buffered | \

@@ -1,18 +1,18 @@
 #!/bin/bash
 
-CITY=185
+COUNTRY="United%20States"
+CITY="New%20York"
 
-DATAFILE=$HOME/.dotfiles/tmp/namaz.${CITY}
+DATAFILE="$HOME/.dotfiles/tmp/namaz.${CITY}"
 
 function namaz_guncelle {
   # get prayer times from api.namazvakitleri.com.tr
-  # and write to $DATAFILE as one timestamp per line
-  local url="http://api.namazvakitleri.com.tr/getTimes/json/${CITY}"
-  date -f <(curl --silent  $url | \
-            command sed -r 's/\{/\n{/g;s/(\{|")[ a-zD"},:]+/ /g' |\
-            tail -n +6 |\
-            awk '{for(i=3;i<9;i++)printf "%sT%s\n", $1, $i}') +%s > \
-            $DATAFILE
+  # and write to "$DATAFILE" as one timestamp per line
+  local url="https://api.aladhan.com/v1/calendarByCity?city=${CITY?}&country=${COUNTRY?}&method=13&iso8601=true"
+  date -f <(wget -q -O - $url | \
+            jq -r '.data[]|.timings.Fajr, .timings.Sunrise, .timings.Dhuhr, .timings.Asr, .timings.Maghrib, .timings.Isha'|
+	    cut -d' ' -f1) +%s > \
+            "$DATAFILE"
 }
 
 function namaz_temizle {
@@ -24,9 +24,9 @@ function namaz_temizle {
       break
     fi
     let i++
-  done < $DATAFILE
+  done < "$DATAFILE"
   if [[ $i -gt 0 ]]; then
-    sed -i "1,${i}d" $DATAFILE
+    sed -i "1,${i}d" "$DATAFILE"
   fi
 }
 
@@ -39,7 +39,7 @@ function namaz_next {
     if [[ $line -gt $CURTIME ]]; then
       break
     fi
-  done < $DATAFILE
+  done < "$DATAFILE"
   echo $line $i
 }
 
@@ -59,7 +59,7 @@ function namaz_yaz {
       echo -n " | $(date --date=@$line '+%H:%M')"
     fi
     let i++
-  done < $DATAFILE
+  done < "$DATAFILE"
   echo
 }
 
@@ -69,14 +69,14 @@ function namaz_kalan {
   echo $kalan
 }
 
-if [[ ! -s $DATAFILE ]]; then
+if [[ ! -s "$DATAFILE" ]]; then
   # echo "Downloading the prayer times"
-  touch $DATAFILE
+  touch "$DATAFILE"
   namaz_guncelle
 fi
 namaz_temizle
 
-if [[ -s $DATAFILE ]]; then
+if [[ -s "$DATAFILE" ]]; then
   if [[ $# == 0 ]]; then
     namaz_yaz
   elif [[ $1 == [0-9]* ]]; then

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=WiFi Settings
+Icon=network-wireless
+Exec=gnome-control-center wifi
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Settings;
+Keywords=Preferences;Settings;Wifi;Internet

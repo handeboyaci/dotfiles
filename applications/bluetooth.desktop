@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Bluetooth Settings
+Icon=bluetooth-active-symbolic
+Exec=gnome-control-center bluetooth
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Settings;
+Keywords=Preferences;Settings;Bluetooth

@@ -47,7 +47,7 @@ fi
 
 if [[ $# -lt 1 || -n $help ]]; then
   usage
-  exit 1
+  return 1
 fi
 
 if (( $+dry[1] )); then

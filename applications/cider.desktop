@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Cider
+Icon=text-editor-symbolic
+Exec=google-chrome --app=https://cider-v.corp.google.com/ --remote-debugging-port=9222 
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Cider;Editor;Text

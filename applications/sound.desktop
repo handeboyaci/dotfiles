@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Sound Settings
+Icon=audio-volume-medium
+Exec=gnome-control-center sound
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Settings;
+Keywords=Preferences;Settings;Audio;Sound;Volume;Microphone;Speaker;

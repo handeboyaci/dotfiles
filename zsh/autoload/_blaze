@@ -1,0 +1,404 @@
+#compdef blaze blaze64 blaze-run.sh iblaze rabbit
+
+# Copyright 2010 Google Inc.
+# All Right Reserved
+#
+# Author: Torsten Marek <tmarek@google.com>
+#
+#
+# Options:
+#  :completion:*:blaze:* cache-lifetime
+#    Lifetime for the completion cache (if turned on, default: 1 week)
+#  :completion:*:blaze-$COMMAND:query command
+#    The command to be used when querying blaze. This can be used to show an
+#    indicator for a possibly long-running operation, especially when blaze
+#    has to start up.
+#
+#      _blaze_query_tmux() {
+#        tmux display-message 'Querying blaze'
+#        blaze query $3
+#      }
+#      zstyle ':completion:*:blaze-*:query' command -_blaze_query_tmux
+#
+#    The leading - is required to have the actual invocation arguments to be
+#    forwarded.
+zmodload zsh/pcre
+
+local curcontext="$curcontext" state line
+
+: ${BLAZE_COMPLETION_PACKAGE_PATH:=%workspace%:%workspace%/../READONLY/google3}
+: ${BLAZE_CITC_PREFIX:=/google/src/cloud}
+: ${BLAZE:=blaze}
+
+# Default cache lifetime is 1 week
+zstyle -s ":completion:${curcontext}:" cache-lifetime lifetime
+if [[ -z "${lifetime}" ]]; then
+  lifetime=$((60*60*24*7))
+fi
+
+_blaze_cache_policy() {
+  local -a oldp
+  oldp=( "$1"(Nms+${lifetime}) )
+  (( $#oldp ))
+}
+
+_set_cache_policy() {
+  zstyle -s ":completion:*:$curcontext*" cache-policy update_policy
+
+  if [[ -z "$update_policy" ]]; then
+    zstyle ":completion:$curcontext*" cache-policy _blaze_cache_policy
+  fi
+}
+
+# Skips over all global arguments. After invocation, OFFSET contains
+# the position of the blaze command in $words.
+_adapt_subcommand_offset() {
+  OFFSET=2
+  for w in ${words[2,-1]}; do
+    if [[ $w == (#b)-* ]]; then
+       (( OFFSET++ ))
+    else
+      return
+    fi
+  done
+}
+
+_blaze() {
+  # If the program was blaze-run.sh, pretend it was "blaze run".
+  if [[ "${words[1]:t}" == "blaze-run.sh" ]]; then
+    words[1]=( blaze run )
+    (( CURRENT += 1 ))
+  fi
+
+  _adapt_subcommand_offset
+  if (( CURRENT - OFFSET > 0 )); then
+    # Remember the subcommand name, stored globally so we can access it from any
+    # subsequent function.
+    cmd=${words[OFFSET]}
+    # Set the context for the subcommand.
+    curcontext="${curcontext%:*:*}:blaze-$cmd:"
+    _set_cache_policy
+    # Narrow the range of words we are looking at to exclude cmd
+    # name and any leading options
+    (( CURRENT = CURRENT - OFFSET + 1 ))
+    shift $((OFFSET - 1)) words
+    # Run the completion for the subcommand
+    if (( $+functions[_blaze_cmd_${cmd}] )); then
+      _blaze_get_options $cmd
+      typeset -g target_type=$cmd
+      _blaze_cmd_${cmd}
+    else
+    # complete unknown commands normally
+      _arguments : \
+        '*:files:_path_files'
+    fi
+  else
+    _set_cache_policy
+    # Start special handling for global options,
+    # which can be retrieved by calling
+    # $ blaze help startup_options
+    _blaze_get_options startup_options
+    _arguments : \
+      ${(Pps:|:)_blaze_cmd_options} \
+      "*:commands:_blaze_commands"
+  fi
+  return
+}
+
+# Puts the list of available blaze subcommands into the global
+# dictionary _blaze_cmd_list
+_blaze_get_commands() {
+  if ( (( ${#_blaze_cmd_list} == 0 ))  || _cache_invalid BLAZE_commands ) \
+       && ! _retrieve_cache BLAZE_commands _blaze_cmd_list; then
+    # blaze_cmd_list is a global (g) array (a)
+    typeset -ga _blaze_cmd_list
+    _blaze_cmd_list=(
+      ${=${(f)${${"$(LC_ALL=C _call_program help ${BLAZE} 2> /dev/null)"#l#*Available commands:}%%Getting more help*}}/(#s)[[:space:]]#(#b)([a-z_-]##)*/$match[1]}
+    )
+    if [[ $? -eq 0 ]]; then
+      _store_cache BLAZE_commands _blaze_cmd_list
+    fi
+  fi
+}
+
+# Completion function for blaze subcommands, called by the completion system.
+_blaze_commands() {
+  _blaze_get_commands
+  _describe -t blaze-commands 'Blaze command' _blaze_cmd_list
+}
+
+# Returns all targets from the package in $1 that match the target type.
+_get_build_targets() {
+  # target might be empty if called from the current directory
+  local target=$1
+  local rule_re
+  typeset -a completions
+  case $target_type in
+    test)
+      rule_re=".*_test|test_suite"
+      ;;
+    build)
+      rule_re=".*"
+      ;;
+    run)
+      rule_re=".*_test|.*_binary"
+      ;;
+    mpm)
+      rule_re="genmpm"
+      ;;
+  esac
+  # ${(q)...} is needed because the query string is passed through eval.
+  completions=(${$(LC_ALL=C _call_program query ${BLAZE} query "${(q):-kind('${rule_re}', ${target}:all)}" 2>/dev/null)##*:})
+  if ( (( ${#completions} > 0 )) && [[ $target_type != run ]] ); then
+    completions+=(all)
+  fi
+  echo ${completions[*]}
+}
+
+_is_inside_citc() {
+  local root=$(readlink -f $PWD)
+  [[ "$root" == ${BLAZE_CITC_PREFIX}/* ]]
+}
+
+_package_remove_slash() {
+  if [[ $KEYS == ':' && $LBUFFER == */ ]]; then
+    LBUFFER=${LBUFFER[1,-2]}
+  fi
+}
+
+# Prints a space-separated list of workspace roots for blaze packages.
+# The workspace roots are all paths to google3. In CitC, this is only
+# a single directory. For git5, this is the working directory and the
+# directory pointed at by the READONLY link.
+_get_g3_workspaces() {
+  local -a workspaces
+  if _is_inside_citc; then
+    echo $1
+  else
+    # Split the variable BLAZE_COMPLETION_PACKAGE_PATH at every :
+    workspaces=(${(s.:.)BLAZE_COMPLETION_PACKAGE_PATH})
+    echo ${^workspaces//\%workspace\%/$1}
+  fi
+}
+
+# Prints a space-separated list of package directories in google3 from which
+# to start completion, based on $PWD and a (partial) package name in $1. The
+# workspaces are found by inspecting $PWD.
+# If $1 starts with //, returns the workspace roots (i.e. the 'google3'
+# directory).
+# If $1 is a relative package name, returns the concatenation of the workspace
+# roots and the current directory under google3.
+#
+# Examples:
+#
+# CWD=/pfx/google3 $1=//absolute or $1=relative
+#   /pfx/google3
+# CWD=/pfx/google3/subdir $1=//absolute
+#   /pfx/google3
+# CWD=/pfx/google3/subdir $1=relative
+#   /pfx/google3/subdir
+_get_package_completion_roots() {
+  local workspace subdir
+  local -a package_roots
+  if [[ $PWD == */google3/* ]]; then
+    workspace=${PWD%/google3/*}/google3
+    subdir=${PWD##*/google3/}/
+  else
+    workspace=$PWD
+  fi
+  # For an absolute package, the completion always refers to the workspace roots
+  if [[ ${1} == //* ]]; then
+    subdir=
+  # blaze targets cannot start with a single slash. If we detect one, always
+  # return the empty list. Also, since we use the path completion, forbid ~
+  # as a prefix.
+  elif [[ ${1} == /* || ${1} == \~* ]]; then
+    return
+  fi
+  package_roots=($(_get_g3_workspaces $workspace))
+  echo ${^package_roots}/${subdir}
+}
+
+# Returns true if a directory is a package (i.e. contains a BUILD file).
+_is_package() {
+  local p
+  local -a paths
+  paths=($(_get_package_completion_roots "${1}"))
+  # We can just concatenate anything in paths and $1, because
+  # _get_package_completion_roots returns the correct base directories.
+  for p in ${^paths}/${1#//}; do
+    if [[ -e ${p}/BUILD ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Completion function for BUILD targets, called by the completion system.
+_blaze_complete_targets() {
+  local expl package
+  local -a roots targets
+  if [[ "${(e)PREFIX}" != *:* ]]; then
+    # There is no : in the prefix, completion can be either a package or a
+    # target, if the cwd is a package itself. At the top-level google3, only
+    # complete packages because otherwise requesting completion on `blaze CMD `
+    # requires blaze to be started up, and nobody wants to complete targets
+    # in the root directory.
+    if [[ $PWD != */google3 && -f $PWD/BUILD ]]; then
+      targets=($(_get_build_targets ""))
+      _description build_target expl "BUILD target"
+      compadd "${expl[@]}" -a targets
+    fi
+    roots=($(_get_package_completion_roots "${(e)PREFIX}"))
+    if (( ${#roots} == 0 )); then
+      return
+    fi
+    compset -P //
+    _description build_package expl "BUILD package"
+    _path_files -/ -S '/' -R _package_remove_slash "${expl[@]}" -W roots
+  else
+    package="${${(e)PREFIX}%:*}"
+    if _is_package "${package}"; then
+      targets=($(_get_build_targets "${package}"))
+      _description build_target expl "BUILD target"
+      # Ignore the current prefix for the upcoming completion, since we only
+      # list the names of the targets, not the full path.
+      compset -P '*:'
+      compadd "${expl[@]}" -a targets
+    else
+      _message "${package} is not a blaze package."
+    fi
+  fi
+}
+
+# Puts the name of the variable that contains the options for the blaze subcommand
+# handed in as the first argument into the global variable _blaze_cmd_options.
+_blaze_get_options() {
+  local lcmd=$1
+  # Some blaze commands have embedded dashes. Replace them with underscores.
+  _blaze_cmd_options=_blaze_${lcmd//-/_}_options
+  if ( (( ${(P)#_blaze_cmd_options} == 0 )) || _cache_invalid BLAZE_${lcmd}_options ) \
+       && ! _retrieve_cache BLAZE_${lcmd}_options ${_blaze_cmd_options}; then
+    local -a raw_options
+    local -a option_list
+    raw_options=(
+      ${(M)${(f)"$(LC_ALL=C _call_program help-options ${BLAZE} help ${lcmd} 2> /dev/null)"}:#(#s)[[:space:]]##--*}
+    )
+    if [[ $? -ne 0 ]]; then
+      return
+    fi
+    pcre_compile '^[[:space:]]*--(?:\[no\])?([a-z_0-9]+)\b'
+    for option_string in $raw_options; do
+      pcre_match "${option_string}"
+      local option=--$match
+      if [[ "${option_string}" == *\(* ]]; then
+        local description=${option_string/*\((#b)([^;\)]##)*/$match}
+      else
+        local description=__empty__
+      fi
+
+      case "$description" in
+        "a boolean")
+          option_list+=(--no${option[3,-1]} ${option})
+          ;;
+        "a path")
+          option_list+=(${option}=:path:_files)
+          ;;
+        "an integer")
+          option_list+=("${option}=:integer: ")
+          ;;
+        "__empty__")
+          option_list+=(${option})
+          ;;
+        ([^" "]##," ")#[^" "]##" or "[^" "]##)
+          description=${${description/ or /, }//,/}
+          option_list+=("${option}=:string:(${description})")
+          ;;
+        *)
+          option_list+=("${option}=:string: ")
+          ;;
+      esac
+    done
+    typeset -g "${_blaze_cmd_options}"="${(pj:|:)option_list[*]}"
+    _store_cache BLAZE_${lcmd}_options ${_blaze_cmd_options}
+  fi
+}
+
+_blaze_default_cmd_with_targets_handler() {
+  _arguments : \
+    ${(Pps:|:)_blaze_cmd_options} \
+    "*::target:_blaze_complete_targets"
+}
+
+_blaze_default_cmd_without_args() {
+  _arguments : \
+    ${(Pps:|:)_blaze_cmd_options}
+}
+
+#
+# Actual command handlers
+#
+
+# Commands that take a targets as an argument
+_blaze_cmd_run() {
+  _blaze_default_cmd_with_targets_handler
+}
+
+# Analyze runs on the same targets as build (ie. all).
+_blaze_cmd_analyze() {
+  target_type=build
+  _blaze_default_cmd_with_targets_handler
+}
+
+_blaze_cmd_mobile-install() {
+  target_type=build
+  _blaze_default_cmd_with_targets_handler
+}
+
+_blaze_cmd_test() {
+  _blaze_default_cmd_with_targets_handler
+}
+
+_blaze_cmd_coverage() {
+   target_type=test
+  _blaze_default_cmd_with_targets_handler
+}
+
+_blaze_cmd_build() {
+  _blaze_default_cmd_with_targets_handler
+}
+
+_blaze_cmd_mpm() {
+  _blaze_default_cmd_with_targets_handler
+}
+
+# For help, we simply reinvoke the original command completion.
+_blaze_cmd_help() {
+  _arguments : \
+    ${(Pps:|:)_blaze_cmd_options} \
+    "*::command:_blaze_commands"
+}
+
+# Commands that take no arguments
+_blaze_cmd_clean() {
+  _blaze_default_cmd_without_args
+}
+
+_blaze_cmd_version() {
+  _blaze_default_cmd_without_args
+}
+
+_blaze_cmd_shutdown() {
+  _blaze_default_cmd_without_args
+}
+
+# Commands that take files.
+_blaze_cmd_analyze-profile() {
+  _arguments : \
+    ${(Pps:|:)_blaze_cmd_options} \
+    "*::profile:_files"
+}
+
+
+# Execute the main completion function unless running under test.
+[[ -z ${__BLAZE_TEST_MODE__} ]] && _blaze "$@"

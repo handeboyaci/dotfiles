@@ -62,7 +62,7 @@ configuration {
   font: "feather 48";
   horizontal-align: 0.5;
   vertical-align: 0.5;
-  margin: 60px 60px 57px 65px;
+  margin: 60px 60px 100px 65px;
 }
 
 #element.selected {

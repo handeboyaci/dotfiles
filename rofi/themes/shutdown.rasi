@@ -12,7 +12,7 @@
 #horibox {
   children: [textbox-prompt-colon, container2];
   expand: false;
-  width: 34em;
+  width: 24em;
 }
 
 #container2 {

@@ -6,7 +6,97 @@
 	url = https://github.com/zsh-users/zsh-completions.git
 [submodule "tmux/tmux-thumbs"]
 	path = tmux/tmux-thumbs
-	url = https://github.com/fcsonline/tmux-thumbs
-[submodule "nvim"]
-	path = nvim
-	url = git@github.com:sencer/nvim.git
+	url = https://github.com/sencer/tmux-thumbs
+[submodule "nvim/pack/plugins/start/fidget.nvim"]
+	path = nvim/pack/plugins/start/fidget.nvim
+	url = https://github.com/j-hui/fidget.nvim.git
+[submodule "nvim/pack/plugins/start/aerial.nvim"]
+	path = nvim/pack/plugins/start/aerial.nvim
+	url = https://github.com/stevearc/aerial.nvim.git
+[submodule "nvim/pack/plugins/start/Comment.nvim"]
+	path = nvim/pack/plugins/start/Comment.nvim
+	url = https://github.com/numToStr/Comment.nvim
+[submodule "nvim/pack/plugins/start/jupyter_ascending.vim"]
+	path = nvim/pack/plugins/start/jupyter_ascending.vim
+	url = https://github.com/untitled-ai/jupyter_ascending.vim.git
+[submodule "nvim/pack/plugins/start/ltex_extra.nvim"]
+	path = nvim/pack/plugins/start/ltex_extra.nvim
+	url = https://github.com/barreiroleo/ltex_extra.nvim.git
+[submodule "nvim/pack/plugins/start/null-ls.nvim"]
+	path = nvim/pack/plugins/start/null-ls.nvim
+	url = https://github.com/jose-elias-alvarez/null-ls.nvim.git
+[submodule "nvim/pack/plugins/start/nvim-treesitter"]
+	path = nvim/pack/plugins/start/nvim-treesitter
+	url = https://github.com/nvim-treesitter/nvim-treesitter
+[submodule "nvim/pack/plugins/start/nvim-treesitter-context"]
+	path = nvim/pack/plugins/start/nvim-treesitter-context
+	url = https://github.com/nvim-treesitter/nvim-treesitter-context.git
+[submodule "nvim/pack/plugins/start/nvim-treesitter-textobjects"]
+	path = nvim/pack/plugins/start/nvim-treesitter-textobjects
+	url = https://github.com/nvim-treesitter/nvim-treesitter-textobjects.git
+[submodule "nvim/pack/plugins/start/plenary.nvim"]
+	path = nvim/pack/plugins/start/plenary.nvim
+	url = https://github.com/nvim-lua/plenary.nvim
+[submodule "nvim/pack/plugins/start/rainbow-delimiters.nvim"]
+	path = nvim/pack/plugins/start/rainbow-delimiters.nvim
+	url = https://github.com/HiPhish/rainbow-delimiters.nvim.git
+[submodule "nvim/pack/plugins/start/telescope-file-browser.nvim"]
+	path = nvim/pack/plugins/start/telescope-file-browser.nvim
+	url = https://github.com/nvim-telescope/telescope-file-browser.nvim.git
+[submodule "nvim/pack/plugins/start/telescope.nvim"]
+	path = nvim/pack/plugins/start/telescope.nvim
+	url = https://github.com/nvim-telescope/telescope.nvim.git
+[submodule "nvim/pack/plugins/start/undotree"]
+	path = nvim/pack/plugins/start/undotree
+	url = https://github.com/mbbill/undotree.git
+[submodule "nvim/pack/plugins/start/vim-closer"]
+	path = nvim/pack/plugins/start/vim-closer
+	url = https://github.com/rstacruz/vim-closer
+[submodule "nvim/pack/plugins/start/vim-conjoin"]
+	path = nvim/pack/plugins/start/vim-conjoin
+	url = https://github.com/flwyd/vim-conjoin
+[submodule "nvim/pack/plugins/start/vim-cursorword"]
+	path = nvim/pack/plugins/start/vim-cursorword
+	url = https://github.com/itchyny/vim-cursorword.git
+[submodule "nvim/pack/plugins/start/vim-exchange"]
+	path = nvim/pack/plugins/start/vim-exchange
+	url = https://github.com/tommcdo/vim-exchange.git
+[submodule "nvim/pack/plugins/start/vim-niceblock"]
+	path = nvim/pack/plugins/start/vim-niceblock
+	url = https://github.com/kana/vim-niceblock
+[submodule "nvim/pack/plugins/start/vim-repeat"]
+	path = nvim/pack/plugins/start/vim-repeat
+	url = https://github.com/tpope/vim-repeat.git
+[submodule "nvim/pack/plugins/start/vim-signify"]
+	path = nvim/pack/plugins/start/vim-signify
+	url = https://github.com/mhinz/vim-signify.git
+[submodule "nvim/pack/plugins/start/vim-surround"]
+	path = nvim/pack/plugins/start/vim-surround
+	url = https://github.com/tpope/vim-surround.git
+[submodule "nvim/pack/plugins/start/vim-tmux-navigator"]
+	path = nvim/pack/plugins/start/vim-tmux-navigator
+	url = https://github.com/christoomey/vim-tmux-navigator.git
+[submodule "nvim/pack/plugins/opt/mason.nvim"]
+	path = nvim/pack/plugins/opt/mason.nvim
+	url = https://github.com/williamboman/mason.nvim.git
+[submodule "nvim/pack/plugins/opt/nvim-colorizer.lua"]
+	path = nvim/pack/plugins/opt/nvim-colorizer.lua
+	url = https://github.com/norcalli/nvim-colorizer.lua
+[submodule "nvim/pack/plugins/opt/playground"]
+	path = nvim/pack/plugins/opt/playground
+	url = https://github.com/nvim-treesitter/playground.git
+[submodule "nvim/pack/sencer/start/async.nvim"]
+	path = nvim/pack/sencer/start/async.nvim
+	url = git@github.com:sencer/async.nvim.git
+[submodule "nvim/pack/sencer/start/buffers.nvim"]
+	path = nvim/pack/sencer/start/buffers.nvim
+	url = git@github.com:sencer/buffers.nvim.git
+[submodule "nvim/pack/sencer/start/quickfix.nvim"]
+	path = nvim/pack/sencer/start/quickfix.nvim
+	url = git@github.com:sencer/quickfix.nvim.git
+[submodule "nvim/pack/sencer/start/remotefiles.nvim"]
+	path = nvim/pack/sencer/start/remotefiles.nvim
+	url = git@github.com:sencer/remotefiles.nvim.git
+[submodule "nvim/pack/sencer/start/synctex.nvim"]
+	path = nvim/pack/sencer/start/synctex.nvim
+	url = git@github.com:sencer/synctex.nvim.git

@@ -1,5 +1,27 @@
-apt install build-essential cmake autoconf pkg-config git i3 jq xautolock aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build gettext unzip curl fzf flex bison check automake meson libglib2.0-dev libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock compton dconf-editor gnome-calendar npm python3-venv hub
+sudo apt install build-essential cmake autoconf pkg-config git i3 jq xautolock aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build gettext unzip curl fzf flex bison check automake meson libglib2.0-dev libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock compton dconf-editor gnome-calendar npm python3-venv hub
 pip install --user --break-system-packages py3status ipython numpy scipy pandas seaborn matplotlib i3-notifier py3notifier google-api-python-client oauth2client pynvim python-daemon
+git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
+
+cd $HOME
+rm -rf .zshenv $HOME/.ssh
+for f in zshenv gitconfig condarc inputrc tmux.conf fonts
+do
+  ln -s $HOME/.dotfiles/$f .$f
+done
+
+cd $HOME/.config
+for f in i3 alacritty.yml rofi
+do
+  ln -s $HOME/.dotfiles/$f
+done
+
+cd $HOME/.local/share
+ln -s $HOME/.dotfiles/applications
+
+conda create --name dev
+conda install python=3.11 scipy numpy scikit-learn pandas seaborn matplotlib pymc tensorflow-probability jupyter statsmodels
+cd $HOME/.conda
+find -name *.sh | xsed -i 's/ sed / command sed /g'
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cargo install alacritty fd-find ripgrep
@@ -27,22 +49,6 @@ ninja -C build install
 cd ..
 
 sudo update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator $HOME/.cargo/bin/alacritty 50
-
-cd ~
-scp -r sselcuk3.nyc.corp.google.com:.dotfiles/ .
-rm -f .zshenv
-ln -s ~/.dotfiles/gitconfig .gitconfig
-ln -s ~/.dotfiles/zsh/zshenv .zshenv
-ln -s ~/.dotfiles/tmux.conf .tmux.conf
-ln -s ~/.dotfiles/fonts .fonts
-rm -rf ~/.ssh
-ln -s ~/.dotfiles/ssh .ssh
-cd .config
-ln -s ~/.dotfiles/i3
-ln -s ~/.dotfiles/alacritty.yml
-ln -s ~/.dotfiles/rofi
-cd ~/.local/share
-ln -s ~/.dotfiles/applications
 
 gsettings set org.gnome.desktop.wm.keybindings switch-input-source "[]"
 gsettings set org.gnome.desktop.wm.keybindings switch-input-source-backward "[]"

@@ -429,7 +429,7 @@ function set-theme {
   PS1+=$'\n%{\r%}$PROMPT_COLOR❯%b%f '
 
   b=" %f|$PINK "
-  RPS1='%B$PINK${CONDA_PREFIX_1+$CONDA_PREFIX:t%(0?.%(1j.$b.).$b)}'
+  RPS1='%B$PINK${CONDA_PREFIX+$CONDA_PREFIX:t%(0?.%(1j.$b.).$b)}'
   RPS1+='%(0?..%?%(1j.$b.))%(1j.%j bg jobs.)%f%b'
 }
 set-theme
@@ -475,16 +475,7 @@ zmodload zsh/pcre
 #source /etc/zsh_command_not_found
 disable r # do not use shell built-in r for repeating last command
 autoload -Uz compinit
-for dump in ~/.dotfiles/tmp/zcompdump(N.mh+24); do
-  compinit -C -i -d ~/.dotfiles/tmp/zcompdump
-done
-# compile zcompdump
-{
-  zcomp="$HOME/.dotfiles/tmp/zcompdump" 
-  if [[ -s "$zcomp" && (! -s "${zcomp}.zwc" || "${zcomp}" -nt "${zcomp}.zwc") ]]; then 
-    zcompile "$zcomp"
-  fi
-} &!
+compinit -C -i -d ~/.dotfiles/tmp/zcompdump
 #}}}
 
 # syntax highlighting {{{
@@ -497,18 +488,4 @@ FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
 FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
 FAST_HIGHLIGHT_STYLES[comment]='fg=101'
 # }}}
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$($HOME/.local/share/conda/bin/conda 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "$HOME/.local/share/conda/etc/profile.d/conda.sh" ]; then
-        . "$HOME/.local/share/conda/etc/profile.d/conda.sh"
-    else
-        export PATH="$HOME/.local/share/conda/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
+ source $ZDOTDIR/conda.zsh

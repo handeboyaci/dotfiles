@@ -1,3 +1,4 @@
+# in jupyterlab vim extension, remove modifyEdgeSomething
 sudo apt install build-essential cmake autoconf pkg-config git i3 jq xautolock aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build gettext unzip curl fzf flex bison check automake meson libglib2.0-dev libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock compton dconf-editor gnome-calendar npm python3-venv hub
 pip install --user --break-system-packages py3status ipython numpy scipy pandas seaborn matplotlib i3-notifier py3notifier google-api-python-client oauth2client pynvim python-daemon
 git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles

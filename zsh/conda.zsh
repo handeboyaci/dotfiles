@@ -21,7 +21,12 @@ __mamba_xctivate() {
 conda() {
     builtin local cmd="${1-__missing__}"
     case "${cmd}" in
-        activate|reactivate|deactivate)
+        activate|reactivate)
+            export PYTHONNOUSERSITE=1
+            __mamba_xctivate "${@}"
+            ;;
+        deactivate)
+            unset PYTHONNOUSERSITE
             __mamba_xctivate "${@}"
             ;;
         install|update|upgrade|remove|uninstall)

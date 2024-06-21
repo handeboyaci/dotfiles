@@ -1,0 +1,11 @@
+#!/bin/zsh
+
+source $ZDOTDIR/zshrc
+conda activate ${1:-dev}
+
+if [[ $(jupyter notebook list | wc -l) -eq 1 ]]
+then
+  nohup jupyter-lab &>/dev/null &
+else
+  jupyter-lab stop
+fi

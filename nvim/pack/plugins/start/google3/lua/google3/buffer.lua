@@ -11,6 +11,7 @@ local load_workspace = vim.schedule_wrap(function(j)
 	for _, b in ipairs(j:result()) do
 		local nm = vim.fn.fnamemodify(b, ":p:~:.")
 		if vim.fn.glob(vim.fn.fnamemodify(nm, ":h") .. "/." .. vim.fn.fnamemodify(nm, ":t") .. ".sw*", true) == "" then
+      print(nm)
 			vim.cmd.badd(nm)
 		end
 	end
@@ -36,7 +37,7 @@ local function run_shell_cmds(vcs)
 	local set_cl_job
 	if vcs == "g4" then
 		set_cl_job = async.run_shell({
-			command = 'g4 -F "%change%" changes -s pending -c "$(g4 -F "%clientName" info)"',
+			command = 'g4 -F "%change%" changes -s pending -c "$(g4 -F "%clientName" info|dos2unix)"',
 			on_exit = buf_var_setter("citc_cl"),
 		})
 		if not vim.g.workspace_loaded then
@@ -54,8 +55,8 @@ local function run_shell_cmds(vcs)
 		})
 		if not vim.g.workspace_loaded then
 			async
-				.run_cmd({
-					command = "hg pstatus -n",
+				.run_shell({
+					command = "hg pstatus -n | grep '/'",
 					on_exit = load_workspace,
 				})
 				:start()

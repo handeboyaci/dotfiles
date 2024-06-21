@@ -4,7 +4,13 @@ M.attach = function(citc_root, bufnr)
 	vim.lsp.start({
 		-- Attach a separate Cider process per file, as it keeps throwing errors otherwise.
 		name = "Cider#" .. bufnr,
-		cmd = {
+		cmd = os.getenv("PROD_PROXY") and {
+			"ssh",
+			os.getenv("PROD_PROXY"),
+			"/google/bin/releases/cider/ciderlsp/ciderlsp",
+			"--tooltag=neovim-lsp",
+			"--noforward_sync_responses",
+		} or {
 			"/google/bin/releases/cider/ciderlsp/ciderlsp",
 			"--tooltag=neovim-lsp",
 			"--noforward_sync_responses",

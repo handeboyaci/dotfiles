@@ -7,6 +7,9 @@ fi
 
 source ${0:h}/aliases.zsh
 
+fpath=( ${0:h}/autoload $fpath )
+autoload -U ras g4d _g4d _ras
+
 typeset -x CITC_NAME CITC_PWD CITC_ROOT CITC_USER PYTHONPATH _PYTHONPATH \
            CL CL_SYNCED VCS
 

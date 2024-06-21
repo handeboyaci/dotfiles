@@ -13,6 +13,9 @@ Host ev
   IdentityFile ~/.ssh/id_rsa
   ForwardX11 yes
   ForwardX11Trusted yes
+Host *.amazonaws.com
+  User ubuntu
+  IdentityFile ~/.ssh/sencer-aws.pem
 Host *
   Compression yes
   ControlMaster auto

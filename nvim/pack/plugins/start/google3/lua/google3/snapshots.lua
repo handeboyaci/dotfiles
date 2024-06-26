@@ -7,14 +7,15 @@ local script_tmpl = [[
 citc_root="%s"
 citc_path="%s"
 file="$citc_root/google3/$citc_path"
-citctools filelog -r "$file" | tail -n +3 | while read -a line
+citctools filelog -r "$file" | tail -n +3 | while read -A line
 do
-  snapshot="$citc_root/.snapshot/${line[0]}/google3/$citc_path"
+  test ${line[4]} -eq 0 && continue
+  snapshot="$citc_root/.snapshot/${line[1]}/google3/$citc_path"
   if cmp -s -- "$file" "$snapshot"
   then
     continue
   fi
-  echo "$snapshot: Snapshot ${line[0]} (${line[1]} ${line[2]}, ${line[3]} bytes.)"
+  echo "$snapshot: Snapshot ${line[1]} (${line[2]} ${line[3]}, ${line[4]} bytes.)"
 done
 ]]
 

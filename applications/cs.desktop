@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Code Search
-Icon=preferences-system-search-symbolic
-Exec=google-chrome --app=https://source.corp.google.com/ --remote-debugging-port=9222 
+Icon=search-symbolic
+Exec=google-chrome --app=https://source.corp.google.com/ 
 Terminal=false
 Type=Application
 StartupNotify=true

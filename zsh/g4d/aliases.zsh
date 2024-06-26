@@ -9,12 +9,16 @@ alias ftee='fileutil tee'
 alias fcp='fileutil cp -R -a -f'
 alias fmkdir='fileutil mkdir -p'
 alias frmdir='fileutil rmdir'
+alias cclean='/google/src/head/depot/google3/devtools/maintenance/cclean/cclean'
+alias include-cleaner='/google/bin/releases/lpt-c-tools/include-cleaner/include_cleaner'
+
 
 alias g='gqui'
 alias count='gqui "select count(*)" from'
 alias -g gfv='proto research_scam.GenericFeatureVector'
 alias -g nns='proto research_scam.NearestNeighbors'
 alias -g tfe='proto tensorflow.Example'
+alias -g elwc='proto tensorflow.serving.ExampleListWithContext'
 alias -g tfs='proto tensorflow.SequenceExample'
 alias -g lestore='proto quality_local_ranking.LocalembedStore'
 alias -g cout='proto research_cluston.ClustonOutput'
@@ -84,3 +88,8 @@ then
   alias spiffy_sync="ras -t $aliases[spiffy_sync]"
   alias servo="ras -t $aliases[servo]"
 fi
+
+# The command used to generate an sstable.
+how() {
+  gqui describe "$1" | sed -n 's/.*command_line:\s*[^ ]*\///;s/ --/\n  --/gp' | sed '/--dax|--undefok|--streamz|--bigtable|--spanner|--binarylog|eventmanager/d'
+}

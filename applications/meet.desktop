@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Meet
-Icon=google-meet
-Exec=google-chrome --app=http://meet.google.com/ --remote-debugging-port=9222 
+Icon=meet
+Exec=google-chrome --app=http://meet.google.com/ 
 Terminal=false
 Type=Application
 StartupNotify=true

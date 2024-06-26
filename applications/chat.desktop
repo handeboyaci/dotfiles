@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Chat
-Icon=google-chat
-Exec=google-chrome --app=http://chat.google.com/ --remote-debugging-port=9222 
+Icon=chat
+Exec=google-chrome --app=http://chat.google.com/ 
 Terminal=false
 Type=Application
 StartupNotify=true

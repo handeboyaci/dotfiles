@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Bluetooth Settings
-Icon=bluetooth-active-symbolic
+Icon=preferences-bluetooth
 Exec=gnome-control-center bluetooth
 Terminal=false
 Type=Application

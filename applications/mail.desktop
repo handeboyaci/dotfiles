@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Gmail
-Icon=chrome-fmgjjmmmlfnkbppncabfkddbjimcfncm-Default
-Exec=google-chrome --app=http://mail.google.com/?authuser=sselcuk@google.com --remote-debugging-port=9222 --profile-directory=Default
+Icon=gmail
+Exec=google-chrome --app=http://mail.google.com/?authuser=sselcuk@google.com --profile-directory=Default
 Terminal=false
 Type=Application
 StartupNotify=true

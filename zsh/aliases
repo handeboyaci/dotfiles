@@ -1,4 +1,4 @@
-alias fd='noglob fd -g'
+alias fd='noglob fdfind -g'
 alias clear!='clear&&printf "\e[3J"'
 alias ls='ls --group-directories-first --color=auto'
 alias la='ls -AF'

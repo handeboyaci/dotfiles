@@ -234,18 +234,39 @@ bindkey -M isearch . self-insert 2>/dev/null # necessary? don't expand during in
 
 # make multiline {{{
 function break-spaces-to-new-lines {
-  BUFFER="${(pj: \\\n  :)${(s: :)BUFFER}}"
+  RBUFFER="${(pj: \\\n:)${(s: :)RBUFFER}}"
 }
 zle -N break-spaces-to-new-lines
 bindkey -M vicmd "\C-w" break-spaces-to-new-lines
 bindkey -M viins "\C-w" break-spaces-to-new-lines
 
 function break-flags-to-new-lines {
-  BUFFER="${(pj: \\\n  -:)${(s: -:)BUFFER}}"
+  RBUFFER="${(pj: \\\n  -:)${(s: -:)RBUFFER}}"
 }
 zle -N break-flags-to-new-lines
 bindkey -M vicmd "\C-e" break-flags-to-new-lines
 bindkey -M viins "\C-e" break-flags-to-new-lines
+# }}}
+
+# custom line join that deletes \ at the end of lines{{{
+function vi-join-custom {
+  local lines=(${(f)RBUFFER})
+  lines[1]=${lines[1]/% #\\}
+  RBUFFER=${(F)lines}
+  zle vi-join
+}
+
+zle -N vi-join-custom
+bindkey -M vicmd J vi-join-custom
+# }}}
+
+# sharded {{{
+function glob-to-sharded {
+  BUFFER="${BUFFER//-?????-of-0#/@}"
+}
+zle -N glob-to-sharded
+bindkey -M vicmd "\C-a" glob-to-sharded
+bindkey -M viins "\C-a" glob-to-sharded
 # }}}
 
 # copy the earlier word {{{
@@ -416,6 +437,16 @@ function zle-keymap-select {
   _mode_indicator $@
 }
 zle -N zle-keymap-select
+
+# custom line join {{{
+function vi-join-custom {
+  zle vi-join
+  BUFFER=${BUFFER//\\ / }
+}
+
+zle -N vi-join-custom
+bindkey -M vicmd J vi-join-custom
+# }}}
 
 # #}}}
 

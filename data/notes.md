@@ -1,8 +1,27 @@
 # in jupyterlab vim extension, remove modifyEdgeSomething
-sudo apt purge xdg-desktop-portal xdg-desktop-portal-gtk
-sudo apt install build-essential cmake autoconf pkg-config git i3 jq xautolock aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build gettext unzip curl fzf flex bison check automake meson libglib2.0-dev libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock compton dconf-editor gnome-calendar npm python3-venv hub dos2unix equivs
-pip install --user --break-system-packages py3status ipython numpy scipy pandas seaborn matplotlib i3-notifier py3notifier google-api-python-client oauth2client pynvim python-daemon
+
+sudo apt install build-essential cmake autoconf pkg-config git i3 jq xautolock \
+    aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build \
+    gettext unzip curl fzf flex bison check automake meson libglib2.0-dev \
+    libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev \
+    libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev \
+    libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev \
+    libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock
+    compton dconf-editor gnome-calendar npm python3-venv hub dos2unix equivs \
+    python3-ipython python3-numpy python3-scipy python3-pandas python3-seaborn \
+    python3-matplotlib python3-oauth2client python3-pynvim python3-daemon \
+    python3-googleapi py3status jupyter-notebook papirus-icon-theme
+
+pip install --user --break-system-packages i3-notifier py3notifier 
 git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
+
+# to avoid dbus timeout wait
+sudo apt purge xdg-desktop-portal xdg-desktop-portal-gtk
+# make sure the data/xdg* files have a version newer than what is available in
+# apt
+equivs-build $HOME/.dotfiles/data/xdg-desktop-portal
+equivs-build $HOME/.dotfiles/data/xdg-desktop-portal-gtk
+sudo dpkg -i /tmp/sselcuk/xdg-desktop-portal*.deb
 
 cd $HOME
 rm -rf .zshenv $HOME/.ssh
@@ -11,14 +30,15 @@ do
   ln -s $HOME/.dotfiles/$f .$f
 done
 
+
 cd $HOME/.config
 for f in i3 alacritty.yml rofi
 do
   ln -s $HOME/.dotfiles/$f
 done
 
-cd $HOME/.local/share
-ln -s $HOME/.dotfiles/applications
+cd $HOME/.local/share; ln -s $HOME/.dotfiles/applications
+cd ~/.local/share/icons/hicolor/; ln -s ~/.dotfiles/icons 256x256
 
 conda create --name dev
 conda install python=3.11 scipy numpy scikit-learn pandas seaborn matplotlib pymc tensorflow-probability jupyter statsmodels
@@ -26,7 +46,7 @@ cd $HOME/.conda
 find -name *.sh | xsed -i 's/ sed / command sed /g'
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-cargo install alacritty fd-find ripgrep
+<!-- cargo install alacritty fd-find ripgrep -->
 
 mkdir software
 cd software
@@ -55,6 +75,7 @@ sudo update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emula
 gsettings set org.gnome.desktop.wm.keybindings switch-input-source "[]"
 gsettings set org.gnome.desktop.wm.keybindings switch-input-source-backward "[]"
 gsettings set org.gnome.desktop.input-sources xkb-options "['caps:ctrl_modifier', 'nbsp:level2', 'grp:alt_space_toggle']"
+gsettings set org.gnome.gnome-flashback notifications false
 
 
 cd $HOME/.dotfiles/tmux/tmux-thumbs

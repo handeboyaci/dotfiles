@@ -84,7 +84,7 @@ function set_current_client {
 
 zshaddhistory () {
   local cmd=${${(z)1}[1]}
-  [[ -z $CITC_NAME || ( $cmd != blaze && $cmd != borgcfg ) ]] && return 0
+  [[ -z $CITC_NAME || ( $cmd != blaze && $cmd != borgcfg && $cmd != rabbit ) ]] && return 0
   print -sr -- "${${1%%$'\n'}%%  \# Client:*}  # Client:$CITC_NAME Snapshot:$(<$CITC_ROOT/../.citc/snapshot_version)"
   return 1
 }

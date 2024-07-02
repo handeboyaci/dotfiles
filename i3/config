@@ -7,8 +7,8 @@ font pango:Fira Mono 12
 floating_modifier $mod
 
 # start a terminal
-bindsym $mod+Return exec i3-sensible-terminal
-bindsym $mod+Shift+Return exec google-chrome --remote-debugging-port=9222
+bindsym $mod+Return exec --no-startup-id i3-sensible-terminal
+bindsym $mod+Shift+Return exec --no-startup-id google-chrome
 
 # kill focused window
 bindsym $mod+w kill
@@ -67,7 +67,7 @@ bindsym $mod+d focus child
 # make window sticky
 bindsym $mod+s sticky toggle
 
-bindsym Ctrl+$alt+Delete --release exec "xset dpms force off"
+bindsym Ctrl+$alt+Delete --release exec --no-startup-id "xset dpms force off"
 
 # screenshot
 bindsym Print --release exec --no-startup-id import -silent png:- | xclip -i -selection clipboard -target image/png
@@ -76,7 +76,7 @@ bindsym shift+Print --release exec --no-startup-id import -silent ~/Screenshot-$
 # Define names for default workspaces for which we configure key bindings later on.
 # We use variables to avoid repeating the names in multiple places.
 # switch to workspace
-bindsym $mod+n exec --no-startup-id exec $HOME/.dotfiles/rofi/rofi-rename-workspace
+bindsym $mod+n exec --no-startup-id $HOME/.dotfiles/rofi/rofi-rename-workspace
 
 bindsym $mod+1 workspace number 1
 bindsym $mod+2 workspace number 2

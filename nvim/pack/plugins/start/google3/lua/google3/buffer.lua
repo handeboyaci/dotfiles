@@ -11,7 +11,6 @@ local load_workspace = vim.schedule_wrap(function(j)
 	for _, b in ipairs(j:result()) do
 		local nm = vim.fn.fnamemodify(b, ":p:~:.")
 		if vim.fn.glob(vim.fn.fnamemodify(nm, ":h") .. "/." .. vim.fn.fnamemodify(nm, ":t") .. ".sw*", true) == "" then
-      print(nm)
 			vim.cmd.badd(nm)
 		end
 	end

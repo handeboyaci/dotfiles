@@ -27,3 +27,4 @@ export SUDO_ASKPASS=/usr/lib/openssh/gnome-ssh-askpass
 
 typeset -gU cdpath fpath mailpath path
 export G4PENDINGSTYLE=relativepath
+export REPLACE_BLAZE_WITH_DBIP=1

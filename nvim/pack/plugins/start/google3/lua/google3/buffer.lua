@@ -1,5 +1,4 @@
 local joinpath = require("google3.util").joinpath
-local lsp = require("google3.lsp")
 local async = require("sencer.async")
 
 local M = {}
@@ -119,10 +118,6 @@ M.setup = function(args)
 	vim.b[bufnr].is_google3_file = true
 
 	prepare_workspace(bufnr, args.match)
-
-	if vim.b[bufnr].citc_root then
-		lsp.attach(vim.b[bufnr].citc_root, bufnr)
-	end
 
 	if args.event == "BufNewFile" then
 		vim.cmd("silent 0r !/usr/lib/autogen/autogen %")

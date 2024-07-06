@@ -1,4 +1,5 @@
 local buffer = require("google3.buffer")
+local lsp = require("google3.lsp")
 
 local M = {}
 
@@ -72,6 +73,17 @@ M.setup = function(args)
 		pattern = "/google/src/cloud/*",
 		callback = function(args_)
 			buffer.setup(args_)
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("BufReadPost", {
+		group = "google3",
+		callback = function(args_)
+			local bufnr = args_.buf
+			if bufnr == nil or not vim.b[bufnr].is_google3_file then
+				return
+			end
+			lsp.attach(vim.b[bufnr].citc_root, bufnr)
 		end,
 	})
 

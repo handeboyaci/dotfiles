@@ -22,9 +22,6 @@
 [submodule "nvim/pack/plugins/start/ltex_extra.nvim"]
 	path = nvim/pack/plugins/start/ltex_extra.nvim
 	url = https://github.com/barreiroleo/ltex_extra.nvim.git
-[submodule "nvim/pack/plugins/start/null-ls.nvim"]
-	path = nvim/pack/plugins/start/null-ls.nvim
-	url = https://github.com/jose-elias-alvarez/null-ls.nvim.git
 [submodule "nvim/pack/plugins/start/nvim-treesitter"]
 	path = nvim/pack/plugins/start/nvim-treesitter
 	url = https://github.com/nvim-treesitter/nvim-treesitter
@@ -100,3 +97,6 @@
 [submodule "nvim/pack/sencer/start/synctex.nvim"]
 	path = nvim/pack/sencer/start/synctex.nvim
 	url = git@github.com:sencer/synctex.nvim.git
+[submodule "nvim/pack/plugins/start/none-ls.nvim"]
+	path = nvim/pack/plugins/start/none-ls.nvim
+	url = https://github.com/nvimtools/none-ls.nvim

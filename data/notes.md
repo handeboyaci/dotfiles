@@ -12,7 +12,7 @@ sudo apt install build-essential cmake autoconf pkg-config git i3 jq xautolock \
     python3-matplotlib python3-oauth2client python3-pynvim python3-daemon \
     python3-googleapi py3status jupyter-notebook papirus-icon-theme
 
-pip install --user --break-system-packages i3-notifier py3notifier 
+sudo pip install --break-system-packages i3-notifier py3notifier 
 git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
 
 # to avoid dbus timeout wait

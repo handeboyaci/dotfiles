@@ -12,12 +12,6 @@ null_ls.setup({
 		null_ls.builtins.formatting.shellharden.with({
 			command = path .. "shellharden",
 		}),
-		null_ls.builtins.code_actions.shellcheck.with({
-			command = path .. "shellcheck",
-		}),
-		null_ls.builtins.formatting.beautysh.with({
-			command = path .. "beautysh",
-		}),
 	},
 })
 

@@ -30,25 +30,3 @@ vim.lsp.start({
 		client.server_capabilities.documentRangeFormattingProvider = false
 	end,
 })
-
--- vim.lsp.start({
--- 	name = "pylyzer",
--- 	cmd = { path .. "pylyzer", "--server" },
--- 	single_file_support = true,
--- })
-
--- vim.lsp.start({
--- 	name = "Ruff",
--- 	cmd = { path .. "ruff-lsp" },
--- 	init_options = {
--- 		settings = {
--- 			format = {
--- 				args = {
--- 					"--indent-width",
--- 					2,
--- 				},
--- 			},
--- 		},
--- 	},
--- 	single_file_support = true,
--- })

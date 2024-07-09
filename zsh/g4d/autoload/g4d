@@ -1,4 +1,11 @@
 # vi: ft=zsh
+# A replacement for g4d which doesn't cover some edge cases but has some extra
+# capabilities. Usage:
+#   g4d client_name
+#   g4d client_name@alias
+#   g4d client_name@snapshot
+#   g4d user:client_name@alias
+#   g4d user:client_name@snapshot
 local force
 zparseopts -D -- f=force
 
@@ -19,15 +26,17 @@ then
   fi
 fi
 
-local citclist=($(command ls /google/src/cloud/$USER))
 local fullpath
 local arg=(${(s/@/)1})  # get alias if it exists
-local target=$arg[1]
 local alias_=$arg[2]
+local arg=(${(s/:/)arg[1]})
+local target=$arg[$#arg]
+local user=${${arg[2]:+$arg[1]}:-$USER}
+local citclist=($(command ls /google/src/cloud/$user))
 
 if [[ -n $citclist[(r)$target] ]]
 then
-  full_path="/google/src/cloud/$USER/$target/google3"
+  full_path="/google/src/cloud/$user/$target/google3"
 elif [[ "$target" =~ ^[0-9]+$ ]]
 then
   maybe_full_path=$(p4 g4d $target 2>/dev/null)

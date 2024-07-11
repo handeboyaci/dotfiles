@@ -62,7 +62,6 @@ then
   alias blaze='ras -t blaze'
   alias borgcfg='ras -t borgcfg'
   alias citctool='ras citctools'
-  alias build_cleaner='ras build_cleaner'
   alias rabbit='ras -t rabbit'
   alias placer='ras -t placer'
   alias borg='ras -t borg'

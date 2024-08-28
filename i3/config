@@ -173,7 +173,7 @@ bindsym $mod+plus bar mode toggle
 bar {
     position top
     i3bar_command i3bar -t
-    status_command py3status -c ~/.config/i3/py3status.config  #-b
+    status_command py3status -c ~/.config/i3/py3status.config
 
     tray_output primary
     tray_padding 3

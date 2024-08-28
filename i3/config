@@ -67,7 +67,7 @@ bindsym $mod+d focus child
 # make window sticky
 bindsym $mod+s sticky toggle
 
-bindsym Ctrl+$alt+Delete --release exec --no-startup-id "xset dpms force off"
+bindsym Ctrl+$alt+Delete --release exec --no-startup-id "xdg-screensaver lock"
 
 # screenshot
 bindsym Print --release exec --no-startup-id import -silent png:- | xclip -i -selection clipboard -target image/png
@@ -223,8 +223,6 @@ focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
 exec --no-startup-id i3-notifier
-exec --no-startup-id xss-lock -n '/usr/lib/x86_64-linux-gnu/xsecurelock/dimmer' -l -- '/usr/share/goobuntu-desktop-files/xsecurelock.sh'
-exec --no-startup-id xautolock -detectsleep -time 10 -locker '/usr/share/goobuntu-desktop-files/xsecurelock.sh'
 exec --no-startup-id $HOME/.dotfiles/bin/mute-on-lock.sh
 exec --no-startup-id compton
 exec --no-startup-id xcape -e 'Caps_Lock=Escape' -t 100

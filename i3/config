@@ -190,34 +190,26 @@ bar {
     }
 }
 
-new_window 1pixel
-for_window [class="Yad"] floating enable
-for_window [class="gnome-control-center"] floating enable
-for_window [class="Gnome-tweaks"] floating enable
-for_window [class="gnome-calendar"] floating enable
-for_window [class="Clocks"] floating enable
-for_window [instance="calendar.google.com"] floating enable
-for_window [class="Nautilus"] floating enable
-for_window [class="Dconf-editor"] floating enable
-for_window [class="vlc"] floating enable
-for_window [class="gnuplot.*"] floating enable
-for_window [class="^.*"] border pixel 3
-for_window [instance="calendar.google.com"] floating enable
-for_window [instance="www.google.com__calendar_event"] floating enable
-for_window [instance="crx_jgeocpdicgmkeemopbanhokmhcgcflmi"] floating enable
-for_window [instance="crx_jgeocpdicgmkeemopbanhokmhcgcflmi"] resize set 600 800
-for_window [instance="web.whatsapp.com"] resize set 635 800
+default_border pixel 2
+default_floating_border pixel 2
+hide_edge_borders smart
 
+gaps inner 7
+gaps outer -7
+smart_gaps on
+
+for_window [class="^.*"] border pixel 2
+for_window [class="gnome"] floating enable, resize set 1000 800, move position center
+for_window [title="GNOME"] floating enable, resize set 1000 800, move position center
+for_window [class="gnuplot"] floating enable
+for_window [window_role="pop-up"] floating enable
+for_window [window_role="bubble"] floating enable, border pixel 0
+for_window [instance="web.whatsapp.com|mail.google.com"] floating disable
 
 client.unfocused        #4c4c4c   #4c4c4c   #4c4c4c   #4c4c4c
 client.focused          #CC0000   #CC0000   #CC0000   #3eaeff
 client.focused_inactive #CC000066 #CC000066 #CC000066 #3eaeff66
 client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
-
-gaps inner 7
-gaps outer -7
-smart_gaps on
-smart_borders on
 
 focus_follows_mouse no
 workspace_auto_back_and_forth yes

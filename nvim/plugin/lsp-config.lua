@@ -6,7 +6,7 @@ function LspRoot(...)
 end
 
 function LspStatus()
-	if next(vim.lsp.get_clients()) == nil then
+	if next(vim.lsp.get_active_clients()) == nil then
 		return ""
 	end
 

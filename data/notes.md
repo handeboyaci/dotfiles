@@ -9,9 +9,9 @@ sudo apt install \
   libgdk-pixbuf-2.0-dev libjson-c-dev libpango1.0-dev libstartup-notification0-dev \
   libwlroots-0.19-dev libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev \
   libxcb-xrm-dev libxkbcommon-x11-dev meson neovim ninja-build nwg-bar pkg-config \
-  playerctl py3status python3-daemon python3-dateutil python3-googleapi \
-  python3-oauth2client python3-pip ripgrep scdoc slurp swaybg swayidle swaylock \
-  swayosd tmux unzip wl-clipboard wdisplays xdg-desktop-portal-wlr 
+  py3status python3-daemon python3-dateutil python3-googleapi python3-oauth2client \
+  python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip \
+  wl-clipboard wdisplays xdg-desktop-portal-wlr
 
 pip install --break-system-packages i3-notifier py3notifier 
 

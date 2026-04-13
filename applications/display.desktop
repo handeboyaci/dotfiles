@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Displays
 Icon=video-display-symbolic
-Exec=gnome-control-center display
+Exec=wdisplays
 Terminal=false
 Type=Application
 StartupNotify=true

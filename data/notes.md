@@ -1,67 +1,19 @@
 # in jupyterlab vim extension, remove modifyEdgeSomething
 
-sudo apt install build-essential cmake autoconf pkg-config git i3 jq xautolock \
-    aptitude xcape libfontconfig-dev tmux gnome-flashback xss-lock ninja-build \
-    gettext unzip curl fzf flex bison check automake meson libglib2.0-dev \
-    libcairo2-dev libpango1.0-dev libxkbcommon-dev libgdk-pixbuf2.0-dev \
-    libxcb-xkb-dev libxcb-randr0-dev libxcb-xinerama0-dev libxcb1-dev \
-    libxcb-util-dev libxkbcommon-x11-dev libxcb-ewmh-dev libxcb-icccm4-dev \
-    libxcb-xrm-dev libstartup-notification0-dev python3-pip xsecurelock
-    compton dconf-editor gnome-calendar npm python3-venv hub dos2unix equivs \
-    python3-ipython python3-numpy python3-scipy python3-pandas python3-seaborn \
-    python3-matplotlib python3-oauth2client python3-pynvim python3-daemon \
-    python3-googleapi py3status jupyter-notebook papirus-icon-theme
-
-sudo pip install --break-system-packages i3-notifier py3notifier 
 git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
 
-# to avoid dbus timeout wait
-sudo apt purge xdg-desktop-portal xdg-desktop-portal-gtk
-# make sure the data/xdg* files have a version newer than what is available in
-# apt
-equivs-build $HOME/.dotfiles/data/xdg-desktop-portal
-equivs-build $HOME/.dotfiles/data/xdg-desktop-portal-gtk
-sudo dpkg -i /tmp/sselcuk/xdg-desktop-portal*.deb
+sudo apt install aptitude autoconf autoconf automake bat bison brightnessctl \
+  build-essential check cmake curl dconf-editor dconf-editor dos2unix fd-find flex \
+  foot fzf gettext gir1.2-playerctl-2.0 git gnome-calendar grim \
+  gtk-desktop-portal-wlr jq kanshi libcairo2-dev libgdk-pixbuf-2.0-dev \
+  libjson-c-dev libpango1.0-dev libstartup-notification0-dev libwlroots-0.19-dev \
+  libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xrm-dev \
+  libxkbcommon-x11-dev meson neovim ninja-build nwg-bar pkg-config py3status \
+  python3-daemon python3-dateutil python3-googleapi python3-oauth2client \
+  python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip \
+  wl-clipboard wdisplays
 
-cd $HOME
-rm -rf .zshenv $HOME/.ssh
-for f in zshenv gitconfig condarc inputrc tmux.conf fonts
-do
-  ln -s $HOME/.dotfiles/$f .$f
-done
-
-
-cd $HOME/.config
-for f in i3 alacritty.yml rofi
-do
-  ln -s $HOME/.dotfiles/$f
-done
-
-cd $HOME/.local/share; ln -s $HOME/.dotfiles/applications
-cd ~/.local/share/icons/hicolor/; ln -s ~/.dotfiles/icons 256x256
-
-conda create --name dev
-conda install python=3.11 scipy numpy scikit-learn pandas seaborn matplotlib pymc tensorflow-probability jupyter statsmodels
-cd $HOME/.conda
-find -name *.sh | xsed -i 's/ sed / command sed /g'
-
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-<!-- cargo install alacritty fd-find ripgrep -->
-
-mkdir software
-cd software
-
-git clone https://github.com/neovim/neovim.git
-cd neovim
-make CMAKE_BUILD_TYPE=Release CMAKE_INSTALL_PREFIX=/usr  -j8
-sudo make install
-cd ..
-
-git clone https://github.com/regolith-linux/i3-gnome-flashback.git
-cd i3-gnome-flashback
-sudo make install
-cd ..
-
+pip install --break-system-packages i3-notifier py3notifier 
 git clone https://github.com/davatorium/rofi.git
 cd rofi
 git checkout 1.6.1
@@ -70,16 +22,43 @@ meson setup build --prefix=/usr
 ninja -C build install
 cd ..
 
-sudo update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator $HOME/.cargo/bin/alacritty 50
+git clone --recursive https://github.com/swaywm/sway.git
+sudo apt install libwlroots-$VERSION-dev
+git grep 'wlroots_version.*$VERSION' $(git rev-list --all)
+git am $HOME/.dotfiles/data/fullscreen.patch
+meson setup build/
+ninja -C build/
+sudo ninja -C build/ install
 
-gsettings set org.gnome.desktop.wm.keybindings switch-input-source "[]"
-gsettings set org.gnome.desktop.wm.keybindings switch-input-source-backward "[]"
-gsettings set org.gnome.desktop.input-sources xkb-options "['caps:ctrl_modifier', 'nbsp:level2', 'grp:alt_space_toggle']"
-gsettings set org.gnome.gnome-flashback notifications false
+cd $HOME
+rm -rf .zshenv $HOME/.ssh
+for f in zshenv gitconfig inputrc tmux.conf fonts
+do
+  ln -s $HOME/.dotfiles/$f .$f
+done
 
+
+cd $HOME/.config
+for f in i3 rofi foot kanshi nvim rofi sway swayidle swaylock swayosd systemd xdg-desktop-portal
+do
+  ln -s $HOME/.dotfiles/$f
+done
+
+cd $HOME/.local/share; rm -rf applications; ln -s $HOME/.dotfiles/applications
+cd ~/.local/share/icons/hicolor/; ln -s ~/.dotfiles/icons 256x256
+
+
+mkdir software
+cd software
 
 cd $HOME/.dotfiles/tmux/tmux-thumbs
 sh tmux-thumbs-install.sh
+
+git clone https://github.com/neovim/neovim.git
+cd neovim
+make CMAKE_BUILD_TYPE=Release CMAKE_INSTALL_PREFIX=/usr  -j8
+sudo make install
+cd ..
 
 sudo rm -f \
   /usr/share/nvim/runtime/autoload/netrw.vim \
@@ -90,13 +69,14 @@ sudo rm -f \
   /usr/share/nvim/runtime/plugin/netrwPlugin.vim \
   /usr/share/nvim/runtime/syntax/netrw.vim
 
-cd ~/.config
-ln -s ~/.dotfiles/nvim
+nvim --headless -c "TSInstall all" 
 
-nvim --headless -c "TSInstall all" -c qall
-# Update the mason install list
 nvim --headless \
   -c 'packadd mason.nvim' \
   -c 'lua require("mason").setup{}' \
-  -c 'MasonInstall ltex-ls lua-language-server pyink pyright ruff-lsp shellcheck shellharden shfmt texlab vim-language-server vint' \
+  -c 'MasonInstall lua-language-server pyink basedpyright ruff uv shellcheck shfmt vim-language-server vint' \
   -c qall
+
+
+sudo systemctl mask ctrl-alt-del.target
+sudo systemctl daemon-reload

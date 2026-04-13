@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Sound Settings
 Icon=audio-volume-medium
-Exec=gnome-control-center sound
+Exec=env XDG_CURRENT_DESKTOP=GNOME gnome-control-center sound
 Terminal=false
 Type=Application
 StartupNotify=true

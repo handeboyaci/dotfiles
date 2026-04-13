@@ -1,3 +1,5 @@
+exec --no-startup-id dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME
+
 set $mod Mod4
 set $alt Mod1
 
@@ -7,17 +9,17 @@ font pango:Fira Mono 12
 floating_modifier $mod
 
 # start a terminal
-bindsym $mod+Return exec --no-startup-id i3-sensible-terminal
+bindsym $mod+Return exec --no-startup-id foot
 bindsym $mod+Shift+Return exec --no-startup-id google-chrome
 
 # kill focused window
 bindsym $mod+w kill
-bindsym $mod+Shift+w exec --no-startup-id $HOME/.dotfiles/i3/shutdown
+bindsym $mod+Shift+w exec --no-startup-id nwg-bar
 
 bindsym $mod+Shift+space exec --no-startup-id rofi -show run
 bindsym $mod+space exec --no-startup-id rofi -modi drun -show drun -show-icons
 
-bindsym $mod+Tab exec --no-startup-id rofi -show window -show-icons -filter "-Google-chrome "
+# bindsym $mod+Tab exec --no-startup-id rofi -show window -show-icons -filter "-Google-chrome "
 
 bindsym $mod+p exec --no-startup-id rofi -modi pass:$HOME/.dotfiles/rofi/rofi-pass -show pass
 bindsym $mod+b exec --no-startup-id rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
@@ -50,7 +52,7 @@ bindsym $mod+minus split v
 bindsym $mod+f fullscreen toggle
 
 # change container layout (stacked, tabbed, toggle split)
-bindsym $mod+bracketright layout toggle splitv splith tabbed stacking
+bindsym $mod+bracketright layout toggle split tabbed
 
 # toggle tiling / floating
 bindsym $mod+bracketleft floating toggle
@@ -67,11 +69,13 @@ bindsym $mod+d focus child
 # make window sticky
 bindsym $mod+s sticky toggle
 
-bindsym Ctrl+$alt+Delete --release exec --no-startup-id "xdg-screensaver lock"
+bindsym Ctrl+$alt+Delete exec --no-startup-id swaylock 
+exec --no-startup-id swayidle
+bindswitch --locked lid:toggle exec swaylock && systemctl sleep
 
 # screenshot
-bindsym Print --release exec --no-startup-id import -silent png:- | xclip -i -selection clipboard -target image/png
-bindsym shift+Print --release exec --no-startup-id import -silent ~/Screenshot-$(date +%Y%m%d_%H%M%S).png
+bindsym Print exec --no-startup-id grim -g "$(slurp)" - | wl-copy
+bindsym shift+Print exec --no-startup-id grim -g "$(slurp)"
 
 # Define names for default workspaces for which we configure key bindings later on.
 # We use variables to avoid repeating the names in multiple places.
@@ -108,7 +112,7 @@ bindsym $mod+Left move workspace to output left
 bindsym $mod+Right move workspace to output right
 
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
-bindsym $mod+Shift+r restart
+bindsym $mod+Shift+r reload
 
 # resize window (you can also use the mouse for that)
 mode "topleft" {
@@ -172,49 +176,75 @@ bindsym $mod+plus bar mode toggle
 # finds out, if available)
 bar {
     position top
-    i3bar_command i3bar -t
     status_command py3status -c ~/.config/i3/py3status.config
 
     tray_output primary
     tray_padding 3
     colors {
-        background #2C394Ca0
-        statusline #ffeedd
-        separator #666666
+        background #4a3e35cc
+        statusline #f5e4c6
+        separator #7d6b5e
 
-        focused_workspace  #4c7899ff  #285577ff #ffffffff
-        active_workspace   #333333ff  #5f676aff #ffffffff
-        inactive_workspace #333333ff  #222222ff #888888ff
-        urgent_workspace   #2C394Ca0  #2C394Ca0 #ff9f9fff
-        binding_mode       #2f343aff  #900000ff #ffffffff
+        focused_workspace    #d9a066 #6b5a4d #f5e4c6
+        active_workspace     #6b5a4d #4a3e35 #f5e4c6
+        inactive_workspace   #3a2f26 #2a201b #b2a090
+        urgent_workspace     #cc6666 #cc6666 #f5e4c6
+        binding_mode         #cc7755 #9e4733 #f5e4c6
     }
 }
 
+input type:touchpad {
+    natural_scroll enabled
+    tap enabled
+    dwt enabled
+    drag enabled
+    drag_lock disabled
+    click_method clickfinger
+    clickfinger_button_map lrm
+}
+
+input * {
+    xkb_layout "us,tr"
+    xkb_options "caps:ctrl_modifier,grp:alt_space_toggle,misc:typo"
+}
+
+
 default_border pixel 2
 default_floating_border pixel 2
-hide_edge_borders smart
+hide_edge_borders --i3 smart
+popup_during_fullscreen smart
 
-gaps inner 7
-gaps outer -7
+gaps inner 3
+gaps outer -3
 smart_gaps on
 
 for_window [class="^.*"] border pixel 2
-for_window [class="gnome"] floating enable, resize set 1000 800, move position center
-for_window [title="GNOME"] floating enable, resize set 1000 800, move position center
+for_window [class="gnome"] floating enable, resize set 50ppt 50ppt, move position center
+for_window [app_id="org.gnome.Settings"] floating enable, resize set 50ppt 50ppt, move position center
+for_window [app_id="wdisplays"] floating enable, resize set 50ppt 50ppt, move position center
 for_window [class="gnuplot"] floating enable
 for_window [window_role="pop-up"] floating enable
 for_window [window_role="bubble"] floating enable, border pixel 0
 for_window [instance="web.whatsapp.com|mail.google.com"] floating disable
 
 client.unfocused        #4c4c4c   #4c4c4c   #4c4c4c   #4c4c4c
-client.focused          #CC0000   #CC0000   #CC0000   #3eaeff
+client.focused          #3eaeff   #3eaeff   #3eaeff   #3eaeff
 client.focused_inactive #CC000066 #CC000066 #CC000066 #3eaeff66
 client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec --no-startup-id i3-notifier
-exec --no-startup-id $HOME/.dotfiles/bin/mute-on-lock.sh
-exec --no-startup-id compton
-exec --no-startup-id xcape -e 'Caps_Lock=Escape' -t 100
+exec_always --no-startup-id /home/sselcuk/.local/bin/i3-notifier
+exec_always --no-startup-id swaybg -i $HOME/.config/sway/bg.jpg
+exec --no-startup-id systemctl --user restart kanshi.service
+exec --no-startup-id systemctl --user restart swayosd-server
+# exec_always --no-startup-id swayosd-server
+bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
+bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
+bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=120
+bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=120
+bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
+bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
+
+exec --no-startup-id /usr/libexec/gsd-rfkill

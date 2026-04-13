@@ -1,23 +1,19 @@
 #!/bin/bash
-
-pkill -0 xautolock
+pkill -0 swayidle
 status=$?
 
-if [[ $BLOCK_BUTTON -eq 1 ]]
-then
-  if (( $status ))
-  then
-    i3-msg exec -- --no-startup-id xautolock -detectsleep -time 10 -locker '/usr/share/goobuntu-desktop-files/xsecurelock.sh' &>/dev/null
+if [[ "$BLOCK_BUTTON" -eq 1 ]]; then
+  if (( status  )); then
+    nohup swayidle &>/dev/null &
     status=0
   else
-    xautolock -exit
+    pkill swayidle
     status=1
   fi
 fi
 
-if (( $status ))
-then
-  echo 👁
+if (( status )); then
+  echo "👁"
 else
-  echo 💤
+  echo "💤"
 fi

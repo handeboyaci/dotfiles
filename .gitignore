@@ -9,5 +9,6 @@ mail/notmuch-vim
 ssh/known_hosts
 ssh/known_hosts.old
 ssh/sk-passwords
+__pycache__/
 tmp/
 !tmp/.create-dir

@@ -1,0 +1,101 @@
+From 2a94d8e456daa0b69f6d386745b5d0dbbfad4a50 Mon Sep 17 00:00:00 2001
+From: Sencer Selcuk <sencerselcuk@gmail.com>
+Date: Sun, 12 Apr 2026 10:19:08 -0400
+Subject: [PATCH] fix fullscreen
+
+---
+ include/sway/tree/container.h | 1 +
+ meson.build                   | 1 +
+ sway/desktop/xdg_shell.c      | 1 +
+ sway/desktop/xwayland.c       | 1 +
+ sway/tree/container.c         | 5 +----
+ 5 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/include/sway/tree/container.h b/include/sway/tree/container.h
+index d8780544..01d026a5 100644
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -255,6 +255,7 @@ void container_end_mouse_operation(struct sway_container *container);
+ void container_set_fullscreen(struct sway_container *con,
+ 		enum sway_fullscreen_mode mode);
+ 
++void client_set_fullscreen(struct sway_container *con, bool enable);
+ /**
+  * Convenience function.
+  */
+diff --git a/meson.build b/meson.build
+index 17d65c33..265a2154 100644
+--- a/meson.build
++++ b/meson.build
+@@ -21,6 +21,7 @@ add_project_arguments(
+ 		'-Wno-unused-result',
+ 		'-Wno-missing-braces',
+ 		'-Wno-format-zero-length',
++    '-Wno-error=switch',
+ 		'-Wundef',
+ 		'-Wvla',
+ 	],
+diff --git a/sway/desktop/xdg_shell.c b/sway/desktop/xdg_shell.c
+index 7217e136..2ee4147a 100644
+--- a/sway/desktop/xdg_shell.c
++++ b/sway/desktop/xdg_shell.c
+@@ -418,6 +418,7 @@ static void handle_request_fullscreen(struct wl_listener *listener, void *data)
+ 	}
+ 
+ 	container_set_fullscreen(container, req->fullscreen);
++	client_set_fullscreen(container, req->fullscreen);
+ 
+ 	arrange_root();
+ 	transaction_commit_dirty();
+diff --git a/sway/desktop/xwayland.c b/sway/desktop/xwayland.c
+index 65016b3b..2096e579 100644
+--- a/sway/desktop/xwayland.c
++++ b/sway/desktop/xwayland.c
+@@ -614,6 +614,7 @@ static void handle_request_fullscreen(struct wl_listener *listener, void *data)
+ 		return;
+ 	}
+ 	container_set_fullscreen(view->container, xsurface->fullscreen);
++	client_set_fullscreen(view->container, xsurface->fullscreen);
+ 
+ 	arrange_root();
+ 	transaction_commit_dirty();
+diff --git a/sway/tree/container.c b/sway/tree/container.c
+index 6880841b..a8f468b4 100644
+--- a/sway/tree/container.c
++++ b/sway/tree/container.c
+@@ -1170,7 +1170,7 @@ void container_end_mouse_operation(struct sway_container *container) {
+ 	}
+ }
+ 
+-static void set_fullscreen(struct sway_container *con, bool enable) {
++void client_set_fullscreen(struct sway_container *con, bool enable) {
+ 	if (!con->view) {
+ 		return;
+ 	}
+@@ -1188,7 +1188,6 @@ static void container_fullscreen_workspace(struct sway_container *con) {
+ 				"Expected a non-fullscreen container")) {
+ 		return;
+ 	}
+-	set_fullscreen(con, true);
+ 	con->pending.fullscreen_mode = FULLSCREEN_WORKSPACE;
+ 
+ 	con->saved_x = con->pending.x;
+@@ -1222,7 +1221,6 @@ static void container_fullscreen_global(struct sway_container *con) {
+ 				"Expected a non-fullscreen container")) {
+ 		return;
+ 	}
+-	set_fullscreen(con, true);
+ 
+ 	root->fullscreen_global = con;
+ 	con->saved_x = con->pending.x;
+@@ -1248,7 +1246,6 @@ void container_fullscreen_disable(struct sway_container *con) {
+ 				"Expected a fullscreen container")) {
+ 		return;
+ 	}
+-	set_fullscreen(con, false);
+ 
+ 	if (container_is_floating(con)) {
+ 		con->pending.x = con->saved_x;
+-- 
+2.53.0.1213.gd9a14994de-goog
+

@@ -1,4 +1,4 @@
-vim.bo.textwidth = 88
+vim.bo.textwidth = 80
 vim.bo.shiftwidth = 2
 vim.bo.softtabstop = 2
 vim.bo.tabstop = 2
@@ -13,20 +13,4 @@ null_ls.setup({
 			command = path .. "pyink",
 		}),
 	},
-})
-
-vim.lsp.start({
-	name = "Pyright",
-	cmd = {
-		path .. "pyright-langserver",
-		"--stdio",
-	},
-	single_file_support = true,
-	on_attach = function(client, bufnr)
-		-- if vim.startswith(vim.uri_from_bufnr(bufnr), "file:///google/src") then
-		-- 	client.stop()
-		-- end
-		client.server_capabilities.documentFormattingProvider = false
-		client.server_capabilities.documentRangeFormattingProvider = false
-	end,
 })

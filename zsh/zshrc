@@ -506,7 +506,17 @@ zmodload zsh/pcre
 #source /etc/zsh_command_not_found
 disable r # do not use shell built-in r for repeating last command
 autoload -Uz compinit
-compinit -C -i -d ~/.dotfiles/tmp/zcompdump
+for dump in ~/.dotfiles/tmp/zcompdump(N.mh+24); do
+  compinit -C -i -d ~/.dotfiles/tmp/zcompdump
+done
+# compile zcompdump
+{
+  zcomp="$HOME/.dotfiles/tmp/zcompdump" 
+  if [[ -s "$zcomp" && (! -s "${zcomp}.zwc" || "${zcomp}" -nt "${zcomp}.zwc") ]]
+  then 
+    zcompile "$zcomp"
+  fi
+} &!
 #}}}
 
 # syntax highlighting {{{
@@ -519,4 +529,3 @@ FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
 FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
 FAST_HIGHLIGHT_STYLES[comment]='fg=101'
 # }}}
- source $ZDOTDIR/conda.zsh

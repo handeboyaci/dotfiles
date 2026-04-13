@@ -1,0 +1,11 @@
+[Unit]
+Description=Start the kanshi profile service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/kanshi
+Restart=always
+
+[Install]
+WantedBy=sway-session.target

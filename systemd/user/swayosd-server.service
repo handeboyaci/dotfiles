@@ -1,0 +1,12 @@
+[Unit]
+Description=SwayOSD display server
+PartOf=graphical-session.target
+After=swayosd-libinput-backend.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/swayosd-server
+Restart=always
+
+[Install]
+WantedBy=sway-session.target

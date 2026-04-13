@@ -2,38 +2,43 @@
 
 git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
 
-sudo apt install aptitude autoconf autoconf automake bat bison brightnessctl \
-  build-essential check cmake curl dconf-editor dconf-editor dos2unix fd-find flex \
-  foot fzf gettext gir1.2-playerctl-2.0 git gnome-calendar grim \
-  gtk-desktop-portal-wlr jq kanshi libcairo2-dev libgdk-pixbuf-2.0-dev \
-  libjson-c-dev libpango1.0-dev libstartup-notification0-dev libwlroots-0.19-dev \
-  libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xrm-dev \
-  libxkbcommon-x11-dev meson neovim ninja-build nwg-bar pkg-config py3status \
-  python3-daemon python3-dateutil python3-googleapi python3-oauth2client \
-  python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip \
-  wl-clipboard wdisplays
+sudo apt install \
+  aptitude autoconf autoconf automake bat bison brightnessctl build-essential \
+  check cmake curl dconf-editor dconf-editor dos2unix fd-find flex foot fzf \
+  gettext gir1.2-playerctl-2.0 git gnome-calendar grim jq kanshi libcairo2-dev \
+  libgdk-pixbuf-2.0-dev libjson-c-dev libpango1.0-dev libstartup-notification0-dev \
+  libwlroots-0.19-dev libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev \
+  libxcb-xrm-dev libxkbcommon-x11-dev meson neovim ninja-build nwg-bar pkg-config \
+  playerctl py3status python3-daemon python3-dateutil python3-googleapi \
+  python3-oauth2client python3-pip ripgrep scdoc slurp swaybg swayidle swaylock \
+  swayosd tmux unzip wl-clipboard wdisplays xdg-desktop-portal-wlr 
 
 pip install --break-system-packages i3-notifier py3notifier 
+
+mkdir software
+cd software
 git clone https://github.com/davatorium/rofi.git
 cd rofi
 git checkout 1.6.1
 git submodule update --init
-meson setup build --prefix=/usr
+meson setup build
 ninja -C build install
 cd ..
 
+VERSION=19
 git clone --recursive https://github.com/swaywm/sway.git
-sudo apt install libwlroots-$VERSION-dev
-git grep 'wlroots_version.*$VERSION' $(git rev-list --all)
+git checkout $(git grep "wlroots_version.*$VERSION" $(git rev-list --all)|head -1|cut -d: -f1)
 git am $HOME/.dotfiles/data/fullscreen.patch
 meson setup build/
 ninja -C build/
 sudo ninja -C build/ install
 
 cd $HOME
-rm -rf .zshenv $HOME/.ssh
-for f in zshenv gitconfig inputrc tmux.conf fonts
+rm -f .zshenv
+ln -s $HOME/.dotfiles/zsh/zshenv .zshenv
+for f in gitconfig inputrc tmux.conf fonts
 do
+  rm -rf .$f
   ln -s $HOME/.dotfiles/$f .$f
 done
 
@@ -41,10 +46,12 @@ done
 cd $HOME/.config
 for f in i3 rofi foot kanshi nvim rofi sway swayidle swaylock swayosd systemd xdg-desktop-portal
 do
+  rm -rf $f
   ln -s $HOME/.dotfiles/$f
 done
 
 cd $HOME/.local/share; rm -rf applications; ln -s $HOME/.dotfiles/applications
+mkdir -p ~/.local/share/icons/hicolor/
 cd ~/.local/share/icons/hicolor/; ln -s ~/.dotfiles/icons 256x256
 
 

@@ -239,7 +239,6 @@ exec_always --no-startup-id /home/sselcuk/.local/bin/i3-notifier
 exec_always --no-startup-id swaybg -i $HOME/.config/sway/bg.jpg
 exec --no-startup-id systemctl --user restart kanshi.service
 exec --no-startup-id systemctl --user restart swayosd-server
-# exec_always --no-startup-id swayosd-server
 bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
 bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
 bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=120

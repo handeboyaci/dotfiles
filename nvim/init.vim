@@ -41,6 +41,7 @@ set clipboard=unnamedplus
 
 colo ayu
 set termguicolors
+set smoothscroll
 set visualbell
 set lazyredraw
 set number
@@ -157,12 +158,12 @@ nnoremap <silent> cor :set relativenumber!<CR>
 nnoremap <silent> cos :set list!<CR>
 nnoremap <silent> cou :set cursorcolumn!<CR>
 nnoremap <silent> cow :set wrap! \| set wrap?<CR>
-nnoremap <silent> ]x /^\(>>>>\\|====\\|<<<<\) <CR>
-nnoremap <silent> [x ?^\(>>>>\\|====\\|<<<<\) <CR>
-vnoremap <silent> ]x /^\(>>>>\\|====\\|<<<<\) <CR>
-vnoremap <silent> [x ?^\(>>>>\\|====\\|<<<<\) <CR>
-onoremap <silent> ]x /^\(>>>>\\|====\\|<<<<\) <CR>
-onoremap <silent> [x ?^\(>>>>\\|====\\|<<<<\) <CR>
+nnoremap <silent> ]x /^\s*\(>>>>\\|====\\|<<<<\)<CR>
+nnoremap <silent> [x ?^\s*\(>>>>\\|====\\|<<<<\)<CR>
+vnoremap <silent> ]x /^\s*\(>>>>\\|====\\|<<<<\)<CR>
+vnoremap <silent> [x ?^\s*\(>>>>\\|====\\|<<<<\)<CR>
+onoremap <silent> ]x /^\s*\(>>>>\\|====\\|<<<<\)<CR>
+onoremap <silent> [x ?^\s*\(>>>>\\|====\\|<<<<\)<CR>
 " }}}
 
 " Autocommands {{{

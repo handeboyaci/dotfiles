@@ -9,9 +9,6 @@ null_ls.setup({
 				2,
 			},
 		}),
-		null_ls.builtins.formatting.shellharden.with({
-			command = path .. "shellharden",
-		}),
 	},
 })
 

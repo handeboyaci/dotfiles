@@ -1,4 +1,4 @@
-# vi: fdm=marker
+# # vi: fdm=marker
 if [[ "$WORKSTATION_NAME" == "cloud" ]] 
 then
   # If machine has prod access, make sure it is logged in.
@@ -161,18 +161,6 @@ zstyle ':completion:*:*:kill:*' insert-ids single
 # Man
 zstyle ':completion:*:manuals' separate-sections true
 zstyle ':completion:*:manuals.(^1*)' insert-sections true
-
-# Media Players
-zstyle ':completion:*:*:mpg123:*' file-patterns '*.(mp3|MP3):mp3\ files *(-/):directories'
-zstyle ':completion:*:*:mpg321:*' file-patterns '*.(mp3|MP3):mp3\ files *(-/):directories'
-zstyle ':completion:*:*:ogg123:*' file-patterns '*.(ogg|OGG|flac):ogg\ files *(-/):directories'
-zstyle ':completion:*:*:mocp:*' file-patterns '*.(wav|WAV|mp3|MP3|ogg|OGG|flac):ogg\ files *(-/):directories'
-
-# Mutt
-if [[ -s "$HOME/.mutt/aliases" ]]; then
-  zstyle ':completion:*:*:mutt:*' menu yes select
-  zstyle ':completion:*:mutt:*' users ${${${(f)"$(<"$HOME/.dotfiles/mutt/aliases")"}#alias[[:space:]]}%%[[:space:]]*}
-fi
 
 # SSH/SCP/RSYNC
 zstyle ':completion:*:(ssh|scp|rsync):*' tag-order 'hosts:-host:host hosts:-domain:domain hosts:-ipaddr:ip\ address *'
@@ -451,7 +439,7 @@ zle -N vi-join-custom
 bindkey -M vicmd J vi-join-custom
 # }}}
 
-# #}}}
+# }}}
 
 # theme {{{
 function set-theme {
@@ -474,7 +462,7 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
-for p in $HOME/.cargo/bin $HOME/.dotfiles/bin $HOME/.local/bin 
+for p in $HOME/.dotfiles/bin $HOME/.local/bin 
 do
   if ! (( $path[(I)$p] ))
   then
@@ -491,6 +479,9 @@ then
     $fpath
   )
 fi
+
+# Remove platform-specific completions for other OSes
+fpath=(${fpath:#*/Completion/(AIX|BSD|Cygwin|Darwin|Solaris|openSUSE|Redhat|Mandriva)})
 
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
@@ -509,9 +500,13 @@ zmodload zsh/pcre
 #source /etc/zsh_command_not_found
 disable r # do not use shell built-in r for repeating last command
 autoload -Uz compinit
-for dump in ~/.dotfiles/tmp/zcompdump(N.mh+24); do
+# Always call compinit, but use cache if less than 24h old
+if [[ -n ~/.dotfiles/tmp/zcompdump(N.mh-24) ]]; then
   compinit -C -i -d ~/.dotfiles/tmp/zcompdump
-done
+else
+  compinit -i -d ~/.dotfiles/tmp/zcompdump
+  touch ~/.dotfiles/tmp/zcompdump
+fi
 # compile zcompdump
 {
   zcomp="$HOME/.dotfiles/tmp/zcompdump" 
@@ -523,12 +518,34 @@ done
 #}}}
 
 # syntax highlighting {{{
-source $ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh
-FAST_HIGHLIGHT[chroma-ssh]=""
-FAST_HIGHLIGHT[chroma-make]=""
-FAST_HIGHLIGHT_STYLES[globbing]='fg=magenta,underlined'
-FAST_HIGHLIGHT_STYLES[history-expansion]='fg=magenta,bold'
-FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
-FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
-FAST_HIGHLIGHT_STYLES[comment]='fg=101'
+function _load_fast_highlight() {
+  source $ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh
+  FAST_HIGHLIGHT[chroma-ssh]=""
+  FAST_HIGHLIGHT[chroma-make]=""
+  FAST_HIGHLIGHT_STYLES[globbing]='fg=magenta,underlined'
+  FAST_HIGHLIGHT_STYLES[history-expansion]='fg=magenta,bold'
+  FAST_HIGHLIGHT_STYLES[function]='fg=green,bold'
+  FAST_HIGHLIGHT_STYLES[alias]='fg=green,bold'
+  FAST_HIGHLIGHT_STYLES[comment]='fg=101'
+}
+sched +1 _load_fast_highlight
 # }}}
+
+# Auto-compile large zsh scripts in the background
+function _auto_zcompile() {
+  local files=(
+    "$ZDOTDIR/zshrc"
+    "$ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh"
+    "$ZDOTDIR/syntax-highlight/fast-highlight"
+    "$ZDOTDIR/g4d/async.zsh"
+    "$ZDOTDIR/autoload/_blaze"
+    "$ZDOTDIR/autoload/_g4_generated_completion"
+  )
+  local f
+  for f in $files; do
+    if [[ -s "$f" && (! -s "${f}.zwc" || "$f" -nt "${f}.zwc") ]]; then
+      zcompile "$f"
+    fi
+  done
+}
+{ _auto_zcompile } &!

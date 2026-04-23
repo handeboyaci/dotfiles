@@ -20,7 +20,7 @@ export LESS='XFgiMRWz-4-x2'
 export LESSOPEN="|$HOME/.dotfiles/zsh/lesspipe %s"
 export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
 
-export P4DIFF='nvim -d'
+export P4DIFF='nvim -d +"nnoremap <Leader>q :qa<CR>" +"normal gg"'
 export P4MERGE='$HOME/.dotfiles/bin/p4merge'
 
 export SUDO_ASKPASS=/usr/lib/openssh/gnome-ssh-askpass

@@ -52,7 +52,6 @@ async_init
 typeset -g -a precmd_functions
 precmd_functions+=async-cl-precmd
 
-_PYTHONPATH=$PYTHONPATH
 function set_current_client {
   local prefix="/google/src/cloud"
   local splitted
@@ -69,7 +68,6 @@ function set_current_client {
     fi
 
     CITC_ROOT="$prefix/$CITC_USER/$CITC_NAME/google3"
-    PYTHONPATH=$_PYTHONPATH:$(realpath $CITC_ROOT/..):$(realpath $CITC_ROOT/third_party/py)
     [[ -f $CITC_ROOT/../.citc/p4_client_name ]] && VCS=g4 || VCS=hg
     unset MATCH
   else
@@ -78,7 +76,6 @@ function set_current_client {
     CITC_PWD=""
     CITC_USER=""
     VCS=""
-    PYTHONPATH=$_PYTHONPATH
   fi
 }
 

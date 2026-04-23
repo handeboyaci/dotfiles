@@ -1,13 +1,18 @@
 # vi: fdm=marker
-if [[ "$WORKSTATION_NAME" != "laptop" ]] 
+if [[ "$WORKSTATION_NAME" == "cloud" ]] 
 then
   # If machine has prod access, make sure it is logged in.
   if ! gcertstatus --nocheck_ssh --quiet
   then
     gcert --disable_svelte
   fi
-else
-  # ...else, set a proxy for prod access.
+  if [[ -z $SNAP_BASHRC_SOURCED &&  -r /google/data/ro/teams/ix-ml/snap/config/bashrc ]] ; then
+    source /google/data/ro/teams/ix-ml/snap/config/bashrc
+  fi
+  export SNAP_DEFAULT_FOR_SYNC=true
+  export SNAP_DEFAULT_FOR_NEW_WORKSPACE=true
+elif [[ "$WORKSTATION_NAME" == "laptop" ]]
+then
   export PROD_PROXY=cloud
 fi
 
@@ -45,7 +50,6 @@ setopt HIST_IGNORE_DUPS
 setopt HIST_IGNORE_SPACE
 setopt HIST_LEX_WORDS
 setopt HIST_REDUCE_BLANKS
-setopt HIST_SAVE_NO_DUPS
 setopt HIST_SUBST_PATTERN
 setopt HIST_VERIFY
 setopt INTERACTIVE_COMMENTS
@@ -364,27 +368,26 @@ done
 #}}}
 
 # clipboard integration {{{
-
 if [[ -n $TMUX ]]
 then
   function cutbuffer() {
     zle .$WIDGET
-    printf "\033]52;c;$(printf "%s" "$CUTBUFFER" | base64)\a"
+    printf "\033]52;c;$(printf "%s" "$CUTBUFFER" | base64 | tr -d '\n')\a"
   }
 
   function putbuffer() {
     zle copy-region-as-kill "$(tmux save-buffer -)"
     zle .$WIDGET
   }
-elif [[ -n $DISPLAY && -z $SSH_CONNECTION ]] && (( $+commands[xclip] ))
+elif [[ -n $WAYLAND_DISPLAY ]] && (( $+commands[wl-copy] ))
 then
   function cutbuffer() {
     zle .$WIDGET
-    echo $CUTBUFFER | xclip -selection clipboard
+    printf "%s" "$CUTBUFFER" | wl-copy
   }
 
   function putbuffer() {
-    zle copy-region-as-kill "$(xclip -selection clipboard -o)"
+    zle copy-region-as-kill "$(wl-paste -n)"
     zle .$WIDGET
   }
 fi

@@ -36,20 +36,20 @@ local citclist=($(command ls /google/src/cloud/$user))
 
 if [[ -n $citclist[(r)$target] ]]
 then
-  full_path="/google/src/cloud/$user/$target/google3"
+  local full_path="/google/src/cloud/$user/$target/google3"
 elif [[ "$target" =~ ^[0-9]+$ ]]
 then
-  maybe_full_path=$(p4 g4d $target 2>/dev/null)
+  local maybe_full_path=$(p4 g4d $target 2>/dev/null)
   if (( $? ))
   then
-    full_path=/google/src/files/"$target"/depot/google3
+    local full_path=/google/src/files/"$target"/depot/google3
   else
-    full_path=$(p4 g4d $target | tr -d '\r')
+    local full_path=$(p4 g4d $target | tr -d '\r')
   fi
 
 elif (( $+force[1] ))
 then
-  full_path=$(p4 g4d -f $target|tail -1|tr -d '\r')
+  local full_path=$(p4 g4d -f $target|tail -1|tr -d '\r')
 fi
 
 
@@ -59,13 +59,13 @@ then
   then
     if [[ $alias_ =~ "^[0-9]+$" ]]
     then
-      full_path="${full_path:h}/.snapshot/${alias_}/google3"
+      local full_path="${full_path:h}/.snapshot/${alias_}/google3"
     else
       typeset +g -A g4d_aliases
-      g4d_aliases=(${=${${(@M)${(f)"$(cat $HOME/.g4d 2>/dev/null)"}:#alias @*}#alias @}})
+      local g4d_aliases=(${=${${(@M)${(f)"$(cat $HOME/.g4d 2>/dev/null)"}:#alias @*}#alias @}})
       if (( $+g4d_aliases[$alias_] ))
       then
-        full_path="$full_path/$g4d_aliases[$alias_]"
+        local full_path="$full_path/$g4d_aliases[$alias_]"
       else
         >&2 echo "Alias $alias_ was not found in $HOME/.g4d"
       fi

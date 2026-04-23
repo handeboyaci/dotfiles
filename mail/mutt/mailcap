@@ -1,4 +1,0 @@
-image/*; cp --remove-destination %s $MTMPDIR \; edisplay $MTMPDIR/$(basename %s) &
-text/html; cp --remove-destination %s $MTMPDIR \;  luakit -n $MTMPDIR/$(basename %s); nametemplate=%s.html;
-application/pdf; cp --remove-destination %s $MTMPDIR \; mupdf $MTMPDIR/$(basename %s) &;print=lpr -o sides=two-sided-long-edge
-application/*; cp --remove-destination %s $MTMPDIR \; xdg-open $MTMPDIR/$(basename %s) &

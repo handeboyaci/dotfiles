@@ -1,5 +1,6 @@
 local buffer = require("google3.buffer")
-local lsp = require("google3.lsp")
+local cider = require("google3.cider")
+local analysis = require("google3.analysis")
 
 local M = {}
 
@@ -83,7 +84,8 @@ M.setup = function(args)
 			if bufnr == nil or not vim.b[bufnr].is_google3_file then
 				return
 			end
-			lsp.attach(vim.b[bufnr].citc_root, bufnr)
+			cider.attach(vim.b[bufnr].citc_root, bufnr)
+			analysis.attach(vim.b[bufnr].citc_root, bufnr)
 		end,
 	})
 

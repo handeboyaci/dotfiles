@@ -32,7 +32,6 @@ set errorformat+=%f:%l:\ %m
 set makeprg=blaze\ build\ -c\ opt
 
 " This depends on sencer/async.nvim. Replace 'Make's with make otherwise.
-" command! -complete=file -nargs=* -bar -bang Build Make<bang> --compile_one_dependency <f-args>
 command! -complete=file -nargs=* -bang Build
       \ Make<bang> --compile_one_dependency <args> |
 

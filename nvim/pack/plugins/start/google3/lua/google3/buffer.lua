@@ -5,18 +5,49 @@ local M = {}
 
 local prefix = "/google/src/cloud"
 
+---Asynchronously checks if a glob pattern matches any files.
+---@param pattern string The glob pattern to check (e.g., "/path/*.swp").
+---@param callback function A function to call with the result (boolean).
+local function async_glob_exists(pattern, callback)
+	-- We use `ls` to check for the file. It will have a non-zero exit code
+	-- if the glob pattern matches no files. We discard stdout and stderr.
+	vim.loop.spawn("ls", {
+		args = { "-d", pattern }, -- -d prevents listing directory contents
+		stdio = { nil, nil, nil }, -- Ignore stdin, stdout, and stderr
+	}, function(code)
+		-- The callback is scheduled to run on the main thread to safely call vim APIs.
+		vim.schedule(function()
+			-- If exit code is 0, a file was found.
+			callback(code == 0)
+		end)
+	end)
+end
+
 local load_workspace = vim.schedule_wrap(function(j)
 	vim.g.workspace_loaded = true
-	for _, b in ipairs(j:result()) do
-		local nm = vim.fn.fnamemodify(b, ":p:~:.")
-		if vim.fn.glob(vim.fn.fnamemodify(nm, ":h") .. "/." .. vim.fn.fnamemodify(nm, ":t") .. ".sw*", true) == "" then
-			vim.cmd.badd(nm)
+	local files_to_check = j:result() or {}
+	local first = true
+	for _, b in ipairs(files_to_check) do
+		-- Skip comment lines from hg status
+		if not b:match("^#") then
+			local nm = vim.fn.fnamemodify(b, ":p:~:.")
+			local swap_pattern = vim.fn.fnamemodify(nm, ":h") .. "/." .. vim.fn.fnamemodify(nm, ":t") .. ".sw*"
+			-- Run our async check for each file.
+			async_glob_exists(swap_pattern, function(swap_exists)
+				if swap_exists then
+					return
+				end
+				if first and vim.fn.bufname() == "" then
+					first = false
+					vim.cmd.edit(nm)
+				else
+					vim.cmd.badd(nm)
+				end
+			end)
 		end
 	end
-	if vim.fn.bufname() == "" then
-		vim.cmd("bd")
-	end
 end)
+
 
 local function buf_var_setter(var)
 	local setter = function(j, exit_code)
@@ -32,6 +63,9 @@ local function buf_var_setter(var)
 end
 
 local function run_shell_cmds(vcs)
+  if vim.api.nvim_get_option_value("diff", {win=0}) then
+    vim.g.workspace_loaded = true
+  end
 	local set_cl_job
 	if vcs == "g4" then
 		set_cl_job = async.run_shell({

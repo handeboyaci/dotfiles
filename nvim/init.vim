@@ -1,9 +1,5 @@
 " vi:fdm=marker
 " TODO list
-" Close quickfix/location window if it is the last window; load prev buffer
-" better next/prev buffer
-" find related buffers .cc -> .h etc.
-" findfile("BUILD", ".;) & jump to rule with current file name
 " Options {{{
 let g:loaded_tarPlugin = 1
 let g:loaded_tar       = 1
@@ -24,18 +20,32 @@ let g:no_python_maps = 1
 let g:python_recommended_style = 0
 let g:tex_flavor = 'latex'
 
-let g:clipboard = {
-      \   'name': 'tmux',
-      \   'copy': {
-      \      '+': ['tmux', 'load-buffer', '-w', '-'],
-      \      '*': ['tmux', 'load-buffer', '-w', '-'],
-      \    },
-      \   'paste': {
-       \      '+': ['tmux', 'save-buffer', '-'],
-       \      '*': ['tmux', 'save-buffer', '-'],
-      \   },
-      \   'cache_enabled': 1,
-      \ }
+if empty($TMUX) && executable('wl-copy')
+  let g:clipboard = {
+        \   'name': 'wl-clipboard',
+        \   'copy': {
+        \      '+': ['wl-copy', '--type', 'text/plain'],
+        \      '*': ['wl-copy', '--type', 'text/plain', '--primary'],
+        \    },
+        \   'paste': {
+        \      '+': ['wl-paste', '--type', 'text/plain'],
+        \      '*': ['wl-paste', '--type', 'text/plain', '--primary'],
+        \   },
+        \ }
+else
+  let g:clipboard = {
+        \   'name': 'tmux',
+        \   'copy': {
+        \      '+': ['tmux', 'load-buffer', '-w', '-'],
+        \      '*': ['tmux', 'load-buffer', '-w', '-'],
+        \    },
+        \   'paste': {
+         \      '+': ['tmux', 'save-buffer', '-'],
+         \      '*': ['tmux', 'save-buffer', '-'],
+        \   },
+        \   'cache_enabled': 1,
+        \ }
+endif
 
 set clipboard=unnamedplus
 
@@ -177,6 +187,8 @@ augroup vimrc
   autocmd FileType c,cpp set matchpairs+==:;
 
   autocmd SwapExists * let v:swapchoice='o'
+
+  autocmd BufEnter * if winnr('$') == 1 && &buftype == 'quickfix' | quit | endif
 augroup END  " }}}
 
 " Commands {{{

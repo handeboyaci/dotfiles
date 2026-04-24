@@ -1,4 +1,4 @@
-# # vi: fdm=marker
+# vi: fdm=marker
 if [[ "$WORKSTATION_NAME" == "cloud" ]] 
 then
   # If machine has prod access, make sure it is logged in.

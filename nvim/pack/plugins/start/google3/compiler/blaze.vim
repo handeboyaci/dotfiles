@@ -27,16 +27,17 @@ set errorformat+=%f(%l):\ %tarning:\ %m
 set errorformat+=%f:%l:%c:\ %m
 set errorformat+=%f:%l:\ %m
 
-
-
 set makeprg=blaze\ build\ -c\ opt
 
-" This depends on sencer/async.nvim. Replace 'Make's with make otherwise.
-command! -complete=file -nargs=* -bang Build
-      \ Make<bang> --compile_one_dependency <args> |
+command! -complete=file -nargs=* -bar -bang Build
+      \ let s:args = <q-args> |
+      \ if empty(s:args) | let s:args = expand('%') | endif |
+      \ execute 'Make<bang> --compile_one_dependency ' . s:args
 
 
 command! -nargs=* -complete=file -bang Test
-      \ setl makeprg=/google/src/head/depot/google3/experimental/users/diamondm/util/affected_tests.sh\ --max_distance\ 1 |
-      \ Make<bang> <args> |
-      \ setl makeprg< 
+      \ let s:args = <q-args> |
+      \ if empty(s:args) | let s:args = expand('%') | endif |
+      \ execute 'setl makeprg=blaze\ test\ $(/google/bin/releases/depserver-contrib-tools/affected_targets/affected_targets\ --test_only\ --depth=0\ ' . s:args . ')' |
+      \ execute 'Make! ' |
+      \ setl makeprg<

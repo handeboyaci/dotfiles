@@ -8,18 +8,29 @@ local prefix = "/google/src/cloud"
 ---Asynchronously checks if a glob pattern matches any files.
 ---@param pattern string The glob pattern to check (e.g., "/path/*.swp").
 ---@param callback function A function to call with the result (boolean).
-local function async_glob_exists(pattern, callback)
-	-- We use `ls` to check for the file. It will have a non-zero exit code
-	-- if the glob pattern matches no files. We discard stdout and stderr.
-	vim.loop.spawn("ls", {
-		args = { "-d", pattern }, -- -d prevents listing directory contents
-		stdio = { nil, nil, nil }, -- Ignore stdin, stdout, and stderr
-	}, function(code)
-		-- The callback is scheduled to run on the main thread to safely call vim APIs.
-		vim.schedule(function()
-			-- If exit code is 0, a file was found.
-			callback(code == 0)
-		end)
+local function async_check_swap_exists(dir, prefix, callback)
+	-- We use `uv.fs_scandir` to read the directory and check for files
+	-- that start with the given prefix (e.g., `.file.py.sw`).
+	vim.loop.fs_scandir(dir, function(err, req)
+		if err then
+			vim.schedule(function() callback(false) end)
+			return
+		end
+		
+		local function check_next()
+			local name, type = vim.loop.fs_scandir_next(req)
+			if not name then
+				vim.schedule(function() callback(false) end)
+				return
+			end
+			if name:sub(1, #prefix) == prefix then
+				vim.schedule(function() callback(true) end)
+				return
+			end
+			check_next()
+		end
+		
+		check_next()
 	end)
 end
 
@@ -31,9 +42,10 @@ local load_workspace = vim.schedule_wrap(function(obj)
 		-- Skip comment lines from hg status
 		if not b:match("^#") and b ~= "" then
 			local nm = vim.fn.fnamemodify(b, ":p:~:.")
-			local swap_pattern = vim.fn.fnamemodify(nm, ":h") .. "/." .. vim.fn.fnamemodify(nm, ":t") .. ".sw*"
+			local dir = vim.fn.fnamemodify(nm, ":h")
+			local prefix = "." .. vim.fn.fnamemodify(nm, ":t") .. ".sw"
 			-- Run our async check for each file.
-			async_glob_exists(swap_pattern, function(swap_exists)
+			async_check_swap_exists(dir, prefix, function(swap_exists)
 				if swap_exists then
 					return
 				end

@@ -23,13 +23,13 @@ local function async_glob_exists(pattern, callback)
 	end)
 end
 
-local load_workspace = vim.schedule_wrap(function(j)
+local load_workspace = vim.schedule_wrap(function(obj)
 	vim.g.workspace_loaded = true
-	local files_to_check = j:result() or {}
+	local files_to_check = vim.split(obj.stdout or "", "\n", { plain = true })
 	local first = true
 	for _, b in ipairs(files_to_check) do
 		-- Skip comment lines from hg status
-		if not b:match("^#") then
+		if not b:match("^#") and b ~= "" then
 			local nm = vim.fn.fnamemodify(b, ":p:~:.")
 			local swap_pattern = vim.fn.fnamemodify(nm, ":h") .. "/." .. vim.fn.fnamemodify(nm, ":t") .. ".sw*"
 			-- Run our async check for each file.
@@ -50,61 +50,65 @@ end)
 
 
 local function buf_var_setter(var)
-	local setter = function(j, exit_code)
-		if exit_code ~= 0 then
+	local setter = function(obj)
+		if obj.code ~= 0 then
 			print("Could not set " .. var)
 			return
 		end
 
-		local _, val = next(j:result())
+		local lines = vim.split(obj.stdout or "", "\n", { plain = true })
+		local val = lines[1]
 		vim.b[var] = val
 	end
 	return setter
 end
 
 local function run_shell_cmds(vcs)
-  if vim.api.nvim_get_option_value("diff", {win=0}) then
-    vim.g.workspace_loaded = true
-  end
-	local set_cl_job
-	if vcs == "g4" then
-		set_cl_job = async.run_shell({
-			command = 'g4 -F "%change%" changes -s pending -c "$(g4 -F "%clientName" info|dos2unix)"',
-			on_exit = buf_var_setter("citc_cl"),
-		})
-		if not vim.g.workspace_loaded then
-			async
-				.run_cmd({
-					command = "g4 whatsout",
-					on_exit = load_workspace,
-				})
-				:start()
-		end
-	elseif vcs == "hg" then
-		set_cl_job = async.run_cmd({
-			command = "hg exportedcl",
-			on_exit = buf_var_setter("citc_cl"),
-		})
-		if not vim.g.workspace_loaded then
-			async
-				.run_shell({
-					command = "hg pstatus -n | grep '/'",
-					on_exit = load_workspace,
-				})
-				:start()
-		end
-	else
-		return
+	if vim.api.nvim_get_option_value("diff", { win = 0 }) then
+		vim.g.workspace_loaded = true
 	end
 
-	local job = async.run_shell({
+	local function run_set_cl_job()
+		if vcs == "g4" then
+			async.run_shell({
+				command = 'g4 -F "%change%" changes -s pending -c "$(g4 -F "%clientName" info|dos2unix)"',
+				on_exit = buf_var_setter("citc_cl"),
+			})
+		elseif vcs == "hg" then
+			async.run_cmd({
+				command = "hg exportedcl",
+				on_exit = buf_var_setter("citc_cl"),
+			})
+		end
+	end
+
+	-- Run whatsout job immediately if needed
+	if not vim.g.workspace_loaded then
+		if vcs == "g4" then
+			async.run_cmd({
+				command = "g4 whatsout",
+				on_exit = load_workspace,
+			})
+		elseif vcs == "hg" then
+			async.run_shell({
+				command = "hg pstatus -n | grep '/'",
+				on_exit = load_workspace,
+			})
+		end
+	end
+
+	-- Chain the jobs using callbacks
+	async.run_shell({
 		command = "srcfs get_readonly",
-		on_exit = buf_var_setter("citc_cl_synced"),
+		on_exit = function(obj)
+			buf_var_setter("citc_cl_synced")(obj, obj.code)
+			if obj.code == 0 then
+				vim.schedule(function()
+					run_set_cl_job()
+				end)
+			end
+		end,
 	})
-
-	job:and_then_on_success(set_cl_job)
-
-	job:start()
 end
 
 local function prepare_workspace(bufnr, fullpath)
@@ -150,6 +154,7 @@ M.setup = function(args)
 		return
 	end
 	vim.b[bufnr].is_google3_file = true
+	vim.bo[bufnr].grepprg = "cs --local --nostats"
 
 	prepare_workspace(bufnr, args.match)
 

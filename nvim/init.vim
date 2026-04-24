@@ -188,7 +188,7 @@ augroup vimrc
 
   autocmd SwapExists * let v:swapchoice='o'
 
-  autocmd BufEnter * if winnr('$') == 1 && &buftype == 'quickfix' | quit | endif
+
 augroup END  " }}}
 
 " Commands {{{

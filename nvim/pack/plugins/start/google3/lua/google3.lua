@@ -8,7 +8,7 @@ M.setup = function(args)
 	-- vim.opt.shada:append("r/google")
 
 	-- We are setting this as global to make sure the quickfix windows also has cs.
-	vim.o.grepprg = "cs --local --nostats"
+
 
 	vim.api.nvim_create_user_command("Comments", require("google3.comments").load, { bang = true })
 	vim.api.nvim_create_user_command("Snapshots", function(opts)
@@ -58,7 +58,7 @@ M.setup = function(args)
 		group = "google3",
 		pattern = "cpp",
 		callback = function()
-			vim.bo.includeexpr = "google3#CppProtoHeader(v:fname)"
+			vim.bo.includeexpr = require('google3.utils').cpp_proto_header
 		end,
 	})
 

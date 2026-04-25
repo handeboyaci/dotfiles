@@ -11,7 +11,7 @@
 	path = nvim/pack/plugins/start/fidget.nvim
 	url = https://github.com/j-hui/fidget.nvim.git
 [submodule "nvim/pack/plugins/start/aerial.nvim"]
-	path = nvim/pack/plugins/start/aerial.nvim
+	path = nvim/pack/plugins/opt/aerial.nvim
 	url = https://github.com/stevearc/aerial.nvim.git
 [submodule "nvim/pack/plugins/start/Comment.nvim"]
 	path = nvim/pack/plugins/start/Comment.nvim
@@ -44,7 +44,7 @@
 	path = nvim/pack/plugins/opt/telescope.nvim
 	url = https://github.com/nvim-telescope/telescope.nvim.git
 [submodule "nvim/pack/plugins/start/undotree"]
-	path = nvim/pack/plugins/start/undotree
+	path = nvim/pack/plugins/opt/undotree
 	url = https://github.com/mbbill/undotree.git
 [submodule "nvim/pack/plugins/start/vim-closer"]
 	path = nvim/pack/plugins/start/vim-closer

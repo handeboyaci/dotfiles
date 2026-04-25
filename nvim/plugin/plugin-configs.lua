@@ -1,3 +1,4 @@
+local lazy = require("lazy_loader")
 require("Comment").setup()
 
 vim.api.nvim_create_autocmd("TextYankPost", {
@@ -42,3 +43,30 @@ end, function(match)
 		vim.cmd("normal " .. col .. "|")
 	end
 end)
+
+-- Mason
+lazy.lazy_load("mason.nvim", {
+	cmds = { "Mason" },
+	on_load = function()
+		require("mason").setup()
+	end,
+})
+
+-- Tmux Navigator
+vim.g.tmux_navigator_disable_when_zoomed = 1
+
+vim.keymap.set("t", "<C-h>", "<C-\\><C-n>:TmuxNavigateLeft<CR>", { silent = true })
+vim.keymap.set("t", "<C-j>", "<C-\\><C-n>:TmuxNavigateDown<CR>", { silent = true })
+vim.keymap.set("t", "<C-k>", "<C-\\><C-n>:TmuxNavigateUp<CR>", { silent = true })
+vim.keymap.set("t", "<C-l>", "<C-\\><C-n>:TmuxNavigateRight<CR>", { silent = true })
+vim.keymap.set("t", "<C-w>", "<C-\\><C-n><C-w>", { silent = true })
+vim.keymap.set("t", "<C-x>", "<C-\\><C-n><C-w>c", { silent = true })
+
+-- Surround
+vim.g.surround_no_insert_mappings = 1
+
+-- Undotree
+vim.keymap.set("n", "coz", ":UndotreeToggle<CR>", { silent = true })
+
+-- Signify
+vim.g.signify_skip_filename_pattern = { [[\.pipertmp.*]] }

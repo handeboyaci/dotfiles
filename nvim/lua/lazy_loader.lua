@@ -29,6 +29,18 @@ function M.lazy_load(plugin_name, opts)
 			vim.keymap.set(mode, lhs, rhs, { noremap = true, silent = true })
 		end, { noremap = true, silent = true })
 	end
+
+	local cmds = opts.cmds or {}
+	for _, cmd in ipairs(cmds) do
+		vim.api.nvim_create_user_command(cmd, function(args)
+			vim.api.nvim_del_user_command(cmd)
+			vim.cmd("packadd " .. plugin_name)
+			if on_load then
+				on_load()
+			end
+			vim.cmd(cmd .. " " .. args.args)
+		end, { nargs = "*" })
+	end
 end
 
 return M

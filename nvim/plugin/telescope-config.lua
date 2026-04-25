@@ -41,7 +41,7 @@ lazy.lazy_load("telescope.nvim", {
 				mappings = {
 					n = {
 						["<Leader>q"] = actions.close,
-						["<Ctrl>-v"] = actions.select_vertical,
+						["<C-v>"] = actions.select_vertical,
 					},
 				},
 			},

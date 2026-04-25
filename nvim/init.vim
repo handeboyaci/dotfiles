@@ -119,7 +119,7 @@ set dictionary=/usr/share/dict/words
 set switchbuf=useopen,usetab
 
 set fillchars=vert:│,fold:·,diff:-
-set foldtext=init#FoldText()
+set foldtext=v:lua.require('fold_text').foldtext()
 set foldmethod=expr
 set foldexpr=nvim_treesitter#foldexpr()
 set foldlevel=100
@@ -208,7 +208,7 @@ endif
 
 if !exists(':Redir')
   command! -nargs=1 -complete=command -bar -range Redir
-        \ silent call init#Redir(<q-args>, <range>, <line1>, <line2>)
+        \ silent call v:lua.require('redir').redir(<q-args>, <range>, <line1>, <line2>)
 endif
 
 if !exists(':Color')

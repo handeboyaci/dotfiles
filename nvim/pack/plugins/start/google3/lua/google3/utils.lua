@@ -16,11 +16,10 @@ function M.gcl_fold()
   local content = ''
   if end_num > start_num + 1 then
     content = '...'
-    local content_regex = [[\m\C^\s*name = \zs.*\ze$]]
     local lines = vim.fn.getline(start_num + 1, end_num - 1)
     for _, line in ipairs(lines) do
-      local content_match = vim.fn.matchstr(line, content_regex)
-      if content_match ~= '' then
+      local content_match = line:match("^%s*name = (.*)$")
+      if content_match then
         content = content_match
         break
       end

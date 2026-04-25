@@ -10,8 +10,8 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 require("aerial").setup({
   on_attach = function(bufnr)
     vim.keymap.set("n", "<F9>", "<CMD>AerialToggle!<CR>")
-    vim.keymap.set("n", "<C-{>", "<cmd>AerialPrev<CR>", {buffer = bufnr})
-    vim.keymap.set("n", "<C-}>", "<cmd>AerialNext<CR>", {buffer = bufnr})
+    vim.keymap.set("n", "<C-S-[>", "<cmd>AerialPrev<CR>", {buffer = bufnr})
+    vim.keymap.set("n", "<C-S-]>", "<cmd>AerialNext<CR>", {buffer = bufnr})
   end
 })
 

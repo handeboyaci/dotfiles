@@ -8,12 +8,19 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   end,
 })
 
-require("aerial").setup({
-  on_attach = function(bufnr)
-    vim.keymap.set("n", "<F9>", "<CMD>AerialToggle!<CR>")
-    vim.keymap.set("n", "<C-S-[>", "<cmd>AerialPrev<CR>", {buffer = bufnr})
-    vim.keymap.set("n", "<C-S-]>", "<cmd>AerialNext<CR>", {buffer = bufnr})
-  end
+lazy.lazy_load("aerial.nvim", {
+	keys = {
+		{ "n", "<F9>", "<cmd>AerialToggle!<CR>" },
+	},
+	cmds = { "AerialToggle" },
+	on_load = function()
+		require("aerial").setup({
+			on_attach = function(bufnr)
+				vim.keymap.set("n", "<C-S-[>", "<cmd>AerialPrev<CR>", { buffer = bufnr })
+				vim.keymap.set("n", "<C-S-]>", "<cmd>AerialNext<CR>", { buffer = bufnr })
+			end,
+		})
+	end,
 })
 
 local remotefiles = require("remotefiles")
@@ -66,7 +73,23 @@ vim.keymap.set("t", "<C-x>", "<C-\\><C-n><C-w>c", { silent = true })
 vim.g.surround_no_insert_mappings = 1
 
 -- Undotree
-vim.keymap.set("n", "coz", ":UndotreeToggle<CR>", { silent = true })
+lazy.lazy_load("undotree", {
+	keys = {
+		{ "n", "coz", "<cmd>UndotreeToggle<CR>" },
+	},
+	cmds = { "UndotreeToggle" },
+})
+
+-- Colorizer
+lazy.lazy_load("nvim-colorizer.lua", {
+	cmds = { "Color" },
+	on_load = function()
+		require("colorizer").setup()
+		-- Define a dummy command so lazy_loader doesn't error when trying to run it after loading
+		vim.api.nvim_create_user_command("Color", function() end, {})
+		vim.cmd("edit") -- Reload the buffer to apply highlights immediately
+	end,
+})
 
 -- Signify
 vim.g.signify_skip_filename_pattern = { [[\.pipertmp.*]] }

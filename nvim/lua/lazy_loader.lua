@@ -22,7 +22,12 @@ function M.lazy_load(plugin_name, opts)
 			if type(rhs) == "function" then
 				rhs()
 			elseif type(rhs) == "string" then
-				vim.cmd(rhs)
+				if rhs:match("^<cmd>") or rhs:match("^:") then
+					local cmd = rhs:gsub("^<cmd>", ""):gsub("^:", ""):gsub("<CR>$", "")
+					vim.cmd(cmd)
+				else
+					vim.cmd(rhs)
+				end
 			end
 
 			-- 4. Re-bind the key to the actual action so next time it doesn't load again

@@ -211,9 +211,5 @@ if !exists(':Redir')
         \ silent call v:lua.require('redir').redir(<q-args>, <range>, <line1>, <line2>)
 endif
 
-if !exists(':Color')
-  command! Color
-        \ packadd nvim-colorizer.lua |
-        \ lua require('colorizer').setup() vim.cmd("e")
-endif
+
 " }}}

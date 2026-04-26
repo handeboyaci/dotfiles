@@ -68,8 +68,9 @@ bindsym $mod+d focus child
 bindsym $mod+s sticky toggle
 
 bindsym Ctrl+$alt+Delete exec --no-startup-id swaylock 
-exec --no-startup-id swayidle
 bindswitch --locked lid:toggle exec swaylock && systemctl sleep
+exec_always --no-startup-id swayidle
+
 
 # screenshot
 bindsym Print exec --no-startup-id grim -g "$(slurp)" - | wl-copy
@@ -174,7 +175,7 @@ bindsym $mod+plus bar mode toggle
 # finds out, if available)
 bar {
     position top
-    status_command py3status -c ~/.config/i3/py3status.config
+    status_command py3status -c ~/.config/sway/py3status.config -i ~/.config/sway/py3status/
 
     tray_output primary
     tray_padding 3
@@ -233,7 +234,7 @@ client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec_always --no-startup-id $HOME/.local/bin/i3-notifier
+exec_always --no-startup-id $HOME/.local/bin/i3-notifier --config ~/.config/sway/i3_notifier_config.py
 exec_always --no-startup-id swaybg -i $HOME/.config/sway/bg.jpg
 exec --no-startup-id systemctl --user restart kanshi.service
 exec --no-startup-id systemctl --user restart swayosd-server.service

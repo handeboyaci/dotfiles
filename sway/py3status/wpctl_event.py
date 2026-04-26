@@ -67,9 +67,12 @@ class Py3status:
     pause all players via native Playerctl.
     """
     from datetime import datetime
+
     try:
       with open("/usr/local/google/home/sselcuk/.wpctl_event_debug.log", "a") as f:
-        f.write(f"{datetime.now()}: BlueZ signal: interface={interface}, changed={changed_props}\n")
+        f.write(
+          f"{datetime.now()}: BlueZ signal: interface={interface}, changed={changed_props}\n"
+        )
     except Exception:
       pass
 

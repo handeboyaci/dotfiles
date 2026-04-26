@@ -234,7 +234,7 @@ client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec_always --no-startup-id $HOME/.local/bin/i3-notifier --config ~/.config/sway/i3_notifier_config.py
+exec_always --no-startup-id $HOME/.local/bin/i3-notifier
 exec_always --no-startup-id swaybg -i $HOME/.config/sway/bg.jpg
 exec --no-startup-id systemctl --user restart kanshi.service
 exec --no-startup-id systemctl --user restart swayosd-server.service

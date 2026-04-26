@@ -11,19 +11,12 @@ sudo apt install \
   libxcb-xrm-dev libxkbcommon-x11-dev meson neovim ninja-build nwg-bar pkg-config \
   py3status python3-daemon python3-dateutil python3-googleapi python3-oauth2client \
   python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip \
-  wl-clipboard wdisplays xdg-desktop-portal-wlr
+  wl-clipboard wdisplays xdg-desktop-portal-wlr papirus-icon-theme rofi
 
 pip install --break-system-packages i3-notifier py3notifier 
 
 mkdir software
 cd software
-git clone https://github.com/davatorium/rofi.git
-cd rofi
-git checkout 1.6.1
-git submodule update --init
-meson setup build
-ninja -C build install
-cd ..
 
 VERSION=19
 git clone --recursive https://github.com/swaywm/sway.git

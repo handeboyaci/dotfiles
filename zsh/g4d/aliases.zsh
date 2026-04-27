@@ -30,6 +30,7 @@ alias gemini='/google/bin/releases/gemini-cli/tools/gemini'
 alias gpaste='/google/src/head/depot/eng/tools/pastebin'
 alias include-cleaner='/google/bin/releases/lpt-c-tools/include-cleaner/include_cleaner'
 alias jarvis_cli='/google/data/ro/teams/ke-graph-exp/tools/jarvis_cli'
+alias jarvis='/google/bin/releases/jarvis-cli/jarvis'
 alias jetski='/google/bin/releases/jetski-devs/tools/cli'
 alias lp-run='/google/src/head/depot/google3/third_party/py/launchpad/scripts/lp-run.sh'
 alias mid_tool=/google/data/rw/teams/livegraph/tools/mid_tool

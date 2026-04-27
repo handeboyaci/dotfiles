@@ -143,32 +143,29 @@ class Py3status:
       return {"full_text": full_text, "cached_until": self.py3.CACHE_FOREVER}
 
     # Calculate remaining time
-    cur_time = time.localtime()
-    cur_minutes = cur_time.tm_hour * 60 + cur_time.tm_min
+    from datetime import datetime, timezone
+
+    cur_dt = datetime.now(timezone.utc)
 
     next_prayer = None
-    next_prayer_minutes = None
+    next_prayer_dt = None
 
     prayers = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
     for p in prayers:
       t_str = times.get(p)
       if t_str:
-        if "T" in t_str:
-          t_str = t_str.split("T")[1]
-        t_parts = t_str.split()[0].split(":")
-        p_minutes = int(t_parts[0]) * 60 + int(t_parts[1])
-
-        if p_minutes > cur_minutes:
+        p_dt = datetime.fromisoformat(t_str)
+        if p_dt > cur_dt:
           next_prayer = p
-          next_prayer_minutes = p_minutes
+          next_prayer_dt = p_dt
           break
 
     if not next_prayer:
-      import datetime
+      import datetime as dt
 
-      today_dt = datetime.date.today()
-      tomorrow_dt = today_dt + datetime.timedelta(days=1)
+      today_dt = dt.date.today()
+      tomorrow_dt = today_dt + dt.timedelta(days=1)
       tomorrow_str = tomorrow_dt.strftime("%d-%m-%Y")
 
       with self.lock:
@@ -177,16 +174,12 @@ class Py3status:
       if tomorrow_times:
         fajr_str = tomorrow_times.get("Fajr")
         if fajr_str:
-          if "T" in fajr_str:
-            fajr_str = fajr_str.split("T")[1]
-          fajr_parts = fajr_str.split()[0].split(":")
-          fajr_minutes = int(fajr_parts[0]) * 60 + int(fajr_parts[1])
-
-          kalan = (1440 - cur_minutes) + fajr_minutes
-          saat = kalan // 60
-          dk = kalan % 60
+          fajr_dt = datetime.fromisoformat(fajr_str)
+          kalan = fajr_dt - cur_dt
+          seconds = kalan.total_seconds()
+          saat = int(seconds // 3600)
+          dk = int((seconds % 3600) // 60)
           full_text = f"{saat}sa{dk}dk"
-
           return {"full_text": full_text, "cached_until": self.py3.time_in(60)}
 
       # Trigger background fetch for next month
@@ -210,9 +203,10 @@ class Py3status:
         "cached_until": self.py3.time_in(5),
       }
 
-    kalan = next_prayer_minutes - cur_minutes
-    saat = kalan // 60
-    dk = kalan % 60
+    kalan = next_prayer_dt - cur_dt
+    seconds = kalan.total_seconds()
+    saat = int(seconds // 3600)
+    dk = int((seconds % 3600) // 60)
 
     full_text = f"{saat}sa{dk}dk"
 

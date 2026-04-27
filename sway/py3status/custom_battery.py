@@ -2,6 +2,7 @@ import dbus
 import dbus.mainloop.glib
 import threading
 import subprocess
+import os
 from gi.repository import GLib
 
 
@@ -12,10 +13,19 @@ class Py3status:
     self.lock = threading.Lock()
     self.low_battery_notified = False
 
-    # Start background thread for D-Bus listening
-    t = threading.Thread(target=self._listen_for_upower_events)
-    t.daemon = True
-    t.start()
+    # Check for battery presence
+    try:
+      self.has_battery = any(
+        d.startswith("BAT") for d in os.listdir("/sys/class/power_supply")
+      )
+    except FileNotFoundError:
+      self.has_battery = False
+
+    if self.has_battery:
+      # Start background thread for D-Bus listening
+      t = threading.Thread(target=self._listen_for_upower_events)
+      t.daemon = True
+      t.start()
 
   def _listen_for_upower_events(self):
     try:
@@ -91,6 +101,13 @@ class Py3status:
       self.py3.update()
 
   def battery(self):
+    if not self.has_battery:
+      return {
+        "full_text": "",
+        "cached_until": self.py3.CACHE_FOREVER,
+        "separator": False,
+      }
+
     with self.lock:
       percent = self.percentage
       state = self.state

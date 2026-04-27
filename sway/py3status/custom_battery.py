@@ -103,7 +103,7 @@ class Py3status:
     elif state == 4:
       full_text = "🔌"
     else:
-      blocks = "▁⡀⣀⣄⣤⣦⣶⣷⣾⣿█"
+      blocks = "▁⡀⣀⣄⣤⣦⣶⣷⣾⣿🔋"
       if isinstance(percent, int):
         idx = min((percent + 5) // 10, len(blocks) - 1)
         full_text = blocks[idx]

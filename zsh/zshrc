@@ -1,6 +1,13 @@
 # vi: fdm=marker
+# Set FZF before running tmux-selector as the latter uses the former.
+[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && source /usr/share/doc/fzf/examples/key-bindings.zsh
+export FZF_DEFAULT_COMMAND="fd --type f"
+export FZF_DEFAULT_OPTS="--border --layout=reverse"
+export FZF_CTRL_T_OPTS="--preview='less {}'"
+
 if [[ "$WORKSTATION_NAME" == "cloud" ]] 
 then
+  source "$ZDOTDIR/tmux-selector/tmux-selector.zsh"
   # If machine has prod access, make sure it is logged in.
   if ! gcertstatus --nocheck_ssh --quiet
   then
@@ -13,16 +20,14 @@ then
   export SNAP_DEFAULT_FOR_NEW_WORKSPACE=true
 elif [[ "$WORKSTATION_NAME" == "laptop" ]]
 then
+  source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" \
+     --extra "SSH: ofis|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh ofis" \
+     --extra "SSH: cloud|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh cloud"
   export PROD_PROXY=cloud
+else
+  source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" \
+     --extra "SSH: cloud|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh cloud"
 fi
-
-# Set FZF before running tmux-selector as the latter uses the former.
-[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && source /usr/share/doc/fzf/examples/key-bindings.zsh
-export FZF_DEFAULT_COMMAND="fd --type f"
-export FZF_DEFAULT_OPTS="--border --layout=reverse"
-export FZF_CTRL_T_OPTS="--preview='less {}'"
-
-source "$ZDOTDIR/tmux-selector/tmux-selector.zsh"
 
 # set shell options {{{
 eval "$(dircolors $ZDOTDIR/dircolors)"

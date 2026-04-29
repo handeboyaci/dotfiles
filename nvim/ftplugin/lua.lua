@@ -1,19 +1,10 @@
 vim.bo.textwidth = 120
 
-local null_ls = require("null-ls")
 local path = os.getenv("HOME") .. "/.local/share/nvim/mason/bin/"
 local runtime_path = vim.split(package.path, ";")
 
 table.insert(runtime_path, "lua/?.lua")
 table.insert(runtime_path, "lua/?/init.lua")
-
-null_ls.setup({
-	sources = {
-		null_ls.builtins.formatting.stylua.with({
-			command = path .. "stylua",
-		}),
-	},
-})
 
 vim.lsp.start({
 	name = "lua-lsp",

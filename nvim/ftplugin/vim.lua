@@ -1,10 +1,5 @@
-local null_ls = require("null-ls")
-
 local path = os.getenv("HOME") .. "/.local/share/nvim/mason/bin/"
 
-null_ls.setup({
-	sources = { null_ls.builtins.diagnostics.vint.with({command = path .. "vint" } ) },
-})
 
 vim.lsp.start({
 	name = "vimls",

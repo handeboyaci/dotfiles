@@ -93,3 +93,36 @@ lazy.lazy_load("nvim-colorizer.lua", {
 
 -- Signify
 vim.g.signify_skip_filename_pattern = { [[\.pipertmp.*]] }
+
+-- null-ls setup
+local null_ls = require("null-ls")
+local mason_path = os.getenv("HOME") .. "/.local/share/nvim/mason/bin/"
+
+null_ls.setup({
+	sources = {
+		-- Python
+		null_ls.builtins.formatting.pyink.with({
+			extra_args = { "--pyink-indentation", "2" },
+			command = mason_path .. "pyink",
+		}),
+		-- Lua
+		null_ls.builtins.formatting.stylua.with({
+			command = mason_path .. "stylua",
+		}),
+		-- Shell (sh/zsh)
+		null_ls.builtins.formatting.shfmt.with({
+			command = mason_path .. "shfmt",
+			extra_args = { "--indent", 2 },
+		}),
+		-- Vim
+		null_ls.builtins.diagnostics.vint.with({
+			command = mason_path .. "vint",
+		}),
+	},
+})
+-- Fidget setup
+require("fidget").setup({
+	notification = {
+		-- Using explicit fidget.notify in cider.lua
+	},
+})

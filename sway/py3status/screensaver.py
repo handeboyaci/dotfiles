@@ -6,7 +6,9 @@ class Py3status:
   def screensaver(self):
     # Check if swayidle is running
     result = subprocess.run(
-      ["pkill", "-0", "swayidle"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+      ["pkill", "-0", "swayidle"],
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
     )
     running = result.returncode == 0
 

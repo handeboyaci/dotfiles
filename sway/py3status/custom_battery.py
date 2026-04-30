@@ -114,7 +114,6 @@ class Py3status:
 
     # State mapping for UPower:
     # 1: Charging, 2: Discharging, 4: Fully charged
-    prefix = ""
     if state == 1:
       full_text = "⚡"
     elif state == 4:

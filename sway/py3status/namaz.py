@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from datetime import datetime, timedelta
 from urllib.request import urlopen
 
 
@@ -12,13 +13,25 @@ class Py3status:
     self.lock = threading.Lock()
     self.fetching = False
 
-    # Start background thread to fetch data
-    t = threading.Thread(target=self._fetch_data)
+    # Start background loop to fetch data and handle day rollover
+    t = threading.Thread(target=self._update_loop)
     t.daemon = True
     t.start()
 
+  def _update_loop(self):
+    while True:
+      self._fetch_data()
+
+      # Sleep until next midnight
+      now = datetime.now()
+      tomorrow = now.date() + timedelta(days=1)
+      # 00:00:05 (5 second buffer)
+      midnight = datetime.combine(tomorrow, datetime.min.time())
+      sleep_time = (midnight - now).total_seconds() + 5
+
+      time.sleep(max(sleep_time, 0))
+
   def _fetch_data(self, month=None, year=None):
-    from datetime import datetime
     import os
 
     cache_path = "/usr/local/google/home/sselcuk/.dotfiles/tmp/namaz_cache.json"
@@ -45,13 +58,10 @@ class Py3status:
               found = True
 
         if found:
-          with open("/usr/local/google/home/sselcuk/.namaz_debug.log", "a") as f:
-            f.write(f"{datetime.now()}: Found today's times in cache. Using them.\n")
           self.py3.update()
           cache_loaded = True
-      except Exception as e:
-        with open("/usr/local/google/home/sselcuk/.namaz_debug.log", "a") as f:
-          f.write(f"{datetime.now()}: Error reading cache at startup: {str(e)}\n")
+      except Exception:
+        pass
 
     # 2. Proceed with network fetch to update cache
     try:
@@ -83,12 +93,7 @@ class Py3status:
       with open(cache_path, "w") as f:
         json.dump(cache_data, f)
 
-      with open("/usr/local/google/home/sselcuk/.namaz_debug.log", "a") as f:
-        f.write(f"{datetime.now()}: Data fetched and cached for {city}, {country}\n")
-
-    except Exception as e:
-      with open("/usr/local/google/home/sselcuk/.namaz_debug.log", "a") as f:
-        f.write(f"{datetime.now()}: Network fetch failed: {str(e)}\n")
+    except Exception:
       if not cache_loaded:
         return
       else:
@@ -106,9 +111,6 @@ class Py3status:
           self.location = {"city": city, "country": country}
           found = True
 
-    with open("/usr/local/google/home/sselcuk/.namaz_debug.log", "a") as f:
-      f.write(f"{datetime.now()}: Times found for today: {found}\n")
-
     with self.lock:
       self.fetching = False
     self.py3.update()
@@ -119,7 +121,10 @@ class Py3status:
       loc = self.location
 
     if not times:
-      return {"full_text": "Namaz: Fetching...", "cached_until": self.py3.time_in(5)}
+      return {
+        "full_text": "Namaz: Fetching...",
+        "cached_until": self.py3.time_in(5),
+      }
 
     if getattr(self, "show_full_day", False):
 
@@ -143,7 +148,7 @@ class Py3status:
       return {"full_text": full_text, "cached_until": self.py3.CACHE_FOREVER}
 
     # Calculate remaining time
-    from datetime import datetime, timezone
+    from datetime import timezone
 
     cur_dt = datetime.now(timezone.utc)
 
@@ -180,7 +185,10 @@ class Py3status:
           saat = int(seconds // 3600)
           dk = int((seconds % 3600) // 60)
           full_text = f"{saat}sa{dk}dk"
-          return {"full_text": full_text, "cached_until": self.py3.time_in(60)}
+          return {
+            "full_text": full_text,
+            "cached_until": self.py3.time_in(60),
+          }
 
       # Trigger background fetch for next month
       with self.lock:

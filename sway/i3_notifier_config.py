@@ -21,7 +21,9 @@ def ChromeAppFactory(title, url, icon=None, second_key="body"):
 
   class ChromeApp(DefaultConfig):
     def should_apply(notification):
-      return notification.body.startswith(url) and notification.app_name == kChrome
+      return (
+        notification.body.startswith(url) and notification.app_name == kChrome
+      )
 
     def update_notification(notification):
       notification.body = notification.body[lURL:].strip()
@@ -55,6 +57,7 @@ class NotifySend(DefaultConfig):
     return notification.app_name == "notify-send"
 
   def update_notification(notification):
+    notification.app_name = notification.summary
     notification.app_icon = "plugin-notification"
 
 

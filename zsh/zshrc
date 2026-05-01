@@ -5,28 +5,26 @@ export FZF_DEFAULT_COMMAND="fd --type f"
 export FZF_DEFAULT_OPTS="--border --layout=reverse"
 export FZF_CTRL_T_OPTS="--preview='less {}'"
 
-if [[ "$WORKSTATION_NAME" == "cloud" ]] 
-then
-  source "$ZDOTDIR/tmux-selector/tmux-selector.zsh"
-  # If machine has prod access, make sure it is logged in.
-  if ! gcertstatus --nocheck_ssh --quiet
-  then
-    gcert --disable_svelte
+() {
+  local -A WORKSTATION_REMOTES=(
+    laptop "ofis cloud"
+    ofis   "cloud"
+  )
+  local -a extra_args=()
+  if [[ -z $SSH_TTY && -n "${WORKSTATION_REMOTES[$WORKSTATION_NAME]}" ]]; then
+    local -a remotes=( ${(s: :)WORKSTATION_REMOTES[$WORKSTATION_NAME]} )
+    extra_args=( ${(f)"$(printf '--extra\nSSH: %s|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh %s\n' "${remotes[@]:^remotes}")"} )
   fi
-  if [[ -z $SNAP_BASHRC_SOURCED &&  -r /google/data/ro/teams/ix-ml/snap/config/bashrc ]] ; then
+  source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" "${extra_args[@]}"
+}
+
+if [[ "$WORKSTATION_NAME" == "cloud" ]]; then
+  gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte
+  if [[ -z $SNAP_BASHRC_SOURCED && -r /google/data/ro/teams/ix-ml/snap/config/bashrc ]]; then
     source /google/data/ro/teams/ix-ml/snap/config/bashrc
   fi
   export SNAP_DEFAULT_FOR_SYNC=true
   export SNAP_DEFAULT_FOR_NEW_WORKSPACE=true
-elif [[ "$WORKSTATION_NAME" == "laptop" ]]
-then
-  source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" \
-     --extra "SSH: ofis|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh ofis" \
-     --extra "SSH: cloud|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh cloud"
-  export PROD_PROXY=cloud
-else
-  source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" \
-     --extra "SSH: cloud|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh cloud"
 fi
 
 # set shell options {{{

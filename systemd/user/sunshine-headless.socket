@@ -1,0 +1,10 @@
+[Unit]
+Description=Listen for Moonlight Discovery Pings
+
+[Socket]
+ListenStream=47989
+# This ensures that when the port is hit, it triggers the service of the same name
+Service=sunshine-headless.service
+
+[Install]
+WantedBy=sockets.target

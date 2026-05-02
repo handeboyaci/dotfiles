@@ -19,7 +19,6 @@ bindsym $mod+Shift+w exec --no-startup-id nwg-bar
 bindsym $mod+Shift+space exec --no-startup-id rofi -show run
 bindsym $mod+space exec --no-startup-id rofi -modi drun -show drun -show-icons
 
-bindsym $mod+p exec --no-startup-id rofi -modi pass:$HOME/.dotfiles/rofi/rofi-pass -show pass
 bindsym $mod+b exec --no-startup-id rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
 
 bindsym $mod+e exec --no-startup-id dbus-send --session --print-reply --dest=org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications.ShowNotifications
@@ -112,6 +111,12 @@ bindsym $mod+Right move workspace to output right
 
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+Shift+r reload
+
+set $mode_passthrough ⇸
+mode "$mode_passthrough" {
+    bindsym $mod+p mode "default"
+}
+bindsym $mod+p mode "$mode_passthrough"
 
 # resize window (you can also use the mouse for that)
 mode "topleft" {
@@ -225,6 +230,7 @@ for_window [class="gnuplot"] floating enable
 for_window [window_role="pop-up"] floating enable
 for_window [window_role="bubble"] floating enable, border pixel 0
 for_window [instance="web.whatsapp.com|mail.google.com"] floating disable
+for_window [app_id="com.moonlight_stream.Moonlight"] shortcuts_inhibitor enable, floating enable, resize set 900px 500px, move position center
 
 client.unfocused        #4c4c4c   #4c4c4c   #4c4c4c   #4c4c4c
 client.focused          #3eaeff   #3eaeff   #3eaeff   #3eaeff

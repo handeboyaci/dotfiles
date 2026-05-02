@@ -7,13 +7,13 @@ export FZF_CTRL_T_OPTS="--preview='less {}'"
 
 () {
   local -A WORKSTATION_REMOTES=(
-    laptop "ofis cloud"
+    laptop "ofis cloud ev"
     ofis   "cloud"
   )
   local -a extra_args=()
   if [[ -z $SSH_TTY && -n "${WORKSTATION_REMOTES[$WORKSTATION_NAME]}" ]]; then
     local -a remotes=( ${(s: :)WORKSTATION_REMOTES[$WORKSTATION_NAME]} )
-    extra_args=( ${(f)"$(printf '--extra\nSSH: %s|gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && exec ssh %s\n' "${remotes[@]:^remotes}")"} )
+    extra_args=( ${(f)"$(printf '--extra\nSSH: %s| exec ssh %s\n' "${remotes[@]:^remotes}")"} )
   fi
   source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" "${extra_args[@]}"
 }

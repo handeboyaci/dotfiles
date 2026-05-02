@@ -66,18 +66,6 @@ class Py3status:
     If the Bluetooth MediaTransport state becomes 'idle',
     pause all players via native Playerctl.
     """
-    from datetime import datetime
-
-    try:
-      with open(
-        "/usr/local/google/home/sselcuk/.wpctl_event_debug.log", "a"
-      ) as f:
-        f.write(
-          f"{datetime.now()}: BlueZ signal: interface={interface}, changed={changed_props}\n"
-        )
-    except Exception:
-      pass
-
     if interface == "org.bluez.MediaTransport1":
       state = changed_props.get("State")
       if state == "idle":

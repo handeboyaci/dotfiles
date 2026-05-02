@@ -1,8 +1,11 @@
 import json
+import os
 import threading
 import time
 from datetime import datetime, timedelta
+import datetime as dt
 from urllib.request import urlopen
+from pathlib import Path
 
 
 class Py3status:
@@ -32,9 +35,14 @@ class Py3status:
       time.sleep(max(sleep_time, 0))
 
   def _fetch_data(self, month=None, year=None):
-    import os
 
-    cache_path = "/usr/local/google/home/sselcuk/.dotfiles/tmp/namaz_cache.json"
+    cache_path = Path.home() / ".dotfiles/tmp/namaz_cache.json"
+
+    now = datetime.now()
+    if not month:
+      month = now.strftime("%m")
+    if not year:
+      year = now.strftime("%Y")
 
     # 1. Check cache first
     cache_loaded = False
@@ -66,7 +74,7 @@ class Py3status:
     # 2. Proceed with network fetch to update cache
     try:
       # Geolocation
-      response = urlopen("https://ipapi.co/json/")
+      response = urlopen("https://ipapi.co/json/", timeout=10)
       loc_data = json.loads(response.read().decode())
       city = loc_data["city"]
       country = loc_data["country_name"]
@@ -81,7 +89,7 @@ class Py3status:
         url += f"&month={month}"
       if year:
         url += f"&year={year}"
-      response = urlopen(url)
+      response = urlopen(url, timeout=10)
       data = json.loads(response.read().decode())
 
       # Save to cache
@@ -94,6 +102,8 @@ class Py3status:
         json.dump(cache_data, f)
 
     except Exception:
+      with self.lock:
+        self.fetching = False
       if not cache_loaded:
         return
       else:
@@ -167,8 +177,6 @@ class Py3status:
           break
 
     if not next_prayer:
-      import datetime as dt
-
       today_dt = dt.date.today()
       tomorrow_dt = today_dt + dt.timedelta(days=1)
       tomorrow_str = tomorrow_dt.strftime("%d-%m-%Y")
@@ -217,7 +225,6 @@ class Py3status:
     dk = int((seconds % 3600) // 60)
 
     full_text = f"{saat}sa{dk}dk"
-
     return {"full_text": full_text, "cached_until": self.py3.time_in(60)}
 
   def on_click(self, event):

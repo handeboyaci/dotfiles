@@ -68,8 +68,6 @@ bindsym $mod+s sticky toggle
 
 bindsym Ctrl+$alt+Delete exec --no-startup-id swaylock 
 bindswitch --locked lid:toggle exec swaylock && systemctl sleep
-exec_always --no-startup-id swayidle
-
 
 # screenshot
 bindsym Print exec --no-startup-id grim -g "$(slurp)" - | wl-copy
@@ -114,7 +112,13 @@ bindsym $mod+Shift+r reload
 
 set $mode_passthrough ⇸
 mode "$mode_passthrough" {
-    bindsym $mod+p mode "default"
+  bindsym $mod+p mode "default"
+  bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
+  bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
+  bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=120
+  bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=120
+  bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
+  bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
 }
 bindsym $mod+p mode "$mode_passthrough"
 
@@ -240,15 +244,11 @@ client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec_always --no-startup-id $HOME/.local/bin/i3-notifier
-exec_always --no-startup-id swaybg -i $HOME/.config/sway/bg.jpg
-exec --no-startup-id systemctl --user restart kanshi.service
-exec --no-startup-id systemctl --user restart swayosd-server.service
+exec_always systemctl --user start sway-session.target
+exec --no-startup-id /usr/libexec/gsd-rfkill
 bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
 bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
 bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=120
 bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=120
 bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
 bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
-
-exec --no-startup-id /usr/libexec/gsd-rfkill

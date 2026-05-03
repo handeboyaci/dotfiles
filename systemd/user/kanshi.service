@@ -1,6 +1,7 @@
 [Unit]
 Description=Start the kanshi profile service
 PartOf=graphical-session.target
+BindsTo=sway-session.target
 
 [Service]
 Type=simple

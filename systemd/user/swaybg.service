@@ -1,12 +1,11 @@
 [Unit]
-Description=SwayOSD display server
+Description=Start swaybg
 PartOf=graphical-session.target
-After=swayosd-libinput-backend.service
 BindsTo=sway-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/swayosd-server
+ExecStart=/usr/bin/swaybg -i %h/.config/sway/bg.jpg
 Restart=always
 
 [Install]

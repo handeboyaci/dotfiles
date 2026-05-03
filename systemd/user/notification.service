@@ -1,12 +1,11 @@
 [Unit]
-Description=SwayOSD display server
+Description=Start the kanshi i3-notifier service
 PartOf=graphical-session.target
-After=swayosd-libinput-backend.service
 BindsTo=sway-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/swayosd-server
+ExecStart=%h/.local/bin/i3-notifier
 Restart=always
 
 [Install]

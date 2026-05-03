@@ -2,7 +2,7 @@ Host ev
   Hostname 192.168.1.12
 Host cloud
   Hostname sselcuk.c.googlers.com
-  ProxyCommand  sh -c 'gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && nc %h %p'
+  ProxyCommand  sh -c 'gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte && corp-ssh-helper %h %p'
   ForwardX11 yes
   ForwardX11Trusted yes
 Host ofis

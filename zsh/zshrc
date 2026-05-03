@@ -510,6 +510,7 @@ else
   compinit -i -d ~/.dotfiles/tmp/zcompdump
   touch ~/.dotfiles/tmp/zcompdump
 fi
+unset "_comps[open]"
 # compile zcompdump
 {
   zcomp="$HOME/.dotfiles/tmp/zcompdump" 

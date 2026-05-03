@@ -12,7 +12,7 @@ ssh/sk-passwords
 __pycache__/
 tmp/
 !tmp/.create-dir
-systemd/user/sockets.target.wants
+systemd/user/*.target.wants
 sunshine/credentials/
 sunshine/sunshine.log
 sunshine/sunshine_state.json

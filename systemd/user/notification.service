@@ -1,0 +1,12 @@
+[Unit]
+Description=Start the kanshi i3-notifier service
+PartOf=graphical-session.target
+BindsTo=sway-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/i3-notifier
+Restart=always
+
+[Install]
+WantedBy=sway-session.target

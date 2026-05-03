@@ -1,0 +1,12 @@
+[Unit]
+Description=Start swaybg
+PartOf=graphical-session.target
+BindsTo=sway-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/swaybg -i %h/.config/sway/bg.jpg
+Restart=always
+
+[Install]
+WantedBy=sway-session.target

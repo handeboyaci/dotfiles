@@ -1,11 +1,11 @@
 [Unit]
-Description=Start the kanshi i3-notifier service
+Description=Start the i3-notifier service
 PartOf=graphical-session.target
 BindsTo=sway-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/i3-notifier
+ExecStart=%h/.local/bin/i3-notifier --nodaemon
 Restart=always
 
 [Install]

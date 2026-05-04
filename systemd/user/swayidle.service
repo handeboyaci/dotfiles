@@ -1,5 +1,5 @@
 [Unit]
-Description=Start swaybg
+Description=Start swayidle
 PartOf=graphical-session.target
 BindsTo=sway-session.target
 

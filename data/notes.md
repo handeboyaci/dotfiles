@@ -80,3 +80,4 @@ nvim --headless \
 
 sudo systemctl mask ctrl-alt-del.target
 sudo systemctl daemon-reload
+systemctl --user enable --now kanshi.service notification.service swaybg.service swayidle.service swayosd-server.service

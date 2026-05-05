@@ -1,12 +1,13 @@
 [Unit]
 Description=Start the i3-notifier service
+After=graphical-session.target
 PartOf=graphical-session.target
-BindsTo=sway-session.target
 
 [Service]
 Type=simple
 ExecStart=%h/.local/bin/i3-notifier --nodaemon
 Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=sway-session.target

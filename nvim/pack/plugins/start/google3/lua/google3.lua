@@ -58,7 +58,7 @@ M.setup = function(args)
 		group = "google3",
 		pattern = "cpp",
 		callback = function()
-			vim.bo.includeexpr = require('google3.utils').cpp_proto_header
+			vim.bo.includeexpr = "v:lua.require('google3.utils').cpp_proto_header(v:fname)"
 		end,
 	})
 

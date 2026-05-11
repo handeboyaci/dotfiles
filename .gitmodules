@@ -6,7 +6,7 @@
 	url = https://github.com/zsh-users/zsh-completions.git
 [submodule "tmux/tmux-thumbs"]
 	path = tmux/tmux-thumbs
-	url = https://github.com/sencer/tmux-thumbs
+	url = git@github.com:sencer/tmux-thumbs.git
 [submodule "nvim/pack/plugins/start/fidget.nvim"]
 	path = nvim/pack/plugins/start/fidget.nvim
 	url = https://github.com/j-hui/fidget.nvim.git

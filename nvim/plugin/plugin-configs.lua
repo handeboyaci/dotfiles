@@ -2,10 +2,10 @@ local lazy = require("lazy_loader")
 require("Comment").setup()
 
 vim.api.nvim_create_autocmd("TextYankPost", {
-  group = "vimrc",
-  callback = function()
-    vim.highlight.on_yank({ higroup = "Visual", timeout = 200 })
-  end,
+	group = "vimrc",
+	callback = function()
+		vim.highlight.on_yank({ higroup = "Visual", timeout = 200 })
+	end,
 })
 
 lazy.lazy_load("aerial.nvim", {
@@ -126,3 +126,9 @@ require("fidget").setup({
 		-- Using explicit fidget.notify in cider.lua
 	},
 })
+
+-- VCS Navigation Mappings
+vim.keymap.set("n", "[p", "<cmd>Parent<CR>", { desc = "VCS: Go to Parent commit" })
+vim.keymap.set("n", "]p", "<cmd>Child<CR>", { desc = "VCS: Go to Child commit" })
+vim.keymap.set("n", "[P", "<cmd>Parent!<CR>", { desc = "VCS: Go to Parent commit (exclusive)" })
+vim.keymap.set("n", "]P", "<cmd>Child!<CR>", { desc = "VCS: Go to Child commit (exclusive)" })

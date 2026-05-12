@@ -5,6 +5,8 @@ local analysis = require("google3.analysis")
 local M = {}
 
 M.setup = function(args)
+	require("google3.vcs_providers").setup()
+
 	-- vim.opt.shada:append("r/google")
 
 	-- We are setting this as global to make sure the quickfix windows also has cs.

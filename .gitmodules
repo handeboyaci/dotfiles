@@ -103,3 +103,6 @@
 [submodule "nvim/pack/sencer/start/relatedfiles"]
 	path = nvim/pack/sencer/start/relatedfiles
 	url = git@github.com:sencer/relatedfiles.git
+[submodule "nvim/pack/sencer/start/vcs.nvim"]
+	path = nvim/pack/sencer/start/vcs.nvim
+	url = git@github.com:sencer/vcs.nvim.git

@@ -447,7 +447,7 @@ bindkey -M vicmd J vi-join-custom
 # theme {{{
 function set-theme {
   # bold (pink # if sudo) green name (@ host if SSH) | green
-  local cl='%F{black} %f'
+  local cl='%F{black}⠀%f'
   PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@$WORKSTATION_NAME}%f | $GREEN"
   PS1+='%(1v.$CITC_NAME %f%b(%(2v.'$cl'%2v. 📤) @'$cl'%1v ) %B| .)'
   PS1+='$GREEN%(1v.${CITC_PWD+//$CITC_PWD}.%d)'

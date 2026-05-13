@@ -1,5 +1,13 @@
-alias fd='noglob fdfind'
 alias clear!='clear&&printf "\e[3J"'
+if [[ "$(uname)" == "Darwin" ]]; then
+  alias fd='noglob fd'
+  # If coreutils is NOT in path, use macOS defaults, otherwise the Linux ones below will be used.
+  # But we know we added gnubin to path in zshrc.
+  alias sed='sed' # GNU sed in gnubin doesn't need -r, it uses --regexp-extended or just -r
+else
+  alias fd='noglob fdfind'
+  alias sed='sed -r'
+fi
 alias ls='ls --group-directories-first --color=auto'
 alias la='ls -AF'
 alias ll='ls -lhAF'
@@ -7,7 +15,6 @@ alias lx='ls -XB'
 alias cp='cp -ivdRp'
 alias mv='mv -iv'
 alias mkdir='mkdir -p'
-alias sed='sed -r'
 alias grep='grep -P --color=auto'
 alias scp='rsync -azPe "ssh -q"'
 alias rm='rm -i'

@@ -11,8 +11,13 @@ shopt -s histappend checkwinsize globstar
 
 eval "$(dircolors -b ~/.dotfiles/zsh/dircolors)"
 
-[ -f /usr/share/bash-completion/bash_completion ] && source /usr/share/bash-completion/bash_completion
-[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash
+if [[ "$(uname)" == "Darwin" ]]; then
+  [ -f /opt/homebrew/etc/profile.d/bash_completion.sh ] && source /opt/homebrew/etc/profile.d/bash_completion.sh
+  [ -f /opt/homebrew/opt/fzf/shell/key-bindings.bash ] && source /opt/homebrew/opt/fzf/shell/key-bindings.bash
+else
+  [ -f /usr/share/bash-completion/bash_completion ] && source /usr/share/bash-completion/bash_completion
+  [ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash
+fi
 
 source $HOME/.dotfiles/zsh/aliases
 

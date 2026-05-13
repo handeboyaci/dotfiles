@@ -1,6 +1,18 @@
 # vi: fdm=marker
 # Set FZF before running tmux-selector as the latter uses the former.
-[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && source /usr/share/doc/fzf/examples/key-bindings.zsh
+if [[ "$(uname)" == "Darwin" ]]; then
+  path=(
+    $HOME/.dotfiles/bin
+    /opt/homebrew/opt/grep/libexec/gnubin
+    /opt/homebrew/opt/coreutils/libexec/gnubin
+    /opt/homebrew/bin
+    /opt/homebrew/sbin
+    $path[@]
+  )
+  source /opt/homebrew/Cellar/fzf/0.63.0/shell/key-bindings.zsh
+else
+  [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && source /usr/share/doc/fzf/examples/key-bindings.zsh
+fi
 export FZF_DEFAULT_COMMAND="fd --type f"
 export FZF_DEFAULT_OPTS="--border --layout=reverse"
 export FZF_CTRL_T_OPTS="--preview='less {}'"
@@ -17,15 +29,6 @@ export FZF_CTRL_T_OPTS="--preview='less {}'"
   fi
   source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" "${extra_args[@]}"
 }
-
-if [[ "$WORKSTATION_NAME" == "cloud" ]]; then
-  gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte
-  if [[ -z $SNAP_BASHRC_SOURCED && -r /google/data/ro/teams/ix-ml/snap/config/bashrc ]]; then
-    source /google/data/ro/teams/ix-ml/snap/config/bashrc
-  fi
-  export SNAP_DEFAULT_FOR_SYNC=true
-  export SNAP_DEFAULT_FOR_NEW_WORKSPACE=true
-fi
 
 # set shell options {{{
 eval "$(dircolors $ZDOTDIR/dircolors)"
@@ -210,9 +213,7 @@ bindkey -M viins "\C-s" prepend-sudo
 # dotdotdot {{{
 function expand-dot-to-parent-directory-path {
   if [[ $ZLE_STATE == *insert* ]]; then
-   if [[ $LBUFFER == "g4 "*" .."  || $LBUFFER == "blaze "*" .." ]]; then
-      LBUFFER+='.'
-    elif [[ $LBUFFER == *.. ]]; then
+    if [[ $LBUFFER == *.. ]]; then
       LBUFFER+='/..'
     else
       LBUFFER+='.'
@@ -465,23 +466,7 @@ HISTFILE="$HOME/.dotfiles/tmp/history"
 HISTSIZE=12000
 SAVEHIST=10000
 
-for p in $HOME/.dotfiles/bin $HOME/.local/bin 
-do
-  if ! (( $path[(I)$p] ))
-  then
-    path=($p $path)
-  fi
-done
-
 fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
-
-if [[ -f /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion ]]
-then
-  fpath=(
-    $(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)
-    $fpath
-  )
-fi
 
 # Remove platform-specific completions for other OSes
 fpath=(${fpath:#*/Completion/(AIX|BSD|Cygwin|Darwin|Solaris|openSUSE|Redhat|Mandriva)})
@@ -489,7 +474,6 @@ fpath=(${fpath:#*/Completion/(AIX|BSD|Cygwin|Darwin|Solaris|openSUSE|Redhat|Mand
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
 source "$ZDOTDIR/aliases"
-source "$ZDOTDIR/g4d/setup.zsh"
 
 SAVEDDIRS="$HOME/.dotfiles/tmp/dirs"
 source "$ZDOTDIR/savedir/setup.zsh"
@@ -541,9 +525,6 @@ function _auto_zcompile() {
     "$ZDOTDIR/zshrc"
     "$ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh"
     "$ZDOTDIR/syntax-highlight/fast-highlight"
-    "$ZDOTDIR/g4d/async.zsh"
-    "$ZDOTDIR/autoload/_blaze"
-    "$ZDOTDIR/autoload/_g4_generated_completion"
   )
   local f
   for f in $files; do

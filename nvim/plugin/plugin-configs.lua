@@ -25,22 +25,6 @@ lazy.lazy_load("aerial.nvim", {
 
 local remotefiles = require("remotefiles")
 
-remotefiles.register({ "/placer/*", "/google_src/*" }, function(match)
-	return "fileutil cat " .. match
-end)
-
-remotefiles.register("/cns/*", function(match)
-	return "fileutil cat " .. match
-end, function(match)
-	return "fileutil tee -f -output " .. match
-end)
-
-remotefiles.register_local("//depot/google3/*", function(match)
-	local client_path = os.getenv("PWD"):gsub("google3/?.*", "google3/")
-	local rel_path = match:sub(1 + #"//depot/google3/")
-	return client_path .. rel_path
-end)
-
 remotefiles.register_local("*:*:*", function(match)
 	return vim.split(match, ":")[1]
 end, function(match)

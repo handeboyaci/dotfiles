@@ -23,8 +23,8 @@ export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
 export P4DIFF='nvim -d +"nnoremap <Leader>q :qa<CR>" +"normal gg"'
 export P4MERGE='$HOME/.dotfiles/bin/p4merge'
 
-export SUDO_ASKPASS=/usr/lib/openssh/gnome-ssh-askpass
+if [[ "$(uname)" == "Linux" ]]; then
+  export SUDO_ASKPASS=/usr/lib/openssh/gnome-ssh-askpass
+fi
 
 typeset -gU cdpath fpath mailpath path
-export G4PENDINGSTYLE=relativepath
-export REPLACE_BLAZE_WITH_DBIP=1

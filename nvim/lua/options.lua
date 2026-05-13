@@ -99,7 +99,11 @@ vim.opt.cpoptions:append('J')
 vim.opt.formatoptions = 'croqbj'
 
 -- Shell and modeline
-vim.opt.shell = '/usr/bin/zsh'
+if vim.fn.executable('/usr/bin/zsh') == 1 then
+	vim.opt.shell = '/usr/bin/zsh'
+else
+	vim.opt.shell = '/bin/zsh'
+end
 vim.opt.modeline = true
 
 -- Mouse

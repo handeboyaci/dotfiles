@@ -16,4 +16,5 @@ systemd/user/*.target.wants
 sunshine/credentials/
 sunshine/sunshine.log
 sunshine/sunshine_state.json
+*.jetskicli
 

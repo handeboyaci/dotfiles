@@ -23,14 +23,3 @@ vim.api.nvim_create_user_command('Redir', function(opts)
   end
 end, { nargs = 1, complete = 'command', bar = true, range = true })
 
--- Color: Enable colorizer
-vim.api.nvim_create_user_command('Color', function()
-  vim.cmd('packadd nvim-colorizer.lua')
-  local status, colorizer = pcall(require, 'colorizer')
-  if status then
-    colorizer.setup()
-    vim.cmd('e')
-  else
-    print("Error: 'colorizer' module not found.")
-  end
-end, {})

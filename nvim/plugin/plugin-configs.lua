@@ -82,13 +82,12 @@ lazy.lazy_load("undotree", {
 
 -- Colorizer
 lazy.lazy_load("nvim-colorizer.lua", {
-	cmds = { "Color" },
-	on_load = function()
-		require("colorizer").setup()
-		-- Define a dummy command so lazy_loader doesn't error when trying to run it after loading
-		vim.api.nvim_create_user_command("Color", function() end, {})
-		vim.cmd("edit") -- Reload the buffer to apply highlights immediately
-	end,
+	cmds = {
+		"ColorizerAttachToBuffer",
+		"ColorizerDetachFromBuffer",
+		"ColorizerReloadAllBuffers",
+		"ColorizerToggle",
+	},
 })
 
 -- Signify

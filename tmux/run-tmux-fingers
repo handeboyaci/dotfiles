@@ -17,5 +17,5 @@ elif [[ "$var" == "⬞"* ]]
 then
   xdg-open http://cl/"${var#⬞}" &>/dev/null
 else
-  tmux set-buffer $var
+  tmux set-buffer -w -- "$var"
 fi

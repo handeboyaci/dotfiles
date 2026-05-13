@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Chat
-Icon=chat
-Exec=google-chrome --app=http://chat.google.com/ 
-Terminal=false
-Type=Application
-StartupNotify=true
-Keywords=Hangouts;Chat

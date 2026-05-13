@@ -1,2 +1,0 @@
-[backend]
-evdev-filter = [ "KEY_CAPSLOCK" ]

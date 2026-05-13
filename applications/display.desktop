@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Displays
-Icon=video-display-symbolic
-Exec=wdisplays
-Terminal=false
-Type=Application
-StartupNotify=true
-Categories=GNOME;GTK;Settings;
-Keywords=Preferences;Settings;Devices;Display;Screen;Monitor

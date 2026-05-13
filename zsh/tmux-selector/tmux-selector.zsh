@@ -52,9 +52,9 @@ function _tmux_selector() {
      ) | fzf
   }
 
-  local tmux_sessions=($(tmx2 list-sessions -F $_session_format 2>/dev/null))
+  local tmux_sessions=($(tmux list-sessions -F $_session_format 2>/dev/null))
 
-  [[ ${#tmux_sessions} -eq 0 && ${#custom_actions} -eq 0 ]] && exec tmx2
+  [[ ${#tmux_sessions} -eq 0 && ${#custom_actions} -eq 0 ]] && exec tmux
 
   local choice=$(run_selector)
   [[ -z $choice ]] && return
@@ -66,7 +66,7 @@ function _tmux_selector() {
     local name="${choice#* }"
     if [[ $name == "Create new session" ]]
     then
-      exec tmx2 new
+      exec tmux new
     elif [[ -n $custom_actions[$name] ]]
     then
       eval $custom_actions[$name]
@@ -74,7 +74,7 @@ function _tmux_selector() {
   elif [[ $type == "+" || $type == "-" ]]
   then
     local val=$(echo $choice | cut -d' ' -f 2)
-    exec tmx2 attach -t $val
+    exec tmux attach -t $val
   fi
 
 }

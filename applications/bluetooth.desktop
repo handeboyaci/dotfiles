@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Bluetooth Settings
-Icon=preferences-bluetooth
-Exec=env XDG_CURRENT_DESKTOP=GNOME gnome-control-center bluetooth
-Terminal=false
-Type=Application
-StartupNotify=true
-Categories=GNOME;GTK;Settings;
-Keywords=Preferences;Settings;Bluetooth

@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Google Calendar
-Icon=google-calendar
-Exec=google-chrome --app=http://calendar.google.com/?authuser=sselcuk@google.com  --profile-directory=Default
-Terminal=false
-Type=Application
-StartupNotify=true
-Keywords=Calendar;Schedule

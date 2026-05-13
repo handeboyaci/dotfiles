@@ -1,9 +1,0 @@
-#!/bin/bash
-opts=(-dmenu -i -font "Fira Mono 30" -lines 0)
-
-name=$(echo ''|rofi "${opts[@]}" -p "New workspace name " )
-
-if [[ -n "$name" ]]
-then
-  swaymsg rename workspace to $(swaymsg -t get_workspaces|jq '.[]|select(.visible and .focused)|.num'):"$name"
-fi

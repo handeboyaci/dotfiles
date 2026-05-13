@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=WiFi Settings
-Icon=network-wireless
-Exec=env XDG_CURRENT_DESKTOP=GNOME gnome-control-center wifi
-Terminal=false
-Type=Application
-StartupNotify=true
-Categories=GNOME;GTK;Settings;
-Keywords=Preferences;Settings;Wifi;Internet

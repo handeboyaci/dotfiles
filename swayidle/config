@@ -1,5 +1,0 @@
-timeout 180 'playerctl pause; swaylock'
-timeout 240 'swaymsg "output * dpms off"' resume 'swaymsg "output * dpms on"'
-timeout 1800 'systemctl suspend'
-before-sleep 'playerctl stop; swaylock'
-

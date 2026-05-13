@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Code Search
-Icon=search-symbolic
-Exec=google-chrome --app=https://source.corp.google.com/ 
-Terminal=false
-Type=Application
-StartupNotify=true
-Keywords=Code Search;Google

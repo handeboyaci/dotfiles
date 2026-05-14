@@ -19,8 +19,6 @@ export FZF_CTRL_T_OPTS="--preview='less {}'"
 
 () {
   local -A WORKSTATION_REMOTES=(
-    laptop "ofis cloud ev"
-    ofis   "cloud"
   )
   local -a extra_args=()
   if [[ -z $SSH_TTY && -n "${WORKSTATION_REMOTES[$WORKSTATION_NAME]}" ]]; then

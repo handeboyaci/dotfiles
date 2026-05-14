@@ -6,7 +6,7 @@
 	url = https://github.com/zsh-users/zsh-completions.git
 [submodule "tmux/tmux-thumbs"]
 	path = tmux/tmux-thumbs
-	url = git@github.com:sencer/tmux-thumbs.git
+	url = https://github.com/sencer/tmux-thumbs.git
 [submodule "nvim/pack/plugins/start/fidget.nvim"]
 	path = nvim/pack/plugins/start/fidget.nvim
 	url = https://github.com/j-hui/fidget.nvim.git
@@ -84,25 +84,25 @@
 	url = https://github.com/nvim-treesitter/playground.git
 [submodule "nvim/pack/sencer/start/async.nvim"]
 	path = nvim/pack/sencer/start/async.nvim
-	url = git@github.com:sencer/async.nvim.git
+	url = https://github.com/sencer/async.nvim.git
 [submodule "nvim/pack/sencer/start/buffers.nvim"]
 	path = nvim/pack/sencer/start/buffers.nvim
-	url = git@github.com:sencer/buffers.nvim.git
+	url = https://github.com/sencer/buffers.nvim.git
 [submodule "nvim/pack/sencer/start/quickfix.nvim"]
 	path = nvim/pack/sencer/start/quickfix.nvim
-	url = git@github.com:sencer/quickfix.nvim.git
+	url = https://github.com/sencer/quickfix.nvim.git
 [submodule "nvim/pack/sencer/start/remotefiles.nvim"]
 	path = nvim/pack/sencer/start/remotefiles.nvim
-	url = git@github.com:sencer/remotefiles.nvim.git
+	url = https://github.com/sencer/remotefiles.nvim.git
 [submodule "nvim/pack/sencer/start/synctex.nvim"]
 	path = nvim/pack/sencer/start/synctex.nvim
-	url = git@github.com:sencer/synctex.nvim.git
+	url = https://github.com/sencer/synctex.nvim.git
 [submodule "nvim/pack/plugins/start/none-ls.nvim"]
 	path = nvim/pack/plugins/start/none-ls.nvim
 	url = https://github.com/nvimtools/none-ls.nvim
 [submodule "nvim/pack/sencer/start/relatedfiles"]
 	path = nvim/pack/sencer/start/relatedfiles
-	url = git@github.com:sencer/relatedfiles.git
+	url = https://github.com/sencer/relatedfiles.git
 [submodule "nvim/pack/sencer/start/vcs.nvim"]
 	path = nvim/pack/sencer/start/vcs.nvim
-	url = git@github.com:sencer/vcs.nvim.git
+	url = https://github.com/sencer/vcs.nvim.git

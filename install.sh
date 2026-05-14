@@ -3,9 +3,15 @@ set -e
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "==> Installing packages: tmux, zsh, neovim..."
+echo "==> Installing packages..."
 sudo apt-get update -qq
-sudo apt-get install -y tmux zsh neovim
+sudo apt-get install -y tmux zsh neovim fzf ripgrep fd-find
+
+# fd is shipped as fdfind on Debian/Ubuntu
+sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
+
+# Set zsh as default shell
+sudo chsh -s /usr/bin/zsh "$USER"
 
 echo "==> Symlinking dotfiles from $DOTFILES_DIR..."
 

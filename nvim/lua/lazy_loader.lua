@@ -1,4 +1,5 @@
 local M = {}
+local loaded = {}
 
 function M.lazy_load(plugin_name, opts)
 	opts = opts or {}
@@ -11,14 +12,15 @@ function M.lazy_load(plugin_name, opts)
 		-- Set up dummy mapping
 		vim.keymap.set(mode, lhs, function()
 			-- 1. Load the plugin
-			vim.cmd("packadd " .. plugin_name)
-
-			-- 2. Run on_load if provided
-			if on_load then
-				on_load()
+			if not loaded[plugin_name] then
+				vim.cmd("packadd " .. plugin_name)
+				if on_load then
+					on_load()
+				end
+				loaded[plugin_name] = true
 			end
 
-			-- 3. Execute the actual action intended by the trigger
+			-- 2. Execute the actual action intended by the trigger
 			if type(rhs) == "function" then
 				rhs()
 			elseif type(rhs) == "string" then
@@ -30,7 +32,7 @@ function M.lazy_load(plugin_name, opts)
 				end
 			end
 
-			-- 4. Re-bind the key to the actual action so next time it doesn't load again
+			-- 3. Re-bind the key to the actual action so next time it doesn't load again
 			vim.keymap.set(mode, lhs, rhs, { noremap = true, silent = true })
 		end, { noremap = true, silent = true })
 	end
@@ -39,9 +41,12 @@ function M.lazy_load(plugin_name, opts)
 	for _, cmd in ipairs(cmds) do
 		vim.api.nvim_create_user_command(cmd, function(args)
 			vim.api.nvim_del_user_command(cmd)
-			vim.cmd("packadd " .. plugin_name)
-			if on_load then
-				on_load()
+			if not loaded[plugin_name] then
+				vim.cmd("packadd " .. plugin_name)
+				if on_load then
+					on_load()
+				end
+				loaded[plugin_name] = true
 			end
 			vim.cmd(cmd .. " " .. args.args)
 		end, { nargs = "*" })

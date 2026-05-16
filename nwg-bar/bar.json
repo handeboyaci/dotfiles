@@ -1,13 +1,13 @@
 [
   {
-    "label": "Suspend",
-    "exec": "systemctl suspend-then-hibernate",
-    "icon": "/usr/share/nwg-bar/images/system-suspend.svg"
+    "label": "Lock",
+    "exec": "swaylock -f -c 000000",
+    "icon": "/usr/share/nwg-bar/images/system-lock-screen.svg"
   },
   {
-    "label": "Shutdown",
-    "exec": "systemctl -i poweroff",
-    "icon": "/usr/share/nwg-bar/images/system-shutdown.svg"
+    "label": "Logout",
+    "exec": "swaymsg exit",
+    "icon": "/usr/share/nwg-bar/images/system-log-out.svg"
   },
   {
     "label": "Reboot",
@@ -15,13 +15,8 @@
     "icon": "/usr/share/nwg-bar/images/system-reboot.svg"
   },
   {
-    "label": "Lock",
-    "exec": "swaylock",
-    "icon": "/usr/share/nwg-bar/images/system-lock-screen.svg"
-  },
-  {
-    "label": "Logout",
-    "exec": "swaymsg exit",
-    "icon": "/usr/share/nwg-bar/images/system-log-out.svg"
+    "label": "Shutdown",
+    "exec": "systemctl -i poweroff",
+    "icon": "/usr/share/nwg-bar/images/system-shutdown.svg"
   }
 ]

@@ -28,8 +28,8 @@ mkdir -p -m 700 "$TMPPREFIX"
 
 export PAGER=less
 export LESS='-g -i -M -R -W -z-4'
-export LESSOPEN="|$HOME/bin/lesspipe %s"
-export LESSCLOSE="$HOME/bin/lesspipe %s %s"
+export LESSOPEN="|$HOME/.dotfiles/zsh/lesspipe %s"
+export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
 
 function dedup {
     declare -a new=() copy=("${DIRSTACK[@]:1}")

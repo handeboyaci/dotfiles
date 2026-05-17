@@ -64,9 +64,6 @@
 [submodule "nvim/pack/plugins/start/vim-repeat"]
 	path = nvim/pack/plugins/start/vim-repeat
 	url = https://github.com/tpope/vim-repeat.git
-[submodule "nvim/pack/plugins/start/vim-signify"]
-	path = nvim/pack/plugins/start/vim-signify
-	url = https://github.com/mhinz/vim-signify.git
 [submodule "nvim/pack/plugins/start/vim-surround"]
 	path = nvim/pack/plugins/start/vim-surround
 	url = https://github.com/tpope/vim-surround.git

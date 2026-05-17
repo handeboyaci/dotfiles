@@ -91,6 +91,7 @@ lazy.lazy_load("nvim-colorizer.lua", {
 })
 
 -- Signify
+vim.g.loaded_signify = 1
 vim.g.signify_skip_filename_pattern = { [[\.pipertmp.*]] }
 
 -- null-ls setup

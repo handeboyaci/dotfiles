@@ -14,14 +14,6 @@ M.setup = function(args)
 
 	vim.api.nvim_create_user_command("Comments", require("google3.comments").load, { bang = true })
 	vim.api.nvim_create_user_command("CommentsAll", require("google3.comments").load_all, {})
-	vim.api.nvim_create_user_command("Snapshots", function(opts)
-		local s = require("google3.snapshots")
-		if opts.bang then
-			s.load()
-		else
-			s.diff()
-		end
-	end, { bang = true })
 
 	vim.cmd("compiler blaze")
 

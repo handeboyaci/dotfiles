@@ -20,6 +20,7 @@ done
 ]]
 
 M.load = function(citc_path, citc_root)
+	local bufnr = vim.fn.bufnr()
 	citc_path = citc_path or vim.b.citc_path
 	if citc_path == nil then
 		print("File doesn't seem to be a part of CITC.")
@@ -29,21 +30,34 @@ M.load = function(citc_path, citc_root)
 
 	local efm = "%f: %m"
 
-	-- Start with baseline, if it exists.
-	local lines = {}
 	local baseline = util.joinpath(citc_root, ".citc/baseline/google3", citc_path)
-	if vim.fn.filereadable(baseline) == 1 then
-		lines = { baseline .. ": Baseline" }
-	end
-
 	local opts = {
 		nr = "$",
 		title = "Snapshots for " .. citc_path,
 		efm = efm,
 		quickfixtextfunc = require("sencer.format").text,
-		lines = lines,
 		command = script_tmpl:format(citc_root, citc_path),
 		run_shell = true,
+		on_finish = function()
+			if vim.fn.filereadable(baseline) == 1 then
+				local current_file = vim.api.nvim_buf_get_name(0)
+				local cmd = string.format("cmp -s -- %s %s", vim.fn.shellescape(current_file), vim.fn.shellescape(baseline))
+				vim.fn.system(cmd)
+				if vim.v.shell_error ~= 0 then
+					vim.fn.setqflist({}, "a", { efm = efm, lines = { baseline .. ": Baseline" } })
+				end
+			else
+				local empty_baseline = "/tmp/empty_baseline"
+				vim.fn.system("touch " .. empty_baseline)
+				vim.fn.setqflist({}, "a", { efm = efm, lines = { empty_baseline .. ": Baseline (Empty)" } })
+			end
+			local qflist = vim.fn.getqflist()
+			if #qflist == 0 then
+				print("No snapshots found.")
+			else
+				pcall(vim.cmd, "cfirst")
+			end
+		end,
 	}
 
 	local job = async.qf(opts)
@@ -69,11 +83,12 @@ M.diff = function()
 		pattern = {
 			util.joinpath(citc_root, ".citc/baseline/google3", citc_path),
 			util.joinpath(citc_root, ".snapshot/*", citc_path),
+			"/tmp/empty_baseline",
 		},
 		-- For some reason, not having <afile> before switching b confuses the editor.
-		command = "call expand('<afile>')|bd|only|b"
+		command = "call expand('<afile>')|bd|only|diffoff!|b "
 			.. bufnr
-			.. "|vert diffsplit <afile>|doautocmd FileType|setl bufhidden=delete",
+			.. "|vert diffsplit <afile>|filetype detect|setl bufhidden=delete nobuflisted",
 	})
 end
 

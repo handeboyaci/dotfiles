@@ -1,15 +1,6 @@
-[user]
-	name = Hande Boyaci
-	email = handeboyaci89@gmail.com
 [alias]
     s = status
     co = checkout
     br = branch
     ci = commit
     lg = log --graph --oneline --decorate --all
-[credential "https://github.com"]
-	helper = 
-	helper = !/opt/homebrew/bin/gh auth git-credential
-[credential "https://gist.github.com"]
-	helper = 
-	helper = !/opt/homebrew/bin/gh auth git-credential

@@ -37,7 +37,7 @@ end)
 
 -- Mason
 lazy.lazy_load("mason.nvim", {
-	cmds = { "Mason" },
+	cmds = { "Mason", "MasonInstall" },
 	on_load = function()
 		require("mason").setup()
 	end,

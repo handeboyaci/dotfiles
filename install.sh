@@ -27,7 +27,6 @@ ln -sf "$DOTFILES_DIR/nvim"         "$HOME/.config/nvim"
 mkdir -p "$HOME/.config/tmux"
 ln -sf "$DOTFILES_DIR/tmux"         "$HOME/.config/tmux/plugins"
 
-nvim --headless -c ':TSUninstall all | q'
-nvim --headless -c ':TSInstallSync all | q'
 echo "==> Done! All dotfiles installed."
-echo "Open nvim and run\n:MasonInstall basedpyright bash-language-server lua-language-server bandit ruff shellcheck shfmt vim-language-server vint'
+echo "Open nvim and run\n:TSUninstall all\n:TSInstallSync all\n:MasonInstall basedpyright bash-language-server lua-language-server bandit ruff shellcheck shfmt vim-language-server vint"
+

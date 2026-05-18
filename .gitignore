@@ -10,7 +10,7 @@ ssh/known_hosts
 ssh/known_hosts.old
 ssh/sk-passwords
 __pycache__/
-tmp/
+tmp/*
 !tmp/.create-dir
 systemd/user/*.target.wants
 sunshine/credentials/

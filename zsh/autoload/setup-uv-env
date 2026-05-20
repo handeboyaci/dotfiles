@@ -1,0 +1,98 @@
+# vi: ft=zsh
+
+typeset -g _UV_ENV_AUTO_ACTIVATED=0
+typeset -g _UV_ENV_LAST_PWD=""
+typeset -ga ZSH_UV_ACTIVATE_HOOKS=()
+typeset -ga ZSH_UV_DEACTIVATE_HOOKS=()
+
+zsh_uv_add_post_hook_on_activate() {
+  ZSH_UV_ACTIVATE_HOOKS+=("$1")
+}
+
+zsh_uv_add_post_hook_on_deactivate() {
+  ZSH_UV_DEACTIVATE_HOOKS+=("$1")
+}
+
+_uv_env_run_hooks() {
+  local hook
+  for hook in "$@"; do
+    eval "$hook"
+  done
+}
+
+_uv_env_find_venv() {
+  local current_dir="$PWD"
+  local stop_dir="/"
+
+  if [[ "$current_dir" == "$HOME"* ]]; then
+    stop_dir="$HOME"
+  fi
+
+  while [[ "$current_dir" != "$stop_dir" ]]; do
+    if [[ -d "$current_dir/.venv" ]]; then
+      print -r -- "$current_dir/.venv"
+      return 0
+    fi
+    current_dir="${current_dir:h}"
+  done
+
+  if [[ -d "$stop_dir/.venv" ]]; then
+    print -r -- "$stop_dir/.venv"
+    return 0
+  fi
+
+  return 1
+}
+
+_uv_env_precmd() {
+  if [[ $PWD == $_UV_ENV_LAST_PWD ]]; then
+    return
+  fi
+  _UV_ENV_LAST_PWD=$PWD
+
+  if [[ -n $VIRTUAL_ENV && $_UV_ENV_AUTO_ACTIVATED == 0 ]]; then
+    return
+  fi
+
+  local venv_path="$(_uv_env_find_venv)"
+
+  if [[ -n "$venv_path" ]]; then
+    if [[ -z $VIRTUAL_ENV || "$venv_path" != "$VIRTUAL_ENV" ]]; then
+      source "$venv_path/bin/activate"
+      _UV_ENV_AUTO_ACTIVATED=1
+      _uv_env_run_hooks "${ZSH_UV_ACTIVATE_HOOKS[@]}"
+    fi
+  elif [[ $_UV_ENV_AUTO_ACTIVATED == 1 && -n $VIRTUAL_ENV ]]; then
+    deactivate
+    _UV_ENV_AUTO_ACTIVATED=0
+    _uv_env_run_hooks "${ZSH_UV_DEACTIVATE_HOOKS[@]}"
+  fi
+}
+
+_source_cached_completion() {
+  local name=$1
+  shift
+  local cache="$HOME/.dotfiles/tmp/completions/${name}.zsh"
+
+  if [[ -r "$cache" ]]; then
+    source "$cache"
+  elif (( $+commands[$name] )); then
+    mkdir -p "${cache:h}"
+    "$@" >| "$cache" 2>/dev/null && source "$cache"
+  fi
+
+  if (( $+commands[$name] )) && [[ ! -r "$cache" || "$cache" -ot ${commands[$name]} ]]; then
+    {
+      mkdir -p "${cache:h}"
+      "$@" >| "${cache}.tmp" 2>/dev/null && mv -f "${cache}.tmp" "$cache"
+    } &!
+  fi
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook -d precmd _uv_env_precmd 2>/dev/null
+add-zsh-hook precmd _uv_env_precmd
+
+_uv_env_precmd
+_source_cached_completion uv uv generate-shell-completion zsh
+_source_cached_completion uvx uvx --generate-shell-completion zsh

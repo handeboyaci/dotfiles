@@ -553,3 +553,5 @@ function _auto_zcompile() {
   done
 }
 { _auto_zcompile } &!
+
+setup-uv-env

@@ -1,7 +1,9 @@
 Match host *.corp.google.com,*.c.googlers.com,cloud,ofis exec "! ([ -f /proc/$PPID/cmdline ] && tr '\0' '\n' < /proc/$PPID/cmdline | grep -q '^-O') && (gcertstatus --check_remaining=1h --quiet || gcert --disable_svelte)"
-
-Host ev
+Match host ev exec "nmcli -t -f active,ssid|grep -q 'connected to ev'"
   Hostname 192.168.1.12
+Host ev
+  Hostname sncr.duckdns.org
+  IdentityFile ~/.ssh/id_ev
 Host cloud
   Hostname sselcuk.c.googlers.com
   ProxyCommand corp-ssh-helper %h %p

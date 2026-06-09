@@ -1,4 +1,4 @@
-exec --no-startup-id dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME
+exec --no-startup-id dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME && systemctl --user start sway-session.target
 
 set $mod Mod4
 set $alt Mod1
@@ -244,11 +244,13 @@ client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec_always systemctl --user start sway-session.target
 exec --no-startup-id /usr/libexec/gsd-rfkill
 bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
 bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
-bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=120
-bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=120
+bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200
+bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
 bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
 bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
+exec_always systemctl --user try-reload-or-restart kanshi.service
+exec_always systemctl --user try-reload-or-restart swayosd-server.service
+

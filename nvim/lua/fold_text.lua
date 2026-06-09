@@ -3,8 +3,10 @@ local M = {}
 function M.foldtext()
 	local reg = "{{{" .. "\\d\\="
 	local commentstring = vim.bo.commentstring
-	for _, c in ipairs(vim.split(commentstring, "%s")) do
-		reg = reg .. "\\|" .. vim.fn.escape(c, "*")
+	for _, c in ipairs(vim.split(commentstring, "%s", { plain = true })) do
+		if c ~= "" then
+			reg = reg .. "\\|" .. vim.fn.escape(c, "*")
+		end
 	end
 
 	local fillchars = vim.o.fillchars

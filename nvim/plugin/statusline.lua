@@ -1,8 +1,30 @@
+local home = os.getenv("HOME")
+local citc_root = os.getenv("CITC_ROOT")
+local citc_name = os.getenv("CITC_NAME")
+
 -- Highlight StatusLine
 vim.api.nvim_set_hl(0, "StatusLine", { bg = "#8787af", fg = "#262626" })
 
--- Autocmds for ModeChanged
+-- Autocmds for ModeChanged & DirChanged
 local statusline_group = vim.api.nvim_create_augroup("StatusLine", { clear = true })
+
+local cached_workdir = ""
+local function update_workdir()
+	local workdir = vim.fn.getcwd()
+	if home then
+		workdir = workdir:gsub(home, "~")
+	end
+	if citc_root and citc_name then
+		workdir = workdir:gsub(citc_root, citc_name)
+	end
+	cached_workdir = workdir
+end
+update_workdir() -- Initial run
+
+vim.api.nvim_create_autocmd("DirChanged", {
+	group = statusline_group,
+	callback = update_workdir,
+})
 
 vim.api.nvim_create_autocmd("ModeChanged", {
 	group = statusline_group,
@@ -30,19 +52,7 @@ vim.api.nvim_create_autocmd("ModeChanged", {
 
 -- StatusLine function
 function _G.StatusLine()
-	local home = os.getenv("HOME")
-	local citc_root = os.getenv("CITC_ROOT")
-	local citc_name = os.getenv("CITC_NAME")
-
-	local workdir = vim.fn.getcwd()
-	if home then
-		workdir = workdir:gsub(home, "~")
-	end
-	if citc_root and citc_name then
-		workdir = workdir:gsub(citc_root, citc_name)
-	end
-
-	local stl = "[%n][" .. workdir .. "] "
+	local stl = "[%n][" .. cached_workdir .. "] "
 
 	local relpath = vim.fn.expand("%:h")
 	if home then

@@ -2,9 +2,10 @@ local M = {}
 
 function M.redir(cmd, rng, start, end_line)
 	-- Close existing scratch windows
-	for win = 1, vim.fn.winnr("$") do
-		if vim.fn.getwinvar(win, "scratch") == 1 then
-			vim.cmd(win .. "windo close")
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		local success, is_scratch = pcall(vim.api.nvim_win_get_var, win, "scratch")
+		if success and is_scratch == 1 then
+			vim.api.nvim_win_close(win, true)
 		end
 	end
 

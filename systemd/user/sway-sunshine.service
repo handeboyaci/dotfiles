@@ -5,6 +5,7 @@ Before=sway-session.target
 [Service]
 Type=simple
 Environment=WAYLAND_DISPLAY=wayland-1
+Environment=SWAY_HEADLESS=1
 Environment=WLR_BACKENDS=headless,libinput
 Environment=LIBSEAT_BACKEND=noop
 Environment=WLR_RENDERER=gles2

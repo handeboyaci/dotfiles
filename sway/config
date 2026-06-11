@@ -1,4 +1,4 @@
-exec --no-startup-id dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME && systemctl --user start sway-session.target
+exec dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME && systemctl --user start sway-session.target
 
 set $mod Mod4
 set $alt Mod1
@@ -9,19 +9,19 @@ font pango:Fira Mono 12
 floating_modifier $mod
 
 # start a terminal
-bindsym $mod+Return exec --no-startup-id foot
-bindsym $mod+Shift+Return exec --no-startup-id google-chrome
+bindsym $mod+Return exec foot
+bindsym $mod+Shift+Return exec google-chrome
 
 # kill focused window
 bindsym $mod+w kill
-bindsym $mod+Shift+w exec --no-startup-id nwg-bar
+bindsym $mod+Shift+w exec nwg-bar
 
-bindsym $mod+Shift+space exec --no-startup-id rofi -show run
-bindsym $mod+space exec --no-startup-id rofi -modi drun -show drun -show-icons
+bindsym $mod+Shift+space exec rofi -show run
+bindsym $mod+space exec rofi -modi drun -show drun -show-icons
 
-bindsym $mod+b exec --no-startup-id rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
+bindsym $mod+b exec rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
 
-bindsym $mod+e exec --no-startup-id dbus-send --session --print-reply --dest=org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications.ShowNotifications
+bindsym $mod+e exec dbus-send --session --print-reply --dest=org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications.ShowNotifications
 
 # change focus
 bindsym $mod+h focus left
@@ -66,17 +66,17 @@ bindsym $mod+d focus child
 # make window sticky
 bindsym $mod+s sticky toggle
 
-bindsym Ctrl+$alt+Delete exec --no-startup-id swaylock 
+bindsym Ctrl+$alt+Delete exec swaylock 
 bindswitch --locked lid:toggle exec swaylock && systemctl sleep
 
 # screenshot
-bindsym Print exec --no-startup-id grim -g "$(slurp)" - | wl-copy
-bindsym shift+Print exec --no-startup-id grim -g "$(slurp)"
+bindsym Print exec grim -g "$(slurp)" - | wl-copy
+bindsym shift+Print exec grim -g "$(slurp)"
 
 # Define names for default workspaces for which we configure key bindings later on.
 # We use variables to avoid repeating the names in multiple places.
 # switch to workspace
-bindsym $mod+n exec --no-startup-id $HOME/.dotfiles/rofi/rofi-rename-workspace
+bindsym $mod+n exec $HOME/.dotfiles/rofi/rofi-rename-workspace
 
 bindsym $mod+1 workspace number 1
 bindsym $mod+2 workspace number 2
@@ -115,8 +115,8 @@ mode "$mode_passthrough" {
   bindsym $mod+p mode "default"
   bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
   bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
-  bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=120
-  bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=120
+  bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200
+  bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
   bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
   bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
 }
@@ -244,7 +244,7 @@ client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec --no-startup-id /usr/libexec/gsd-rfkill
+exec /usr/libexec/gsd-rfkill
 bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
 bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
 bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200

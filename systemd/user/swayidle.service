@@ -7,7 +7,6 @@ PartOf=graphical-session.target
 Type=simple
 ExecStart=/usr/bin/swayidle
 Restart=on-error
-After=graphical-session.target
 
 [Install]
 WantedBy=sway-session.target

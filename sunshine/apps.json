@@ -1,7 +1,6 @@
 {
   "env": {
-    "PATH": "$(PATH):$(HOME)/.local/bin",
-    "SWAYSOCK": "/run/user/1000/sway-sunshine.sock"
+    "PATH": "$(PATH):$(HOME)/.local/bin"
   },
   "apps": [
     {

@@ -6,14 +6,13 @@ BindsTo=sway-sunshine.service
 [Service]
 Type=simple
 Environment=WAYLAND_DISPLAY=wayland-1
-Environment=SWAYSOCK=/run/user/1000/sway-sunshine.sock
+Environment=SWAYSOCK=%t/sway-sunshine.sock
 Environment=XDG_SESSION_TYPE=wayland
 Environment=XDG_CURRENT_DESKTOP=sway
-ExecStartPre=-/usr/bin/systemctl --user stop sunshine-headless.socket --no-block
-ExecStartPre=/usr/bin/sleep 3
+ExecStartPre=-/usr/bin/systemctl --user stop sunshine-headless.socket
 ExecStart=/home/sselcuk/software/sunshine.AppImage
 ExecStopPost=/usr/bin/sleep 6
-ExecStopPost=-/usr/bin/systemctl --user start sunshine-headless.socket --no-block
+ExecStopPost=-/usr/bin/systemctl --user start sunshine-headless.socket
 Restart=on-failure
 RestartSec=5
 

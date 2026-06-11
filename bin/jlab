@@ -1,11 +1,9 @@
 #!/bin/zsh
 
-source $ZDOTDIR/zshrc
-conda activate ${1:-dev}
-
 if [[ $(jupyter notebook list | wc -l) -eq 1 ]]
 then
-  nohup jupyter-lab &>/dev/null &
+  nohup jupyter-lab --ip=0.0.0.0 --port=8888 --no-browser &>/dev/null &
 else
-  jupyter-lab stop
+  kill $(lsof -t -i:8888)
 fi
+

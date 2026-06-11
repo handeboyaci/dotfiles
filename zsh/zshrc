@@ -256,8 +256,78 @@ bindkey -M vicmd J vi-join-custom
 # }}}
 
 # sharded {{{
+function has-active-at-n {
+  local str="$1"
+  local pattern="^(.*)(@([0-9]+)((\.[a-zA-Z_][a-zA-Z0-9_]*)?))(.*)$"
+  while [[ $str =~ $pattern ]]; do
+    local head="$match[1]"
+    local at_ext="$match[4]"
+    local tail="$match[6]"
+
+    if [[ -n $at_ext && $at_ext =~ '^\.(com|net|org|co|io|edu|gov|cn|tr|de|uk|us|info|me|html|htm|php|js|css|dev|app|ai)$' ]]; then
+      # invalid (domain)
+    elif [[ $tail =~ '^\.[0-9]+\.[0-9]' ]]; then
+      # invalid (IP)
+    else
+      return 0
+    fi
+    str="$head"
+  done
+  return 1
+}
+
 function glob-to-sharded {
-  BUFFER="${BUFFER//-?????-of-0#/@}"
+  local active_str="$BUFFER"
+  local processed_suffix=""
+
+  if has-active-at-n "$BUFFER"; then
+    # Convert ONLY @N -> glob, leave globs as is
+    local pattern="^(.*)(@([0-9]+)((\.[a-zA-Z_][a-zA-Z0-9_]*)?))(.*)$"
+    while [[ $active_str =~ $pattern ]]; do
+      local head="$match[1]"
+      local matched_pattern="$match[2]"
+      local at_n="$match[3]"
+      local at_ext="$match[4]"
+      local tail="$match[6]"
+
+      local replacement=""
+      if [[ -n $at_ext && $at_ext =~ '^\.(com|net|org|co|io|edu|gov|cn|tr|de|uk|us|info|me|html|htm|php|js|css|dev|app|ai)$' ]]; then
+        replacement="$matched_pattern"
+      elif [[ $tail =~ '^\.[0-9]+\.[0-9]' ]]; then
+        replacement="$matched_pattern"
+      else
+        local len=${#at_n}
+        local sharded=""
+        if (( len <= 5 )); then
+          local padded=$(printf "%05d" $at_n)
+          sharded="-?????-of-$padded"
+        else
+          local q="${(l:len::?:)}"
+          sharded="-$q-of-$at_n"
+        fi
+        replacement="${sharded}${at_ext}"
+      fi
+
+      processed_suffix="${replacement}${tail}${processed_suffix}"
+      active_str="$head"
+    done
+  else
+    # Convert ONLY glob -> @N
+    local pattern="^(.*)(-([?*]+)-of-0*([0-9]+)((\.[a-zA-Z_][a-zA-Z0-9_]*)?))(.*)$"
+    while [[ $active_str =~ $pattern ]]; do
+      local head="$match[1]"
+      local glob_q="$match[3]"
+      local glob_n="$match[4]"
+      local glob_ext="$match[5]"
+      local tail="$match[7]"
+
+      local replacement="@${glob_n}${glob_ext}"
+      processed_suffix="${replacement}${tail}${processed_suffix}"
+      active_str="$head"
+    done
+  fi
+
+  BUFFER="${active_str}${processed_suffix}"
 }
 zle -N glob-to-sharded
 bindkey -M vicmd "\C-a" glob-to-sharded

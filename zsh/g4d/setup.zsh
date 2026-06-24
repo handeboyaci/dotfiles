@@ -26,16 +26,16 @@ function cl-precmd {
   typeset -g psvar
   local cl
 
-  if [[ -z $VCS ]]
+  if [[ -z $VCS || -z $CITC_ROOT ]]
   then
     return
-  elif [[ $VCS == g4 ]]
-  then
-    cl=$(p4 -F '%change%' changes -s pending \
-                     -c "$(p4 -F'%clientName%' info)")
-  elif [[ $VCS == hg ]]
-  then
-    cl=$(hg exportedcl)
+  fi
+
+  builtin cd -q $CITC_ROOT
+
+  cl=$(/google/data/ro/teams/fig/bin/vcstool pending-change-number 2>/dev/null)
+  if [[ $cl == -1 ]]; then
+    cl=""
   fi
   echo "${$(srcfs get_readonly):-ERROR}\n$cl"
 }
@@ -68,7 +68,15 @@ function set_current_client {
     fi
 
     CITC_ROOT="$prefix/$CITC_USER/$CITC_NAME/google3"
-    [[ -f $CITC_ROOT/../.citc/p4_client_name ]] && VCS=g4 || VCS=hg
+    if [[ -d $CITC_ROOT/../.jj ]]; then
+      VCS=jj
+    elif [[ -d $CITC_ROOT/../.hg ]]; then
+      VCS=hg
+    elif [[ -f $CITC_ROOT/../.citc/p4_client_name ]]; then
+      VCS=g4
+    else
+      VCS=""
+    fi
     unset MATCH
   else
     CITC_NAME=""

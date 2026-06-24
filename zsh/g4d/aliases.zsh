@@ -38,6 +38,9 @@ alias run='blaze run -c opt'
 alias servo='/google/data/ro/teams/ml-serving/mpm/servomatic_cli/servomatic_default/servo'
 alias sharemymodel=/google/bin/releases/airr-saif-data/sharemymodel/sharemymodel
 alias xmanager='/google/bin/releases/xmanager/cli/xmanager.par'
+alias vcstool=/google/data/ro/teams/fig/bin/vcstool 
+alias sucli='/google/bin/releases/semantic-understanding-team/tools/sucli'
+alias run_eval='google/src/head/depot/google3/experimental/users/sselcuk/eval/run_eval.sh'
 
 function csf() {
   cs f:$@

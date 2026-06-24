@@ -32,6 +32,29 @@ local function run_shell_cmds(vcs)
 				command = "hg exportedcl",
 				on_exit = buf_var_setter("citc_cl"),
 			})
+		elseif vcs == "jj" then
+			async.run_shell({
+				command = "jj log -G -r @ -T 'local_bookmarks.join(\" \")' --no-pager --color=never",
+				on_exit = function(obj)
+					if obj.code ~= 0 then
+						vim.b.citc_cl = ""
+						return
+					end
+					local bookmarks = vim.trim(obj.stdout or "")
+					for _, b in ipairs(vim.split(bookmarks, " ", { plain = true })) do
+						if vim.startswith(b, "cl/") then
+							local cl = b:sub(4)
+							local at_idx = cl:find("@")
+							if at_idx then
+								cl = cl:sub(1, at_idx - 1)
+							end
+							vim.b.citc_cl = cl
+							return
+						end
+					end
+					vim.b.citc_cl = ""
+				end,
+			})
 		end
 	end
 
@@ -63,7 +86,13 @@ local function prepare_workspace(bufnr, fullpath)
 	end
 	b.citc_name = components[2]
 	b.citc_root = joinpath(prefix, components[1], components[2], "google3")
-	b.vcs = vim.fn.filereadable(joinpath(vim.b.citc_root, "../.citc/p4_client_name")) == 1 and "g4" or "hg"
+	if vim.fn.filereadable(joinpath(b.citc_root, "../.citc/p4_client_name")) == 1 then
+		b.vcs = "g4"
+	elseif vim.fn.isdirectory(joinpath(b.citc_root, "../.jj")) == 1 then
+		b.vcs = "jj"
+	else
+		b.vcs = "hg"
+	end
 	run_shell_cmds(b.vcs)
 
 	vim.bo.path = vim.b.citc_root .. ",."

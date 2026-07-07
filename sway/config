@@ -252,3 +252,5 @@ bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-vol
 bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
 bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
 bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
+exec_always [ -z "$SWAY_HEADLESS" ] && systemctl --user try-reload-or-restart kanshi.service
+exec_always [ -z "$SWAY_HEADLESS" ] && systemctl --user try-reload-or-restart swayosd-server.service

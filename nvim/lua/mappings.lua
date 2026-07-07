@@ -14,6 +14,10 @@ vim.keymap.set('c', '<C-A>', '<Home>')
 vim.keymap.set('c', '<C-X><C-A>', '<C-A>')
 vim.keymap.set('i', '<C-E>', '<End>')
 
+-- Paste
+vim.keymap.set('n', 'p', ']p')
+vim.keymap.set('n', 'P', '[p')
+
 -- Redraw screen
 vim.keymap.set('n', 'ZL', '<C-L>')
 

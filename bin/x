@@ -66,11 +66,13 @@ while (( $# > 0 )); do
     (*.deb)
       mkdir -p "$extract_dir/control"
       mkdir -p "$extract_dir/data"
-      cd "$extract_dir"; ar vx "${file_path}" > /dev/null
-      cd control; tar xvf ../control.tar.*
-      cd ../data; tar xvf ../data.tar.*
-      cd ..; rm control.tar.* data.tar.* debian-binary
-      cd ..
+      (
+        cd "$extract_dir" || exit 1
+        ar vx "${file_path}" > /dev/null
+        cd control && tar xvf ../control.tar.*
+        cd ../data && tar xvf ../data.tar.*
+        cd .. && rm control.tar.* data.tar.* debian-binary
+      )
     ;;
     (*)
       print "$0: cannot extract: $1" >&2

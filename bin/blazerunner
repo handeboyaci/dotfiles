@@ -1,16 +1,37 @@
 #!/bin/zsh
 # A script to automated selection & run of blaze targets
 
-if ! (( $+CITC_ROOT ))
-then
-  >&2 echo "Not in CITC directory."
-  return 1
+if [[ -z "$CITC_ROOT" ]]; then
+  local prefix="/google/src/cloud"
+  if [[ "$PWD" =~ "^$prefix/([^/]+)/([^/]+)" ]]; then
+    local citc_user="${match[1]}"
+    local citc_name="${match[2]}"
+    CITC_ROOT="$prefix/$citc_user/$citc_name/google3"
+    if [[ "$PWD" == "$CITC_ROOT"* ]]; then
+      if [[ "$PWD" == "$CITC_ROOT" ]]; then
+        CITC_PWD="."
+      else
+        CITC_PWD="${PWD#$CITC_ROOT/}"
+      fi
+    else
+      CITC_PWD="."
+    fi
+  else
+    >&2 echo "Not in CITC directory."
+    exit 1
+  fi
+fi
+
+if [[ -z "$1" || -z "$2" ]]; then
+  >&2 echo "Usage: blazerunner <mode> <file>"
+  >&2 echo "Modes: test | build | build-direct | build-binaries"
+  exit 1
 fi
 
 local mode=$1
-local file=$2  # can be relative path to file
-local relpath=$(dirname $file)
-local filename=$(basename $file)
+local file="${2#//}"  # can be relative path to file or depot path
+local relpath=$(dirname "$file")
+local filename=$(basename "$file")
 
 if [[ $relpath == "." ]]
 then
@@ -18,35 +39,67 @@ then
 fi
 
 local builddir="$CITC_PWD/$file"
-while [[ ! -f "$CITC_ROOT/$builddir/BUILD" && -n "$builddir" ]]
+builddir="${builddir#./}"
+builddir="${builddir#/}"
+
+while [[ ! -f "$CITC_ROOT/$builddir/BUILD" && -n "$builddir" && "$builddir" != "." && "$builddir" != "/" ]]
 do
   builddir="$(dirname $builddir)"
+  builddir="${builddir#./}"
+  builddir="${builddir#/}"
 done
-local relpath_wrt_build="${${filepath#$builddir}#/}"
-
-# At this point:
-# builddir is the path, relative to $CITC_ROOT for the BUILD file of interest
-# relpath is the path, relative to BUILD file for the target directory
-# filename is the name of file
-
-local src="//$builddir:${relpath_wrt_build}${relpath_wrt_build:+/}$filename"
-
 function query () {
   blaze query "$@" 2>/dev/null
 }
 
+local target=""
+if [[ "$file" == *:* ]]; then
+  target="//${file#//}"
+else
+  local relpath_wrt_build="${${relpath#$builddir}#/}"
+  local src="//$builddir:${relpath_wrt_build}${relpath_wrt_build:+/}$filename"
+  target=$(query "attr('srcs', '$src', '//$builddir:*') union attr('hdrs', '$src', '//$builddir:*')")
+  if [[ -z "$target" && "$mode" != "build-binaries" && "$mode" != "test" ]]; then
+    >&2 echo "No target found in //$builddir containing source file '$filename'."
+    >&2 echo "If you meant to build a specific target, pass it with a colon (e.g. //$builddir:target_name)."
+    exit 1
+  fi
+fi
+
 case $mode in
   test)
-    blaze test $(query "tests('$relpath:*')")
+    local test_target=""
+    if [[ "$file" == *:* ]]; then
+      test_target="$target"
+    elif [[ -n "$target" ]]; then
+      test_target=$(query "tests(set($target))")
+      if [[ -z "$test_target" ]]; then
+        test_target=$(query "tests(same_pkg_direct_rdeps(set($target)))")
+      fi
+    fi
+    if [[ -z "$test_target" ]]; then
+      test_target=$(query "tests('//$builddir:*')")
+    fi
+
+    if [[ -n "$test_target" ]]; then
+      blaze test ${(f)test_target}
+    else
+      >&2 echo "No test targets found in //$builddir."
+      exit 1
+    fi
     ;;
   build)
-    blaze build -c opt $(query "attr('srcs', '$src', '$relpath:*') union attr('hdrs', '$src', '$relpath:*')")
+    blaze build -c opt ${(f)target}
     ;;
   build-direct)
-    target=$(query "attr('srcs', '$src', '$relpath:*') union attr('hdrs', '$src', '$relpath:*')")
-    blaze build -c opt $(query "same_pkg_direct_rdeps('$target')")
+    blaze build -c opt $(query "set($target) union same_pkg_direct_rdeps(set($target))")
     ;;
   build-binaries)
-    blaze build -c opt $(query "binaries('$relpath:*')")
+    blaze build -c opt $(query "binaries('//$builddir:*')")
+    ;;
+  *)
+    >&2 echo "Unknown mode: $mode"
+    >&2 echo "Modes: test | build | build-direct | build-binaries"
+    exit 1
     ;;
 esac

@@ -68,6 +68,7 @@ function set_current_client {
     fi
 
     CITC_ROOT="$prefix/$CITC_USER/$CITC_NAME/google3"
+    export CITC_ROOT CITC_PWD CITC_USER CITC_NAME VCS
     if [[ -d $CITC_ROOT/../.jj ]]; then
       VCS=jj
     elif [[ -d $CITC_ROOT/../.hg ]]; then
@@ -79,11 +80,7 @@ function set_current_client {
     fi
     unset MATCH
   else
-    CITC_NAME=""
-    CITC_ROOT=""
-    CITC_PWD=""
-    CITC_USER=""
-    VCS=""
+    unset CITC_NAME CITC_ROOT CITC_PWD CITC_USER VCS
   fi
 }
 

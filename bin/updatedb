@@ -8,8 +8,11 @@ filter () {
 }
 
 if [[ -s $HOME/.dotfiles/rofi/locate_ignore ]]; then
-  ignore="$(cat $HOME/.dotfiles/rofi/locate_ignore|command sed ':a;N;$!ba;s/\n/|/g')"
-  locate $HOME|grep -v "$ignore"|filter > $HOME/.cache/rofi_file_db
+  ignore="$(cat $HOME/.dotfiles/rofi/locate_ignore | command sed '/^$/d' | command sed ':a;N;$!ba;s/\n/|/g')"
+fi
+
+if [[ -n "$ignore" ]]; then
+  locate $HOME | grep -Ev "$ignore" | filter > $HOME/.cache/rofi_file_db
 else
-  locate $HOME|grep -v "$ignore"|filter > $HOME/.cache/rofi_file_db
+  locate $HOME | filter > $HOME/.cache/rofi_file_db
 fi

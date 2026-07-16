@@ -247,7 +247,7 @@ bindkey -M viins "\C-e" break-flags-to-new-lines
 function has-active-at-n {
   local str="$1"
   local pattern="(?s)^(.*)(@([0-9]+)((\.[a-zA-Z_][a-zA-Z0-9_]*)?))(.*)$"
-  while [[ $str =~ $pattern ]]; do
+  while [[ $str -pcre-match $pattern ]]; do
     local head="$match[1]"
     local at_ext="$match[4]"
     local tail="$match[6]"
@@ -271,7 +271,7 @@ function glob-to-sharded {
   if has-active-at-n "$BUFFER"; then
     # Convert ONLY @N -> glob, leave globs as is
     local pattern="(?s)^(.*)(@([0-9]+)((\.[a-zA-Z_][a-zA-Z0-9_]*)?))(.*)$"
-    while [[ $active_str =~ $pattern ]]; do
+    while [[ $active_str -pcre-match $pattern ]]; do
       local head="$match[1]"
       local matched_pattern="$match[2]"
       local at_n="$match[3]"
@@ -302,7 +302,7 @@ function glob-to-sharded {
   else
     # Convert ONLY glob -> @N
     local pattern="(?s)^(.*)(-([?*]+)-of-0*([0-9]+)((\.[a-zA-Z_][a-zA-Z0-9_]*)?))(.*)$"
-    while [[ $active_str =~ $pattern ]]; do
+    while [[ $active_str -pcre-match $pattern ]]; do
       local head="$match[1]"
       local glob_q="$match[3]"
       local glob_n="$match[4]"

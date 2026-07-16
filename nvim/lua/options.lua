@@ -16,25 +16,15 @@ vim.g.loaded_node_provider = 0
 vim.g.loaded_ruby_provider = 0
 vim.g.loaded_perl_provider = 0
 vim.g.loaded_python_provider = 0  -- This is Python2
-vim.g.python3_host_prog = '/usr/bin/python3'
+if vim.fn.executable('python3') == 1 then
+  vim.g.python3_host_prog = vim.fn.exepath('python3')
+end
 vim.g.no_python_maps = 1
 vim.g.python_recommended_style = 0
 vim.g.tex_flavor = 'latex'
 
 -- Clipboard
-if vim.fn.empty(vim.env.TMUX) == 1 and vim.fn.executable('wl-copy') == 1 then
-  vim.g.clipboard = {
-    name = 'wl-clipboard',
-    copy = {
-      ['+'] = {'wl-copy', '--type', 'text/plain'},
-      ['*'] = {'wl-copy', '--type', 'text/plain', '--primary'},
-    },
-    paste = {
-      ['+'] = {'wl-paste', '--type', 'text/plain'},
-      ['*'] = {'wl-paste', '--type', 'text/plain', '--primary'},
-    },
-  }
-else
+if vim.fn.empty(vim.env.TMUX) == 0 and vim.fn.executable('tmux') == 1 then
   vim.g.clipboard = {
     name = 'tmux',
     copy = {
@@ -46,6 +36,18 @@ else
       ['*'] = {'tmux', 'save-buffer', '-'},
     },
     cache_enabled = 1,
+  }
+elseif vim.fn.executable('wl-copy') == 1 then
+  vim.g.clipboard = {
+    name = 'wl-clipboard',
+    copy = {
+      ['+'] = {'wl-copy', '--type', 'text/plain'},
+      ['*'] = {'wl-copy', '--type', 'text/plain', '--primary'},
+    },
+    paste = {
+      ['+'] = {'wl-paste', '--type', 'text/plain'},
+      ['*'] = {'wl-paste', '--type', 'text/plain', '--primary'},
+    },
   }
 end
 
@@ -98,7 +100,9 @@ vim.opt.cpoptions:append('J')
 vim.opt.formatoptions = 'croqbj'
 
 -- Shell and modeline
-vim.opt.shell = '/usr/bin/zsh'
+if vim.fn.executable('zsh') == 1 then
+  vim.opt.shell = vim.fn.exepath('zsh')
+end
 vim.opt.modeline = true
 
 -- Mouse

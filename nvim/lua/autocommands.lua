@@ -31,7 +31,9 @@ vim.api.nvim_create_autocmd('InsertLeave', {
   group = vimrc_group,
   pattern = '*',
   callback = function()
-    vim.opt.relativenumber = true
+    if vim.wo.number then
+      vim.opt.relativenumber = true
+    end
   end,
 })
 

@@ -16,20 +16,7 @@ eval "$(dircolors -b ~/.dotfiles/zsh/dircolors)"
 
 source $HOME/.dotfiles/zsh/aliases
 
-export EDITOR=nvim
-export VISUAL=nvim
-export BROWSER=xdg-open
-export LANG=en_US.UTF-8
-
-export TMPDIR=/tmp/$USER
-export TMPPREFIX=/tmp/$USER/zsh
-mkdir -p -m 700 "$TMPDIR"
-mkdir -p -m 700 "$TMPPREFIX"
-
-export PAGER=less
-export LESS='-g -i -M -R -W -z-4'
-export LESSOPEN="|$HOME/.dotfiles/zsh/lesspipe %s"
-export LESSCLOSE="$HOME/.dotfiles/zsh/lesspipe %s %s"
+[ -f "$HOME/.profile" ] && source "$HOME/.profile"
 
 function dedup {
     declare -a new=() copy=("${DIRSTACK[@]:1}")
@@ -53,8 +40,7 @@ function cd {
         if [ "$1" == "-" ]; then
             popd > /dev/null
         else
-            pushd "$@" > /dev/null
-            dedup
+            pushd "$@" > /dev/null && dedup
         fi
     else
         builtin cd "$HOME"

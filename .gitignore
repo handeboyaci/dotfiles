@@ -10,6 +10,7 @@ ssh/known_hosts
 ssh/known_hosts.old
 ssh/sk-passwords
 ssh/id_*
+ssh/*.pem
 __pycache__/
 tmp/
 !tmp/.create-dir

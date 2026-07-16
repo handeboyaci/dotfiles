@@ -14,15 +14,14 @@ function M.redir(cmd, rng, start, end_line)
 		-- Shell command
 		local real_cmd = cmd:sub(2)
 		if real_cmd:match(" %%") then
-			real_cmd = real_cmd:gsub(" %%", " " .. vim.fn.expand("%:p"))
+			real_cmd = real_cmd:gsub(" %%", " " .. vim.fn.shellescape(vim.fn.expand("%:p")))
 		end
 
 		if rng == 0 then
 			output = vim.fn.systemlist(real_cmd)
 		else
 			local joined_lines = table.concat(vim.fn.getline(start, end_line), "\n")
-			local cleaned_lines = vim.fn.shellescape(joined_lines):gsub("'\\''", "\\'")
-			output = vim.fn.systemlist(real_cmd .. " <<< $" .. cleaned_lines)
+			output = vim.fn.systemlist(real_cmd, joined_lines)
 		end
 	else
 		-- Vim command

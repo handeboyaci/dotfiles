@@ -3,7 +3,7 @@
 PASS_DIR=~/.password-store
 
 # Handle argument.
-if [ -n "$@" ]; then
+if [ $# -gt 0 ]; then
     PASS_FILE="$@"
 fi
 

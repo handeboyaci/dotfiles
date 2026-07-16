@@ -243,18 +243,6 @@ bindkey -M vicmd "\C-e" break-flags-to-new-lines
 bindkey -M viins "\C-e" break-flags-to-new-lines
 # }}}
 
-# custom line join that deletes \ at the end of lines{{{
-function vi-join-custom {
-  local lines=(${(f)RBUFFER})
-  lines[1]=${lines[1]/% #\\}
-  RBUFFER=${(F)lines}
-  zle vi-join
-}
-
-zle -N vi-join-custom
-bindkey -M vicmd J vi-join-custom
-# }}}
-
 # sharded {{{
 function has-active-at-n {
   local str="$1"

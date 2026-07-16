@@ -442,14 +442,15 @@ class Py3status:
             self.py3.threshold_get_color(index + 1, "event")
             self.py3.threshold_get_color(index + 1, "time")
 
-            event_dict = {}
-
-            event_dict["summary"] = event.get("summary")
-            if "CANCELLED" in event_dict["summary"] or "[TBC]" in event_dict['summary']:
+            summary = event.get("summary") or ""
+            summary_upper = summary.upper()
+            if "CANCELLED" in summary_upper or "[TBC]" in summary_upper:
               continue
+
+            event_dict = {}
+            event_dict["summary"] = summary
             event_dict["location"] = event.get("location")
             event_dict["description"] = event.get("description")
-            self.event_urls.append(event.get(self.preferred_event_link, event.get("htmlLink")))
 
             if event["start"].get("date") is not None:
                 start_dt = self._gstr_to_date(event["start"].get("date"))
@@ -462,6 +463,8 @@ class Py3status:
                 tzlocal()) or end_dt - start_dt > datetime.timedelta(
                     hours=23, minutes=59):
                 continue
+
+            self.event_urls.append(event.get(self.preferred_event_link, event.get("htmlLink")))
 
             event_dict["start_time"] = self._datetime_to_str(start_dt, self.format_time)
             event_dict["end_time"] = self._datetime_to_str(end_dt, self.format_time)

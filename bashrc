@@ -57,7 +57,7 @@ function cd {
             dedup
         fi
     else
-        cd $HOME
+        builtin cd "$HOME"
     fi
 }
 
@@ -67,8 +67,7 @@ complete -d cd
 RESET=$'\[\e[0m\]'
 GREEN=$'\[\e[38;2;114;178;51m\e[1m\]'
 ORANGE=$'\[\e[38;2;255;100;0m\e[1m\]'
-RED=$'\[\e[38;2;255;100;0m\e[1m\]'
-PS_LINE=$(printf -- ' %.0s' {1..200})
+RED=$'\[\e[38;2;255;0;0m\e[1m\]'
 
 function __ps1_update {
   EXIT=$?
@@ -88,7 +87,7 @@ function __ps1_update {
 
 PROMPT_COMMAND='__ps1_update'
 
-PS1="\${PS_LINE:0:$COLUMNS}\[\e[0G\]\[\e[38;2;255;0;0m\]$SUDO$GREEN\u\$HOST$RESET\[\e[1m\] | $GREEN\w \[\e[\$((COLUMNS-CHARS))G\]$RED\$JOBS \$EXIT\n${RESET}${ORANGE}❯${RESET} "
+PS1="\[\e[K\]\[\e[38;2;255;0;0m\]$SUDO$GREEN\u\$HOST$RESET\[\e[1m\] | $GREEN\w \[\e[\$((\${COLUMNS:-80}-CHARS))G\]$RED\$JOBS \$EXIT\n${RESET}${ORANGE}❯${RESET} "
 
 function add_to_path {
     case ":$PATH:" in

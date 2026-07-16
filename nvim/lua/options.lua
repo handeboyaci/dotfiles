@@ -85,7 +85,6 @@ vim.opt.breakindent = true
 vim.opt.showbreak = '⌊'
 
 -- Search and display
-vim.opt.gdefault = true
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
 vim.opt.infercase = true

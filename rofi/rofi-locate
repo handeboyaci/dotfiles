@@ -8,7 +8,7 @@
 
 # Handle argument.
 if [[ -s $HOME/.cache/rofi_file_db ]]; then
-  if [ -n "$@" ]; then
+  if [ $# -gt 0 ]; then
     FILE="$@"
   fi
 

@@ -1,4 +1,4 @@
-image="$HOME/.config/sway/bg.jpg"
+image=~/.config/sway/bg.jpg
 ignore-empty-password
 show-failed-attempts
 daemonize

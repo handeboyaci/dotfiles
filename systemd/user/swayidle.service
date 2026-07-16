@@ -5,8 +5,8 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/swayidle
-Restart=on-error
+ExecStart=/usr/bin/swayidle -w
+Restart=on-failure
 
 [Install]
 WantedBy=sway-session.target

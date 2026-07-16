@@ -40,7 +40,7 @@ vim.api.nvim_create_autocmd('FileType', {
   group = vimrc_group,
   pattern = { 'c', 'cpp' },
   callback = function()
-    vim.opt.matchpairs:append('=:;')
+    vim.opt_local.matchpairs:append('=:;')
   end,
 })
 

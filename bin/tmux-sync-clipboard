@@ -4,12 +4,12 @@ do
   tmux refresh-client -t $client -l
 done
 
-active_hosts=($(ps u|command sed -rn 's/.*(ssh|mosh-client( -[^ ]*)?) ([^ ]*).*/\3/p'|sort|uniq))
-for host in ${active_hosts[@]}
-do
-  ssh -O check $host &>/dev/null
-  (( $? )) && continue
-
-  ssh $host 'bash -c "for client in $(tmux list-clients -F \"#{client_tty}\"|xargs); do tmux refresh-client -t \$client -l; done"'
-
-done
+if [[ -d /tmp/$USER ]]; then
+  for socket in $(find /tmp/$USER -maxdepth 1 -type s 2>/dev/null); do
+    if ssh -o ConnectTimeout=2 -o BatchMode=yes -S "$socket" -O check dummy &>/dev/null; then
+      ssh -o ConnectTimeout=2 -o BatchMode=yes -S "$socket" dummy \
+        'for client in $(tmux list-clients -F "#{client_tty}" 2>/dev/null); do tmux refresh-client -t $client -l; done' &>/dev/null &
+    fi
+  done
+  wait
+fi

@@ -9,6 +9,7 @@ mail/notmuch-vim
 ssh/known_hosts
 ssh/known_hosts.old
 ssh/sk-passwords
+ssh/id_*
 __pycache__/
 tmp/
 !tmp/.create-dir
@@ -17,4 +18,5 @@ sunshine/credentials/
 sunshine/sunshine.log
 sunshine/sunshine_state.json
 *.jetskicli
+scratch/
 

@@ -1,0 +1,51 @@
+#!/bin/bash
+set -euo pipefail
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SSH_DIR="$DOTFILES_DIR/ssh"
+ENCRYPTED_FILE="$SSH_DIR/keys.tar.gpg"
+
+usage() {
+    echo "Usage: $0 {pack|unpack}"
+    echo "  pack   - Encrypt local SSH keys into $ENCRYPTED_FILE"
+    echo "  unpack - Decrypt $ENCRYPTED_FILE into $SSH_DIR"
+    exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+case "$1" in
+    pack)
+        echo "Packaging and encrypting SSH keys..."
+        shopt -s nullglob
+        keys=( "$SSH_DIR"/id_* "$SSH_DIR"/*.pem "$SSH_DIR"/sk-passwords )
+        if [[ ${#keys[@]} -eq 0 ]]; then
+            echo "No SSH key files found in $SSH_DIR"
+            exit 1
+        fi
+        
+        rel_keys=()
+        for k in "${keys[@]}"; do
+            rel_keys+=( "$(basename "$k")" )
+        done
+
+        tar -C "$SSH_DIR" -czf - "${rel_keys[@]}" | gpg --symmetric --cipher-algo AES256 -o "$ENCRYPTED_FILE"
+        echo "Successfully encrypted SSH keys to $ENCRYPTED_FILE"
+        ;;
+    unpack)
+        if [[ ! -f "$ENCRYPTED_FILE" ]]; then
+            echo "Encrypted SSH archive $ENCRYPTED_FILE not found."
+            exit 1
+        fi
+        echo "Decrypting SSH keys into $SSH_DIR..."
+        gpg --decrypt "$ENCRYPTED_FILE" | tar -C "$SSH_DIR" -xzf -
+        chmod 600 "$SSH_DIR"/id_* "$SSH_DIR"/*.pem "$SSH_DIR"/sk-passwords 2>/dev/null || true
+        chmod 644 "$SSH_DIR"/*.pub 2>/dev/null || true
+        echo "SSH keys successfully decrypted and permissions restored."
+        ;;
+    *)
+        usage
+        ;;
+esac

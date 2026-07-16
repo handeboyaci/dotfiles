@@ -1,4 +1,4 @@
-local joinpath = require("google3.util").joinpath
+local joinpath = require("google3.utils").joinpath
 local async = require("sencer.async")
 
 local M = {}
@@ -9,7 +9,7 @@ local prefix = "/google/src/cloud"
 local function buf_var_setter(var)
 	local setter = function(obj)
 		if obj.code ~= 0 then
-			print("Could not set " .. var)
+			vim.notify("Could not set " .. var, vim.log.levels.WARN)
 			return
 		end
 

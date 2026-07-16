@@ -21,3 +21,6 @@ sunshine/sunshine_state.json
 *.jetskicli
 scratch/
 
+
+# Neovim undo files
+*.un~

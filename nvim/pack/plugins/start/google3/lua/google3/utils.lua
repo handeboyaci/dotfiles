@@ -59,4 +59,9 @@ function M.bzl_include_expr(fname)
   end
 end
 
+
+function M.joinpath(...)
+	return table.concat({ ... }, "/")
+end
+
 return M

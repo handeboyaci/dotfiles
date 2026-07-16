@@ -20,8 +20,24 @@ export FZF_CTRL_T_OPTS="--preview='less {}'"
 
 if [[ "$WORKSTATION_NAME" == "cloud" ]]; then
   gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte
-  if [[ -z $SNAP_BASHRC_SOURCED && -r /google/data/ro/teams/ix-ml/snap/config/bashrc ]]; then
-    source /google/data/ro/teams/ix-ml/snap/config/bashrc
+  if [[ -z $SNAP_BASHRC_SOURCED ]]; then
+    local _snap_cfs="/google/data/ro/teams/ix-ml/snap/config/bashrc"
+    local _snap_cache="$HOME/.dotfiles/tmp/snap_bashrc"
+
+    if [[ ! -f "$_snap_cache" ]]; then
+      # Blocking fetch on very first use to guarantee environment
+      cp -f "$_snap_cfs" "$_snap_cache" 2>/dev/null
+    else
+      # Background refresh if cache is older than 24h
+      local -a _snap_dumps=( "$_snap_cache"(N.mh-24) )
+      if (( ! $#_snap_dumps )); then
+        { cp -f "$_snap_cfs" "$_snap_cache" 2>/dev/null } &!
+      fi
+    fi
+
+    if [[ -r "$_snap_cache" ]]; then
+      source "$_snap_cache"
+    fi
   fi
   export SNAP_DEFAULT_FOR_SYNC=true
   export SNAP_DEFAULT_FOR_NEW_WORKSPACE=true
@@ -562,7 +578,8 @@ zmodload zsh/pcre
 disable r # do not use shell built-in r for repeating last command
 autoload -Uz compinit
 # Always call compinit, but use cache if less than 24h old
-if [[ -n ~/.dotfiles/tmp/zcompdump(N.mh-24) ]]; then
+local -a dumps=( ~/.dotfiles/tmp/zcompdump(N.mh-24) )
+if (( $#dumps )); then
   compinit -C -i -d ~/.dotfiles/tmp/zcompdump
 else
   compinit -i -d ~/.dotfiles/tmp/zcompdump

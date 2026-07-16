@@ -94,5 +94,18 @@ add-zsh-hook -d precmd _uv_env_precmd 2>/dev/null
 add-zsh-hook precmd _uv_env_precmd
 
 _uv_env_precmd
-_source_cached_completion uv uv generate-shell-completion zsh
-_source_cached_completion uvx uvx --generate-shell-completion zsh
+
+# Lazy load completions to speed up shell startup
+_lazy_load_uv_completion() {
+  compdef -d uv
+  _source_cached_completion uv uv generate-shell-completion zsh
+  if type _uv >/dev/null; then _uv "$@"; fi
+}
+compdef _lazy_load_uv_completion uv
+
+_lazy_load_uvx_completion() {
+  compdef -d uvx
+  _source_cached_completion uvx uvx --generate-shell-completion zsh
+  if type _uvx >/dev/null; then _uvx "$@"; fi
+}
+compdef _lazy_load_uvx_completion uvx

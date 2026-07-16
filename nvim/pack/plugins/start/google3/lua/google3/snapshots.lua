@@ -1,11 +1,11 @@
-local util = require("google3.util")
+local util = require("google3.utils")
 local async = require("sencer.async")
 
 local M = {}
 
 local script_tmpl = [[
-citc_root="%s"
-citc_path="%s"
+citc_root=%s
+citc_path=%s
 file="$citc_root/google3/$citc_path"
 citctools filelog -r "$file" | tail -n +3 | while read -A line
 do
@@ -23,7 +23,7 @@ M.load = function(citc_path, citc_root)
 	local bufnr = vim.fn.bufnr()
 	citc_path = citc_path or vim.b.citc_path
 	if citc_path == nil then
-		print("File doesn't seem to be a part of CITC.")
+		vim.notify("File doesn't seem to be a part of CITC.", vim.log.levels.WARN)
 		return
 	end
 	citc_root = citc_root or vim.fs.dirname(vim.b.citc_root)
@@ -36,7 +36,7 @@ M.load = function(citc_path, citc_root)
 		title = "Snapshots for " .. citc_path,
 		efm = efm,
 		quickfixtextfunc = require("sencer.format").text,
-		command = script_tmpl:format(citc_root, citc_path),
+		command = script_tmpl:format(vim.fn.shellescape(citc_root), vim.fn.shellescape(citc_path)),
 		run_shell = true,
 		on_finish = function()
 			if vim.fn.filereadable(baseline) == 1 then
@@ -53,7 +53,7 @@ M.load = function(citc_path, citc_root)
 			end
 			local qflist = vim.fn.getqflist()
 			if #qflist == 0 then
-				print("No snapshots found.")
+				vim.notify("No snapshots found.", vim.log.levels.INFO)
 			else
 				pcall(vim.cmd, "cfirst")
 			end
@@ -68,7 +68,7 @@ end
 M.diff = function()
 	local citc_path = vim.b.citc_path
 	if not citc_path then
-		print("Not a google3 file.")
+		vim.notify("Not a google3 file.", vim.log.levels.WARN)
 		return
 	end
 	local citc_root = vim.fs.dirname(vim.b.citc_root)

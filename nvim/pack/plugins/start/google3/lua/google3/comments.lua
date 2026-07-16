@@ -4,7 +4,7 @@ local M = {}
 
 M.load = function(cmd_opts)
 	if not vim.b.citc_name then
-		print("Not in google3.")
+		vim.notify("Not in google3.", vim.log.levels.WARN)
 		return
 	end
 
@@ -32,7 +32,7 @@ M.load = function(cmd_opts)
 			if #qflist > 0 then
 				pcall(vim.cmd, "cfirst")
 			else
-				print("No comments found.")
+				vim.notify("No comments found.", vim.log.levels.INFO)
 			end
 		end,
 	}
@@ -44,7 +44,7 @@ end
 
 M.load_all = function()
 	if not vim.b.citc_name then
-		print("Not in google3.")
+		vim.notify("Not in google3.", vim.log.levels.WARN)
 		return
 	end
 
@@ -67,7 +67,7 @@ M.load_all = function()
 			if #qflist > 0 then
 				pcall(vim.cmd, "cfirst")
 			else
-				print("No comments found.")
+				vim.notify("No comments found.", vim.log.levels.INFO)
 			end
 		end,
 	}

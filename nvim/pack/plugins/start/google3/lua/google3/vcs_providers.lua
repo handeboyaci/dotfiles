@@ -83,8 +83,8 @@ local function get_google3_secondary_states(file, callback)
 	local citc_path = file:sub(#citc_root + 2)
 
 	local script = [[
-citc_root="%s"
-citc_path="%s"
+citc_root=%s
+citc_path=%s
 file="$citc_root/google3/$citc_path"
 citctools filelog -r "$file" | tail -n +3 | while read rev date time size wx
 do
@@ -97,7 +97,7 @@ do
   echo "$rev:$snapshot:Snapshot $rev ($date $time, $size bytes.)"
 done
 ]]
-	local command = script:format(citc_root:gsub("/google3$", ""), citc_path)
+	local command = script:format(vim.fn.shellescape(citc_root:gsub("/google3$", "")), vim.fn.shellescape(citc_path))
 
 	async.run_shell({
 		command = command,

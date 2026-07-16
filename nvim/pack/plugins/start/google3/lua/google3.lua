@@ -17,37 +17,7 @@ M.setup = function(args)
 
 	vim.cmd("compiler blaze")
 
-	vim.api.nvim_create_augroup("google3", { clear = true })
-	-- This is a hack to not save undo/swap files to disk. Unfortunately undodir and directory are global options. We
-	-- cannot set them per buffer, so we keep setting them everytime we change windows between google3 and non-google3.
-	-- local directory = vim.o.directory
-	-- local undodir = vim.o.undodir
-	-- vim.api.nvim_create_autocmd("BufWinEnter", {
-	-- 	group = "google3",
-	-- 	pattern = "*",
-	-- 	nested = true, -- This enables running SwapExists autocmd if it exists.
-	-- 	callback = function(args_)
-	-- 		local bo = vim.bo[args_.buf]
-	-- 		bo.undofile = false
-	-- 		bo.swapfile = false
-	--
-	-- 		local filename = args_.match
-	-- 		if vim.o.readonly or vim.fn.isdirectory(vim.fs.dirname(filename)) == 0 then
-	-- 			return
-	-- 		end
-	--
-	-- 		if vim.b[args_.buf].is_google3_file then
-	-- 			vim.o.undodir = "."
-	-- 			vim.o.directory = "."
-	-- 		else
-	-- 			vim.o.undodir = undodir
-	-- 			vim.o.directory = directory
-	-- 		end
-	--
-	-- 		bo.undofile = true
-	-- 		bo.swapfile = true
-	-- 	end,
-	-- })
+
 
 	vim.api.nvim_create_autocmd("FileType", {
 		group = "google3",

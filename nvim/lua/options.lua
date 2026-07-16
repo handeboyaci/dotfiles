@@ -108,8 +108,12 @@ vim.opt.mousehide = true
 
 -- Undo and swap
 vim.opt.undofile = true
-vim.opt.undodir = vim.fn.expand('$HOME') .. '/.cache/vim/undo'
-vim.opt.directory = vim.fn.expand('$HOME') .. '/.cache/vim/swap'
+local undo_dir = vim.fn.expand('$HOME') .. '/.cache/vim/undo'
+local swap_dir = vim.fn.expand('$HOME') .. '/.cache/vim/swap'
+vim.fn.mkdir(undo_dir, 'p')
+vim.fn.mkdir(swap_dir, 'p')
+vim.opt.undodir = undo_dir
+vim.opt.directory = swap_dir
 vim.opt.updatetime = 200
 vim.opt.backup = false
 
@@ -139,7 +143,7 @@ vim.opt.switchbuf = 'useopen,usetab'
 vim.opt.fillchars = { vert = '│', fold = '·', diff = '-' }
 vim.opt.foldtext = "v:lua.require('fold_text').foldtext()"
 vim.opt.foldmethod = 'expr'
-vim.opt.foldexpr = 'nvim_treesitter#foldexpr()'
+vim.opt.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
 vim.opt.foldlevel = 100
 
 -- Matchpairs

@@ -22,9 +22,14 @@ function M.foldtext()
 	-- Use vim.fn.substitute to match Vim regex behavior accurately
 	ftext = vim.fn.substitute(ftext, reg, "", "g")
 
+	local trimmed_ftext = ftext:gsub("^%s*(.-)%s*$", "%1")
+	local text_width = vim.fn.strdisplaywidth(trimmed_ftext)
+	local nlines_width = vim.fn.strdisplaywidth(nlines)
+	local fill_count = math.max(0, wlength - nlines_width - text_width - 2 - indent)
+
 	local result = string.rep(" ", indent)
-		.. ftext:gsub("^%s*(.-)%s*$", "%1") -- Trim
-		.. string.rep(foldchar, wlength - #nlines - #ftext - 2 - indent)
+		.. trimmed_ftext
+		.. string.rep(foldchar, fill_count)
 		.. " "
 		.. nlines
 		.. "≡"

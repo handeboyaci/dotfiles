@@ -1,6 +1,8 @@
 skip_global_compinit=1
 google_zsh_flysolo=1
 
+[ -f "$HOME/.dotfiles/profile" ] && emulate sh -c 'source "$HOME/.dotfiles/profile"'
+
 export ZDOTDIR="$HOME/.dotfiles/zsh"
 
 source $ZDOTDIR/workstation

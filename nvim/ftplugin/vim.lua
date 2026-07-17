@@ -1,3 +1,7 @@
+if vim.fn.getcmdwintype() ~= "" then
+	return
+end
+
 local path = os.getenv("HOME") .. "/.local/share/nvim/mason/bin/"
 
 

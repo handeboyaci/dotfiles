@@ -1,6 +1,11 @@
 local M = {}
 
 function M.redir(cmd, rng, start, end_line)
+	if vim.fn.getcmdwintype() ~= "" then
+		vim.notify("Redir cannot be executed from within the command-line window", vim.log.levels.ERROR)
+		return
+	end
+
 	-- Close existing scratch windows
 	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
 		local success, is_scratch = pcall(vim.api.nvim_win_get_var, win, "scratch")
@@ -25,8 +30,12 @@ function M.redir(cmd, rng, start, end_line)
 		end
 	else
 		-- Vim command
-		output = vim.api.nvim_exec2(cmd, { output = true }).output
-		output = vim.split(output, "\n")
+		local ok, res = pcall(vim.api.nvim_exec2, cmd, { output = true })
+		if not ok then
+			vim.notify("Redir error executing '" .. cmd .. "': " .. tostring(res), vim.log.levels.ERROR)
+			return
+		end
+		output = vim.split(res.output, "\n")
 	end
 
 	vim.cmd("vnew")

@@ -5,7 +5,6 @@ local M = {}
 
 local prefix = "/google/src/cloud"
 
-
 local function buf_var_setter(var)
 	local setter = function(obj)
 		if obj.code ~= 0 then
@@ -93,11 +92,12 @@ local function prepare_workspace(bufnr, fullpath)
 	else
 		b.vcs = "hg"
 	end
-	run_shell_cmds(b.vcs)
+	if not (vim.wo.diff or vim.opt.diff:get()) then
+		run_shell_cmds(b.vcs)
+	end
 
 	vim.bo.path = vim.b.citc_root .. ",."
 
-	-- component[3] is not interesting by itself, but it will be if there is another component after it.
 	if components[4] == nil then
 		return
 	end

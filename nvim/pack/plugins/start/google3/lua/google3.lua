@@ -7,17 +7,12 @@ local M = {}
 M.setup = function(args)
 	require("google3.vcs_providers").setup()
 
-	-- vim.opt.shada:append("r/google")
-
-	-- We are setting this as global to make sure the quickfix windows also has cs.
-
-
 	vim.api.nvim_create_user_command("Comments", require("google3.comments").load, { bang = true })
 	vim.api.nvim_create_user_command("CommentsAll", require("google3.comments").load_all, {})
 
 	vim.cmd("compiler blaze")
 
-
+	vim.api.nvim_create_augroup("google3", { clear = true })
 
 	vim.api.nvim_create_autocmd("FileType", {
 		group = "google3",
@@ -49,12 +44,13 @@ M.setup = function(args)
 			if bufnr == nil or not vim.b[bufnr].is_google3_file then
 				return
 			end
+			if vim.wo.diff or vim.opt.diff:get() then
+				return
+			end
 			cider.attach(vim.b[bufnr].citc_root, bufnr)
 			analysis.attach(vim.b[bufnr].citc_root, bufnr)
 		end,
 	})
-
-	--vim.api.nvim_create_user_command("Fix",
 
 	-- The previous autocmd won't work for the first google3 file, so we do it separately
 	buffer.setup(args)

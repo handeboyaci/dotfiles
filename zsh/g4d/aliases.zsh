@@ -49,7 +49,6 @@ function csf() {
 
 if [[ -n $PROD_PROXY ]]
 then
-
   alias bgrep="noglob ras $aliases[bgrep]"
   alias bkill="noglob ras $aliases[bkill]"
   alias blaze='ras -t blaze'

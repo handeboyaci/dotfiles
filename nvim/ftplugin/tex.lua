@@ -1,8 +1,9 @@
 vim.opt.formatoptions:append("taw")
-vim.bo.makeprg = "latexmk"
+vim.bo.makeprg = "latexmk -pdflua -interaction=nonstopmode -file-line-error -synctex=1 %:S"
 vim.bo.errorformat = "%f:%l: %m,%-G%.%#"
 
-local path = os.getenv("HOME") .. "/.local/share/nvim/mason/bin/"
+local path = vim.fn.stdpath("data") .. "/mason/bin/"
+vim.env.PATH = path .. ":" .. vim.env.PATH
 
 vim.lsp.start({
 	cmd = { path .. "texlab" },
@@ -10,35 +11,19 @@ vim.lsp.start({
 	single_file_support = true,
 	settings = {
 		texlab = {
-			rootDirectory = nil,
+			build = {
+				executable = "latexmk",
+				args = { "-pdflua", "-interaction=nonstopmode", "-file-line-error", "-synctex=1", "%f" },
+				onSave = true,
+			},
 			chktex = {
 				onOpenAndSave = true,
 				onEdit = false,
 			},
 			diagnosticsDelay = 100,
-			latexFormatter = "latexindent",
-			latexindent = {
-				["local"] = nil, -- local is a reserved keyword
-				modifyLineBreaks = false,
-			},
+			latexFormatter = "tex-fmt",
 			bibtexFormatter = "texlab",
 			formatterLineLength = 80,
 		},
 	},
-})
-
-vim.lsp.start({
-	name = "ltex",
-	cmd = { path .. "ltex-ls" },
-	filetypes = { "bib", "plaintex", "tex" },
-	single_file_support = true,
-	get_language_id = function(_, _)
-		return "latex"
-	end,
-	on_attach = function(_, _)
-		require("ltex_extra").setup({
-			load_langs = { "en-US" },
-			path = os.getenv("HOME") .. "/.dotfiles/nvim/spell",
-		})
-	end,
 })

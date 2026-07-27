@@ -178,7 +178,12 @@ local function get_google3_file_content(file, rev, callback)
 		local lines = vim.fn.readfile(abs_path)
 		callback(table.concat(lines, "\n"))
 	else
-		callback(nil)
+		async.run_shell({
+			command = "g4 ignores -i " .. vim.fn.shellescape(file),
+			on_exit = function(obj)
+				callback(obj.code == 0 and (obj.stdout or ""):match("not ignored") and "" or nil)
+			end,
+		})
 	end
 end
 
@@ -365,11 +370,19 @@ function jj.get_file_content(file, rev, callback)
 	end
 	local dir = vim.fs.dirname(file)
 	local rel_file = vim.fs.basename(file)
+	local tracked_command = "cd " .. vim.fn.shellescape(dir) .. " && jj file list --no-pager --color=never -r @ -- " .. vim.fn.shellescape(rel_file)
 	async.run_shell({
 		command = "cd " .. vim.fn.shellescape(dir) .. " && jj file show --no-pager -r " .. vim.fn.shellescape(rev) .. " -- " .. vim.fn.shellescape(rel_file),
 		on_exit = function(obj)
 			if obj.code ~= 0 then
-				callback(nil)
+				vim.schedule(function()
+					async.run_shell({
+						command = tracked_command,
+						on_exit = function(tracked_obj)
+							callback(tracked_obj.code == 0 and (tracked_obj.stdout or "") ~= "" and "" or nil)
+						end,
+					})
+				end)
 				return
 			end
 			local content = obj.stdout

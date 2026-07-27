@@ -1,0 +1,20 @@
+[aliases]
+d = ["diff", "--tool", "nvim"]
+lint = ["util", "exec", "--", "bash", "-c", "jj diff --name-only --from p4base | xargs glint"]
+
+[merge-tools.nvim]
+diff-invocation-mode = "file-by-file"
+diff-args =  ["-d", '+"nnoremap <Leader>q :qa<CR>"', '+"normal gg"', "$left", "$right"]
+
+[ui]
+default-command = "log"
+
+[colors]
+commit_id = "bright blue"
+"submitted timestamp" = "bright red"
+
+[template-aliases]
+"cl_link(number, display)" = 'display'
+"cl_link(number)" = '"cl/" ++ number'
+
+#:schema https://docs.jj-vcs.dev/latest/config-schema.json

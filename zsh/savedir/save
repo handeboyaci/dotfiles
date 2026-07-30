@@ -5,6 +5,11 @@ if [[ -z $SAVEDDIRS ]]; then
   return -1
 fi
 
+if [[ $# -eq 0 ]]; then
+  echo "Usage: save <alias_name>"
+  return 1
+fi
+
 local name=${@//[^0-9a-zA-Z_]/_} # replace the unallowed chars with an underscore
 
 if [[ -n ${(P)name} ]]; then

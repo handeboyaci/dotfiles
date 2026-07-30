@@ -1,7 +1,7 @@
 # vi: ft=zsh
-if builtin cd $@ 2> /dev/null; then
+if builtin cd "$@" 2> /dev/null; then
   return 0
-elif [[ -f "$1" ]] && builtin cd "${1%/*}" 2> /dev/null; then
+elif [[ -f "$1" ]] && builtin cd "${1:h}" 2> /dev/null; then
   echo "This is a file, entered into parent directory"
   return 0
 fi

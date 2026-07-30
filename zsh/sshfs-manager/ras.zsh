@@ -15,6 +15,11 @@ EOF
 }
 
 
+if [[ $# -lt 1 || -n $help ]]; then
+  usage
+  exit 0
+fi
+
 if (( $+term[1] )); then
   term='-t'
 fi
@@ -40,11 +45,6 @@ else
   else
     echo "No remote server specified."
   fi
-  exit 1
-fi
-
-if [[ $# -lt 1 || -n $help ]]; then
-  usage
   exit 1
 fi
 

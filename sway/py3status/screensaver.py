@@ -1,14 +1,11 @@
-import shutil
 import subprocess
 
 
 class Py3status:
   def screensaver(self):
-    # Check if swayidle is running
+    # Check if swayidle service is active
     result = subprocess.run(
-      ["pkill", "-0", "swayidle"],
-      stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE,
+      ["systemctl", "--user", "is-active", "--quiet", "swayidle.service"]
     )
     running = result.returncode == 0
 
@@ -22,24 +19,21 @@ class Py3status:
   def on_click(self, event):
     if event["button"] == 1:
       result = subprocess.run(
-        ["pkill", "-0", "swayidle"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        ["systemctl", "--user", "is-active", "--quiet", "swayidle.service"]
       )
       running = result.returncode == 0
 
       if running:
         subprocess.run(
-          ["pkill", "swayidle"],
-          stdout=subprocess.PIPE,
-          stderr=subprocess.PIPE,
+          ["systemctl", "--user", "stop", "swayidle.service"],
+          stdout=subprocess.DEVNULL,
+          stderr=subprocess.DEVNULL,
         )
       else:
-        if shutil.which("swayidle"):
-          subprocess.Popen(
-            ["swayidle"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-          )
+        subprocess.run(
+          ["systemctl", "--user", "start", "swayidle.service"],
+          stdout=subprocess.DEVNULL,
+          stderr=subprocess.DEVNULL,
+        )
 
       self.py3.update()

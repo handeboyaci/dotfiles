@@ -68,7 +68,7 @@ bindsym $mod+d focus child
 bindsym $mod+s sticky toggle
 
 bindsym Ctrl+$alt+Delete exec swaylock -f -c 000000
-bindswitch --locked lid:toggle exec systemctl sleep
+bindswitch --locked lid:toggle exec systemctl suspend
 
 # screenshot
 bindsym Print exec grim -g "$(slurp)" - | wl-copy
@@ -187,7 +187,7 @@ bar {
     position top
     status_command py3status -c ~/.config/sway/py3status.config -i ~/.config/sway/py3status/
 
-    tray_output primary
+    tray_output *
     tray_padding 3
     colors {
         background #4a3e35cc
@@ -229,12 +229,13 @@ smart_gaps on
 
 for_window [class="^.*"] border pixel 2
 for_window [class="gnome"] floating enable, resize set 50ppt 50ppt, move position center
-for_window [app_id="org.gnome.Settings"] floating enable, resize set 50ppt 50ppt, move position center
+for_window [app_id="org\.gnome\..*"] floating enable, resize set 50ppt 50ppt, move position center
 for_window [app_id="wdisplays"] floating enable, resize set 50ppt 50ppt, move position center
 for_window [class="gnuplot"] floating enable
 for_window [window_role="pop-up"] floating enable
 for_window [window_role="bubble"] floating enable, border pixel 0
 for_window [instance="web.whatsapp.com|mail.google.com"] floating disable
+for_window [app_id="^chrome-.*(web\.whatsapp\.com|mail\.google\.com).*"] floating disable
 for_window [app_id="com.moonlight_stream.Moonlight"] shortcuts_inhibitor enable, floating enable, resize set 900px 500px, move position center
 
 client.unfocused        #4c4c4c   #4c4c4c   #4c4c4c   #4c4c4c

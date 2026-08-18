@@ -1,15 +1,33 @@
-import subprocess
 import time
+import i3ipc
 
 from i3notifier.config import Config
 from i3notifier.utils import RunAsyncFactory
 
 
+def switch_to_urgent(timeout=3.0):
+  def on_workspace_urgent(i3, data):
+    i3.main_quit()
+    i3.command(f"workspace {data.current.name}")
+
+  def on_window_urgent(i3, data):
+    i3.main_quit()
+    i3.command("[urgent=latest] focus")
+
+  try:
+    i3 = i3ipc.Connection(auto_reconnect=True)
+    i3.on(i3ipc.Event.WORKSPACE_URGENT, on_workspace_urgent)
+    i3.on(i3ipc.Event.WINDOW_URGENT, on_window_urgent)
+    i3.main(timeout)
+  except Exception:
+    pass
+
+
 class DefaultConfig(Config):
   pre_action_hooks = [
-    # Start a script to listen for urgent workspaces & switch to it
-    RunAsyncFactory(lambda _: subprocess.call("switch-to-urgent.py")),
-    # Wait for the script become available
+    # Start listening for urgent workspaces & switch to it
+    RunAsyncFactory(lambda _: switch_to_urgent()),
+    # Wait for the listener to become available
     lambda _: time.sleep(0.2),
   ]
 

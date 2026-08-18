@@ -29,7 +29,14 @@ if [[ -z "$1" || -z "$2" ]]; then
 fi
 
 local mode=$1
-local file="${2#//}"  # can be relative path to file or depot path
+if [[ "$2" == //* ]]; then
+  local file="${2#//}"
+  local builddir="$file"
+else
+  local file="$2"
+  local builddir="$CITC_PWD/$file"
+fi
+
 local relpath=$(dirname "$file")
 local filename=$(basename "$file")
 
@@ -38,7 +45,6 @@ then
   relpath=""
 fi
 
-local builddir="$CITC_PWD/$file"
 builddir="${builddir#./}"
 builddir="${builddir#/}"
 

@@ -2,6 +2,13 @@ local home = os.getenv("HOME")
 local citc_root = os.getenv("CITC_ROOT")
 local citc_name = os.getenv("CITC_NAME")
 
+local function escape_pattern(str)
+	return (str:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1"))
+end
+
+local home_pattern = home and escape_pattern(home)
+local citc_root_pattern = citc_root and escape_pattern(citc_root)
+
 -- Highlight StatusLine
 vim.api.nvim_set_hl(0, "StatusLine", { bg = "#8787af", fg = "#262626" })
 
@@ -11,11 +18,11 @@ local statusline_group = vim.api.nvim_create_augroup("StatusLine", { clear = tru
 local cached_workdir = ""
 local function update_workdir()
 	local workdir = vim.fn.getcwd()
-	if home then
-		workdir = workdir:gsub(home, "~")
+	if home_pattern then
+		workdir = workdir:gsub(home_pattern, "~")
 	end
-	if citc_root and citc_name then
-		workdir = workdir:gsub(citc_root, citc_name)
+	if citc_root_pattern and citc_name then
+		workdir = workdir:gsub(citc_root_pattern, citc_name)
 	end
 	cached_workdir = workdir
 end
@@ -55,8 +62,8 @@ function _G.StatusLine()
 	local stl = "[%n][" .. cached_workdir .. "] "
 
 	local relpath = vim.fn.expand("%:h")
-	if home then
-		relpath = relpath:gsub(home, "~")
+	if home_pattern then
+		relpath = relpath:gsub(home_pattern, "~")
 	end
 
 	if relpath ~= "." and relpath ~= "" then
@@ -69,7 +76,8 @@ function _G.StatusLine()
 		lsp_status = _G.LspStatus()
 	end
 
-	stl = stl .. "%t%([%M%R%H%W]%)%=%(" .. lsp_status .. " |%) %P col %c %y"
+	local lsp_part = (lsp_status ~= "" and (" " .. lsp_status .. " |") or "")
+	stl = stl .. "%t%([%M%R%H%W]%)%=" .. lsp_part .. " %P col %c %y"
 
 	return stl
 end

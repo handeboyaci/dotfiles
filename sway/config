@@ -68,7 +68,7 @@ bindsym $mod+d focus child
 bindsym $mod+s sticky toggle
 
 bindsym Ctrl+$alt+Delete exec swaylock -f -c 000000
-bindswitch --locked lid:on exec systemctl suspend
+bindswitch --locked lid:on exec systemctl hybrid-sleep
 
 # screenshot
 bindsym Print exec grim -g "$(slurp)" - | wl-copy

@@ -1,5 +1,6 @@
 [Unit]
 Description=Sunshine streaming via headless Sway
+Requires=sway-sunshine.service
 After=sway-sunshine.service
 BindsTo=sway-sunshine.service
 
@@ -10,9 +11,10 @@ Environment=SWAYSOCK=%t/sway-sunshine.sock
 Environment=XDG_SESSION_TYPE=wayland
 Environment=XDG_CURRENT_DESKTOP=sway
 ExecStartPre=-/usr/bin/systemctl --user stop sunshine-headless.socket
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 50); do [ -S "${XDG_RUNTIME_DIR:-%t}/$WAYLAND_DISPLAY" ] && swaymsg -s "$SWAYSOCK" -t get_outputs >/dev/null 2>&1 && exit 0; sleep 0.1; done; exit 1'
 ExecStart=/home/sselcuk/software/sunshine.AppImage
 ExecStopPost=/usr/bin/sleep 6
-ExecStopPost=-/usr/bin/systemctl --user start sunshine-headless.socket
+ExecStopPost=-/usr/bin/systemctl --user --no-block start sunshine-headless.socket
 Restart=on-failure
 RestartSec=5
 

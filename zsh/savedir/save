@@ -18,7 +18,7 @@ if [[ -n ${(P)name} ]]; then
 fi
 
 # write to file
-echo "${name}='${PWD}'" >> $SAVEDDIRS
+echo "${name}=${(q)PWD}" >> $SAVEDDIRS
 
 # make available already.
-eval "${name}='${PWD}'"
+eval "${name}=${(q)PWD}"

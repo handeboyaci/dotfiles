@@ -36,6 +36,11 @@ files() {
 
 if [[ $# -eq 1 ]]
 then
+  if [[ -z $CITC_NAME ]]
+  then
+    >&2 echo "CITC_NAME environment variable is not set. Please provide two clients: diff-clients <base> <target>"
+    exit 1
+  fi
   base=$(parse)
 elif [[ $# -eq 2 ]]
 then

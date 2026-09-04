@@ -5,5 +5,10 @@ name=$(echo ''|rofi "${opts[@]}" -p "New workspace name " )
 
 if [[ -n "$name" ]]
 then
-  swaymsg rename workspace to $(swaymsg -t get_workspaces|jq '.[]|select(.visible and .focused)|.num'):"$name"
+  num=$(swaymsg -t get_workspaces 2>/dev/null | jq -r '.[] | select(.visible and .focused) | .num')
+  if [[ -n "$num" ]]; then
+    swaymsg rename workspace to "\"${num}:${name}\""
+  else
+    swaymsg rename workspace to "\"${name}\""
+  fi
 fi

@@ -4,7 +4,7 @@ sudo updatedb
 HOME=${HOME:-/home/sselcuk}
 
 filter () {
-  awk '{ print length, $0 }' | sort -n -s | cut -d' ' -f2|cut -c$((${#HOME}+2))-
+  awk '{ print length, $0 }' | sort -n -s | cut -d' ' -f2-|cut -c$((${#HOME}+2))-
 }
 
 if [[ -s $HOME/.dotfiles/rofi/locate_ignore ]]; then

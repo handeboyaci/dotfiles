@@ -8,8 +8,9 @@ fi
 
 if [[ -n $CURRENTSERVER ]]; then
   local arg="_${1//-/__}"
+  local saved_dir="${(P)arg}"
 
-  if builtin cd "$arg" 2>/dev/null; then
+  if [[ -n "$saved_dir" ]] && builtin cd "$saved_dir" 2>/dev/null; then
     echo "Entering the saved job directory"
     return 0
   fi

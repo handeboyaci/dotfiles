@@ -11,4 +11,4 @@ elif [[ ! -e $last ]]; then
   command mkdir -p $last
 fi
 
-cp $@ && cd $last
+command cp -r "$@" && builtin cd "$last"

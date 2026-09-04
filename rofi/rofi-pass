@@ -8,7 +8,7 @@ if [ $# -gt 0 ]; then
 fi
 
 if [[ -f "${PASS_DIR}/${PASS_FILE}.gpg" ]]; then
-  coproc ( /usr/bin/pass -c $(basename ${PASS_FILE})  >/dev/null 2>&1 )
+  coproc ( /usr/bin/pass -c "${PASS_FILE}" >/dev/null 2>&1 )
   exec 1>&-
   exit;
 fi

@@ -14,7 +14,9 @@ function M.foldtext()
 	if foldchar == "" then
 		foldchar = " "
 	end
-	local wlength = math.min(vim.api.nvim_win_get_width(0), 80)
+	local win_width = vim.api.nvim_win_get_width(0)
+	local textwidth = vim.bo.textwidth > 0 and vim.bo.textwidth or 80
+	local wlength = math.min(win_width - 3, math.max(textwidth, math.floor(win_width * 0.9)))
 	local indent = math.max(vim.fn.indent(vim.v.foldstart), vim.v.foldlevel - 1)
 	local nlines = (vim.v.foldend - vim.v.foldstart + 1) .. " lines "
 

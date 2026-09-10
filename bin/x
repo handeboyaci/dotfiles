@@ -56,7 +56,7 @@ while (( $# > 0 )); do
     (*.xz) unxz "$1" ;;
     (*.lzma) unlzma "$1" ;;
     (*.Z) uncompress "$1" ;;
-    (*.zip|*.jar) unzip "$1" -d $extract_dir ;;
+    (*.zip|*.jar) unzip "$1" -d "$extract_dir" ;;
     (*.rar) ( (( $+commands[unrar] )) \
       && unrar x -ad "$1" ) \
       || ( (( $+commands[rar] )) \

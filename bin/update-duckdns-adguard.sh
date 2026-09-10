@@ -13,8 +13,6 @@ if ! flock -n 200; then
 fi
 
 CONFIG_FILE="${HOME}/.dotfiles/data/duckdns.conf"
-[[ ! -f "$CONFIG_FILE" ]] && CONFIG_FILE="${HOME}/.config/duckdns/duckdns.conf"
-
 if [[ -f "$CONFIG_FILE" ]]; then
     # shellcheck source=/dev/null
     source "$CONFIG_FILE"

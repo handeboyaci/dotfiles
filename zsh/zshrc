@@ -563,7 +563,7 @@ fpath=(${fpath:#*/Completion/(AIX|BSD|Cygwin|Darwin|Solaris|openSUSE|Redhat|Mand
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
 source "$ZDOTDIR/aliases"
-source "$ZDOTDIR/g4d/setup.zsh"
+[[ -d /google/src/cloud && -f "$ZDOTDIR/g4d/setup.zsh" ]] && source "$ZDOTDIR/g4d/setup.zsh"
 
 SAVEDDIRS="$HOME/.dotfiles/tmp/dirs"
 source "$ZDOTDIR/savedir/setup.zsh"
@@ -616,10 +616,14 @@ function _auto_zcompile() {
     "$ZDOTDIR/zshrc"
     "$ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh"
     "$ZDOTDIR/syntax-highlight/fast-highlight"
-    "$ZDOTDIR/g4d/async.zsh"
-    "$ZDOTDIR/autoload/_blaze"
-    "$ZDOTDIR/autoload/_g4_generated_completion"
   )
+  if [[ -d /google/src/cloud ]]; then
+    files+=(
+      "$ZDOTDIR/g4d/async.zsh"
+      "$ZDOTDIR/autoload/_blaze"
+      "$ZDOTDIR/autoload/_g4_generated_completion"
+    )
+  fi
   local f
   for f in $files; do
     if [[ -s "$f" && (! -s "${f}.zwc" || "$f" -nt "${f}.zwc") ]]; then

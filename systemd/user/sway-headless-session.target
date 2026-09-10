@@ -1,0 +1,8 @@
+[Unit]
+Description=Headless Sway session services
+Wants=swaybg-headless.service
+After=sway-sunshine.service
+PartOf=sway-sunshine.service
+
+[Install]
+WantedBy=default.target

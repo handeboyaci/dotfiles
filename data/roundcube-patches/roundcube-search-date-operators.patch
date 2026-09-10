@@ -1,0 +1,42 @@
+--- a/program/actions/mail/search.php
++++ b/program/actions/mail/search.php
+@@ -245,7 +245,7 @@
+ 
+             $not = '';
+ 
+-            if (preg_match('/^(-?[a-zA-Z-]+):(.*)$/', $part, $matches)) {
++            if (preg_match('/^(-?[a-zA-Z_-]+):(.*)$/', $part, $matches)) {
+                 $option = $matches[1];
+                 $value = $value_function($matches[2]);
+ 
+@@ -370,19 +370,22 @@
+                 }
+ 
+                 break;
+-            case 'older_than': // GMail alias
+-                $option = 'before';
+-            case 'newer_than': // GMail alias
+-                $option = 'since';
++            case 'older_than':
++            case 'before':
++            case 'newer_than':
++            case 'after':
+             case 'since':
+-            case 'before':
++                $imap_cmd = in_array($option, ['before', 'older_than']) ? 'BEFORE' : 'SINCE';
+                 if (preg_match('/^[0-9]+[WMY]$/i', $value)) {
+-                    if ($option == 'before') {
++                    if ($imap_cmd == 'BEFORE') {
+                         $value = "-{$value}";
+                     }
+ 
+                     if ($search_interval = self::search_interval_criteria(strtoupper($value))) {
+                         return $search_interval;
+                     }
+                 } elseif (preg_match('|^([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2})$|i', $value, $m)) {
+                     $dt = new \DateTime(sprintf('%04d-%02d-%02d', $m[1], $m[2], $m[3]) . 'T00:00:00Z');
+-                    return strtoupper($option) . ' ' . $dt->format('j-M-Y');
++                    return $imap_cmd . ' ' . $dt->format('j-M-Y');
+                 }
+ 
+                 break;

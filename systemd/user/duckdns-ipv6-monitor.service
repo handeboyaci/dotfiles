@@ -1,0 +1,19 @@
+[Unit]
+Description=DuckDNS & AdGuard Event-Driven Netlink IPv6 Synchronizer
+After=network.target network-online.target
+Wants=network-online.target
+ConditionPathExists=%h/.config/duckdns/duckdns.conf
+
+[Service]
+Type=simple
+ExecStart=%h/.dotfiles/bin/duckdns-netlink-monitor.sh
+Restart=always
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=duckdns-ipv6-monitor
+
+[Install]
+WantedBy=default.target

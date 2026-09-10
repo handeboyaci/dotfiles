@@ -1,0 +1,15 @@
+[Unit]
+Description=myNoise Continuous Audio Streamer & Mixer
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/sselcuk/software/docker/mynoise-streamer
+ExecStart=/usr/bin/python3 -u /home/sselcuk/software/docker/mynoise-streamer/server.py
+Restart=always
+RestartSec=5
+Environment=PORT=8088
+Environment=DATA_DIR=/home/sselcuk/software/docker/mynoise-streamer/data
+
+[Install]
+WantedBy=default.target

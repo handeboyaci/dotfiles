@@ -2,7 +2,7 @@
 Description=DuckDNS & AdGuard Event-Driven Netlink IPv6 Synchronizer
 After=network.target network-online.target
 Wants=network-online.target
-ConditionPathExists=%h/.config/duckdns/duckdns.conf
+ConditionPathExists=%h/.dotfiles/tmp/duckdns_token
 
 [Service]
 Type=simple

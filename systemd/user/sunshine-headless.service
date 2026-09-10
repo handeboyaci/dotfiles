@@ -1,5 +1,6 @@
 [Unit]
 Description=Sunshine streaming via headless Sway
+ConditionPathExists=%h/software/sunshine.AppImage
 Requires=sway-sunshine.service
 After=sway-sunshine.service
 BindsTo=sway-sunshine.service

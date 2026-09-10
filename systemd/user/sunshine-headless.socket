@@ -1,5 +1,6 @@
 [Unit]
 Description=Listen for Moonlight Discovery Pings
+ConditionPathExists=%h/software/sunshine.AppImage
 
 [Socket]
 ListenStream=47989

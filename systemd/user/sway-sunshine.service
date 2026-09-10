@@ -1,5 +1,6 @@
 [Unit]
 Description=Headless Sway session for Sunshine streaming
+ConditionPathExists=%h/software/sunshine.AppImage
 Before=sway-session.target
 Before=sway-headless-session.target
 Wants=sway-headless-session.target

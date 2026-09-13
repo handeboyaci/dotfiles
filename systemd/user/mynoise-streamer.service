@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/sselcuk/software/docker/mynoise-streamer
-ExecStart=/usr/bin/python3 -u /home/sselcuk/software/docker/mynoise-streamer/server.py
+WorkingDirectory=/home/sselcuk/projects/noise/
+ExecStart=/usr/bin/python3 -u /home/sselcuk/projects/noise/server.py
 Restart=always
 RestartSec=5
 Environment=PORT=8088
-Environment=DATA_DIR=/home/sselcuk/software/docker/mynoise-streamer/data
+Environment=DATA_DIR=/home/sselcuk/projects/noise/data
 
 [Install]
 WantedBy=default.target

@@ -20,55 +20,40 @@ local function buf_var_setter(var)
 end
 
 local function run_shell_cmds(vcs)
-	local function run_set_cl_job()
-		if vcs == "g4" then
-			async.run_shell({
-				command = 'g4 -F "%change%" changes -s pending -c "$(g4 -F "%clientName" info|dos2unix)"',
-				on_exit = buf_var_setter("citc_cl"),
-			})
-		elseif vcs == "hg" then
-			async.run_cmd({
-				command = "hg exportedcl",
-				on_exit = buf_var_setter("citc_cl"),
-			})
-		elseif vcs == "jj" then
-			async.run_shell({
-				command = "jj log -G -r @ -T 'local_bookmarks.join(\" \")' --no-pager --color=never",
-				on_exit = function(obj)
-					if obj.code ~= 0 then
-						vim.b.citc_cl = ""
-						return
-					end
-					local bookmarks = vim.trim(obj.stdout or "")
-					for _, b in ipairs(vim.split(bookmarks, " ", { plain = true })) do
-						if vim.startswith(b, "cl/") then
-							local cl = b:sub(4)
-							local at_idx = cl:find("@")
-							if at_idx then
-								cl = cl:sub(1, at_idx - 1)
-							end
-							vim.b.citc_cl = cl
-							return
-						end
-					end
-					vim.b.citc_cl = ""
-				end,
-			})
+	vim.async.run(function()
+		local obj = async.exec("srcfs get_readonly", { text = true })
+		buf_var_setter("citc_cl_synced")(obj)
+		if obj.code ~= 0 then
+			return
 		end
-	end
 
-	-- Chain the jobs using callbacks
-	async.run_shell({
-		command = "srcfs get_readonly",
-		on_exit = function(obj)
-			buf_var_setter("citc_cl_synced")(obj, obj.code)
-			if obj.code == 0 then
-				vim.schedule(function()
-					run_set_cl_job()
-				end)
+		if vcs == "g4" then
+			local cl_obj = async.exec('g4 -F "%change%" changes -s pending -c "$(g4 -F "%clientName" info|dos2unix)"', { text = true })
+			buf_var_setter("citc_cl")(cl_obj)
+		elseif vcs == "hg" then
+			local cl_obj = async.exec("hg exportedcl", { text = true })
+			buf_var_setter("citc_cl")(cl_obj)
+		elseif vcs == "jj" then
+			local cl_obj = async.exec("jj log -G -r @ -T 'local_bookmarks.join(\" \")' --no-pager --color=never", { text = true })
+			if cl_obj.code ~= 0 then
+				vim.b.citc_cl = ""
+				return
 			end
-		end,
-	})
+			local bookmarks = vim.trim(cl_obj.stdout or "")
+			for _, b in ipairs(vim.split(bookmarks, " ", { plain = true })) do
+				if vim.startswith(b, "cl/") then
+					local cl = b:sub(4)
+					local at_idx = cl:find("@")
+					if at_idx then
+						cl = cl:sub(1, at_idx - 1)
+					end
+					vim.b.citc_cl = cl
+					return
+				end
+			end
+			vim.b.citc_cl = ""
+		end
+	end)
 end
 
 local function prepare_workspace(bufnr, fullpath)

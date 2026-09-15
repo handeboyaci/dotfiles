@@ -27,31 +27,25 @@ function g4.detect(dir)
 	return vim.fn.filereadable(citc_root .. "/../.citc/p4_client_name") == 1
 end
 
-function g4.get_modified_files(dir, callback)
-	async.run_cmd({
-		command = "g4 whatsout",
-		on_exit = function(obj)
-			if obj.code ~= 0 then
-				callback({})
-				return
-			end
-			local files = {}
-			for _, line in ipairs(vim.split(obj.stdout or "", "\n", { plain = true })) do
-				if line ~= "" and not line:match("^#") then
-					table.insert(files, line)
-				end
-			end
-			callback(files)
-		end,
-	})
+function g4.get_modified_files(dir)
+	local obj = async.exec("g4 whatsout", { text = true })
+	if obj.code ~= 0 then
+		return {}
+	end
+	local files = {}
+	for _, line in ipairs(vim.split(obj.stdout or "", "\n", { plain = true })) do
+		if line ~= "" and not line:match("^#") then
+			table.insert(files, line)
+		end
+	end
+	return files
 end
 
-local function get_google3_primary_states(file, callback)
+local function get_google3_primary_states(file)
 	file = vim.fn.fnamemodify(file, ":p")
 	local citc_root = get_citc_root(vim.fs.dirname(file))
 	if not citc_root then
-		callback({}, nil)
-		return
+		return {}, nil
 	end
 	local citc_path = file:sub(#citc_root + 2)
 	local baseline_path = citc_root:gsub("/google3$", "") .. "/.citc/baseline/google3/" .. citc_path
@@ -70,15 +64,14 @@ local function get_google3_primary_states(file, callback)
 			rev = "empty",
 		})
 	end
-	callback(entries, nil)
+	return entries, nil
 end
 
-local function get_google3_secondary_states(file, callback)
+local function get_google3_secondary_states(file)
 	file = vim.fn.fnamemodify(file, ":p")
 	local citc_root = get_citc_root(vim.fs.dirname(file))
 	if not citc_root then
-		callback({}, nil)
-		return
+		return {}, nil
 	end
 	local citc_path = file:sub(#citc_root + 2)
 
@@ -98,62 +91,54 @@ do
 done
 ]]
 	local command = script:format(vim.fn.shellescape(citc_root:gsub("/google3$", "")), vim.fn.shellescape(citc_path))
+	local obj = async.exec(command, { text = true })
+	if obj.code ~= 0 then
+		return {}, nil
+	end
 
-	async.run_shell({
-		command = command,
-		on_exit = function(obj)
-			if obj.code ~= 0 then
-				callback({}, nil)
-				return
-			end
+	local entries = {}
+	for _, line in ipairs(vim.split(obj.stdout or "", "\n", { plain = true })) do
+		if line ~= "" then
+			local parts = vim.split(line, ":", { plain = true })
+			local rev = parts[1]
+			local display = table.concat(vim.list_slice(parts, 3), ":")
+			table.insert(entries, {
+				uri = string.format("vcs://google3/diff/%s%s", rev, file),
+				display = display,
+				rev = rev,
+			})
+		end
+	end
 
-			local entries = {}
-			for _, line in ipairs(vim.split(obj.stdout or "", "\n", { plain = true })) do
-				if line ~= "" then
-					local parts = vim.split(line, ":", { plain = true })
-					local rev = parts[1]
-					local display = table.concat(vim.list_slice(parts, 3), ":")
-					table.insert(entries, {
-						uri = string.format("vcs://google3/diff/%s%s", rev, file),
-						display = display,
-						rev = rev,
-					})
-				end
-			end
+	local baseline_path = citc_root:gsub("/google3$", "") .. "/.citc/baseline/google3/" .. citc_path
+	if vim.fn.filereadable(baseline_path) == 1 then
+		table.insert(entries, {
+			uri = string.format("vcs://google3/diff/baseline%s", file),
+			display = "Baseline",
+			rev = "baseline",
+		})
+	else
+		table.insert(entries, {
+			uri = string.format("vcs://google3/diff/empty%s", file),
+			display = "Baseline (Empty)",
+			rev = "empty",
+		})
+	end
 
-			local baseline_path = citc_root:gsub("/google3$", "") .. "/.citc/baseline/google3/" .. citc_path
-			if vim.fn.filereadable(baseline_path) == 1 then
-				table.insert(entries, {
-					uri = string.format("vcs://google3/diff/baseline%s", file),
-					display = "Baseline",
-					rev = "baseline",
-				})
-			else
-				table.insert(entries, {
-					uri = string.format("vcs://google3/diff/empty%s", file),
-					display = "Baseline (Empty)",
-					rev = "empty",
-				})
-			end
-
-			callback(entries, nil)
-		end,
-	})
+	return entries, nil
 end
 
-local function get_google3_file_content(file, rev, callback)
+local function get_google3_file_content(file, rev)
 	rev = rev or "baseline"
 	if rev == "empty" then
-		callback("")
-		return
+		return ""
 	end
 
 	local citc_root, citc_path
 	if vim.startswith(file, "/google/src/cloud/") then
 		citc_root = get_citc_root(vim.fs.dirname(file))
 		if not citc_root then
-			callback(nil)
-			return
+			return nil
 		end
 		citc_path = file:sub(#citc_root + 2)
 	else
@@ -162,8 +147,7 @@ local function get_google3_file_content(file, rev, callback)
 			citc_root = vim.b[main_buf].citc_root
 		end
 		if not citc_root then
-			callback(nil)
-			return
+			return nil
 		end
 		citc_path = file:gsub("^/", "")
 	end
@@ -176,27 +160,23 @@ local function get_google3_file_content(file, rev, callback)
 
 	if vim.fn.filereadable(abs_path) == 1 then
 		local lines = vim.fn.readfile(abs_path)
-		callback(table.concat(lines, "\n"))
+		return table.concat(lines, "\n")
 	else
-		async.run_shell({
-			command = "g4 ignores -i " .. vim.fn.shellescape(file),
-			on_exit = function(obj)
-				callback(obj.code == 0 and (obj.stdout or ""):match("not ignored") and "" or nil)
-			end,
-		})
+		local obj = async.exec("g4 ignores -i " .. vim.fn.shellescape(file), { text = true })
+		return obj.code == 0 and (obj.stdout or ""):match("not ignored") and "" or nil
 	end
 end
 
-function g4.get_primary_states(file, callback)
-	get_google3_primary_states(file, callback)
+function g4.get_primary_states(file)
+	return get_google3_primary_states(file)
 end
 
-function g4.get_secondary_states(file, callback)
-	get_google3_secondary_states(file, callback)
+function g4.get_secondary_states(file)
+	return get_google3_secondary_states(file)
 end
 
-function g4.get_file_content(file, rev, callback)
-	get_google3_file_content(file, rev, callback)
+function g4.get_file_content(file, rev)
+	return get_google3_file_content(file, rev)
 end
 
 function M.setup()
@@ -217,14 +197,14 @@ function M.setup()
 
 	if hg then
 		local original_get_secondary = hg.get_secondary_states
-		hg.get_secondary_states = function(file, callback)
+		hg.get_secondary_states = function(file)
 			file = vim.fn.fnamemodify(file, ":p")
 			if vim.startswith(file, prefix) then
-				get_google3_secondary_states(file, callback)
+				return get_google3_secondary_states(file)
 			elseif original_get_secondary then
-				original_get_secondary(file, callback)
+				return original_get_secondary(file)
 			else
-				callback({}, nil)
+				return {}, nil
 			end
 		end
 	end
@@ -237,14 +217,14 @@ function M.setup()
 
 	if jj then
 		local original_get_secondary = jj.get_secondary_states
-		jj.get_secondary_states = function(file, callback)
+		jj.get_secondary_states = function(file)
 			file = vim.fn.fnamemodify(file, ":p")
 			if vim.startswith(file, prefix) then
-				get_google3_secondary_states(file, callback)
+				return get_google3_secondary_states(file)
 			elseif original_get_secondary then
-				original_get_secondary(file, callback)
+				return original_get_secondary(file)
 			else
-				callback({}, nil)
+				return {}, nil
 			end
 		end
 	end

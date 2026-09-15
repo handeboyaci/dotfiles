@@ -39,24 +39,26 @@ M.load = function(citc_path, citc_root)
 		command = script_tmpl:format(vim.fn.shellescape(citc_root), vim.fn.shellescape(citc_path)),
 		run_shell = true,
 		on_finish = function()
-			if vim.fn.filereadable(baseline) == 1 then
-				local current_file = vim.api.nvim_buf_get_name(0)
-				local cmd = string.format("cmp -s -- %s %s", vim.fn.shellescape(current_file), vim.fn.shellescape(baseline))
-				vim.fn.system(cmd)
-				if vim.v.shell_error ~= 0 then
-					vim.fn.setqflist({}, "a", { efm = efm, lines = { baseline .. ": Baseline" } })
+			vim.async.run(function()
+				if vim.fn.filereadable(baseline) == 1 then
+					local current_file = vim.api.nvim_buf_get_name(0)
+					local cmd = string.format("cmp -s -- %s %s", vim.fn.shellescape(current_file), vim.fn.shellescape(baseline))
+					local obj = async.exec(cmd)
+					if obj.code ~= 0 then
+						vim.fn.setqflist({}, "a", { efm = efm, lines = { baseline .. ": Baseline" } })
+					end
+				else
+					local empty_baseline = "/tmp/empty_baseline"
+					async.exec("touch " .. empty_baseline)
+					vim.fn.setqflist({}, "a", { efm = efm, lines = { empty_baseline .. ": Baseline (Empty)" } })
 				end
-			else
-				local empty_baseline = "/tmp/empty_baseline"
-				vim.fn.system("touch " .. empty_baseline)
-				vim.fn.setqflist({}, "a", { efm = efm, lines = { empty_baseline .. ": Baseline (Empty)" } })
-			end
-			local qflist = vim.fn.getqflist()
-			if #qflist == 0 then
-				vim.notify("No snapshots found.", vim.log.levels.INFO)
-			else
-				pcall(vim.cmd, "cfirst")
-			end
+				local qflist = vim.fn.getqflist()
+				if #qflist == 0 then
+					vim.notify("No snapshots found.", vim.log.levels.INFO)
+				else
+					pcall(vim.cmd, "cfirst")
+				end
+			end)
 		end,
 	}
 

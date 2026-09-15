@@ -70,14 +70,9 @@ function _G.StatusLine()
 		stl = stl .. vim.fn.pathshorten(relpath) .. "/"
 	end
 
-	-- Call LspStatus from lsp-config.lua
-	local lsp_status = ""
-	if _G.LspStatus then
-		lsp_status = _G.LspStatus()
-	end
-
-	local lsp_part = (lsp_status ~= "" and (" " .. lsp_status .. " |") or "")
-	stl = stl .. "%t%([%M%R%H%W]%)%=" .. lsp_part .. " %P col %c %y"
+	local diag_status = vim.diagnostic.status()
+	local diag_part = (diag_status ~= "" and (" " .. diag_status .. " |") or "")
+	stl = stl .. "%t%([%M%R%H%W]%)%=" .. diag_part .. " %P col %c %y"
 
 	return stl
 end

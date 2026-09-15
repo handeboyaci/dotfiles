@@ -1,54 +1,3 @@
-function LspRoot(...)
-	return vim.fs.dirname(vim.fs.find({ ... }, {
-		upward = true,
-		path = vim.fn.expand("%:p:h"),
-	})[1])
-end
-
-function LspStatus()
-	if next(vim.lsp.get_clients()) == nil then
-		return ""
-	end
-
-	local data = {
-		[vim.diagnostic.severity.ERROR] = 0,
-		[vim.diagnostic.severity.WARN] = 0,
-		[vim.diagnostic.severity.INFO] = 0,
-		[vim.diagnostic.severity.HINT] = 0,
-	}
-
-	for _, elem in ipairs(vim.diagnostic.get(0)) do
-		data[elem.severity] = data[elem.severity] + 1
-	end
-
-	local out = {}
-
-	local v = data[vim.diagnostic.severity.HINT]
-	if v > 0 then
-		table.insert(out, v .. "H")
-	end
-
-	v = data[vim.diagnostic.severity.INFO]
-	if v > 0 then
-		table.insert(out, v .. "I")
-	end
-
-	v = data[vim.diagnostic.severity.WARN]
-	if v > 0 then
-		table.insert(out, v .. "W")
-	end
-
-	v = data[vim.diagnostic.severity.ERROR]
-	if v > 0 then
-		table.insert(out, v .. "E")
-	end
-
-	if next(out) then
-		return table.concat(out)
-	end
-	return ""
-end
-
 vim.api.nvim_create_autocmd("LspAttach", {
 	callback = function(args)
 		local client = vim.lsp.get_client_by_id(args.data.client_id)
@@ -58,12 +7,6 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			silent = true,
 		}
 
-		vim.keymap.set("n", "]e", function()
-			vim.diagnostic.jump({ count = 1 })
-		end, { noremap = true, silent = true, desc = "Next diagnostic" })
-		vim.keymap.set("n", "[e", function()
-			vim.diagnostic.jump({ count = -1 })
-		end, { noremap = true, silent = true, desc = "Previous diagnostic" })
 		vim.keymap.set(
 			"n",
 			"<C-Q>",
@@ -94,6 +37,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 		if client.server_capabilities.completionProvider ~= nil then
 			vim.bo[args.buf].omnifunc = "v:lua.vim.lsp.omnifunc"
+			vim.lsp.completion.enable(true, client.id, args.buf, { autotrigger = true })
 		end
 
 		if client.server_capabilities.definitionProvider then
@@ -155,7 +99,7 @@ vim.diagnostic.config({
 	severity_sort = true,
 })
 
-for _, key in ipairs({ "grt", "gri", "gra", "grn" }) do
+for _, key in ipairs({ "grt", "gri", "gra", "grn", "grr" }) do
 	pcall(vim.keymap.del, "n", key)
 end
 pcall(vim.keymap.del, "x", "gra")

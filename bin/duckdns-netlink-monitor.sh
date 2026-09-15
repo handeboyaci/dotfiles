@@ -29,9 +29,9 @@ while true; do
             break
         fi
 
-        # Filter strictly for global unicast prefix lines (e.g. Verizon 2600:)
+        # Filter strictly for global unicast prefix lines (2000::/3 e.g. 2xxx: or 3xxx:)
         # Ignore link-local (fe80:), ULA (fd00:), and loopback (::1)
-        if [[ ! "$line" =~ (inet6 2600:|scope global) ]]; then
+        if [[ ! "$line" =~ (inet6 [23][0-9a-fA-F]{3}:|scope global) ]]; then
             continue
         fi
 

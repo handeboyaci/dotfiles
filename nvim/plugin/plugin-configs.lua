@@ -1,5 +1,4 @@
 local lazy = require("lazy_loader")
-require("Comment").setup()
 
 vim.api.nvim_create_autocmd("TextYankPost", {
 	group = "vimrc",
@@ -72,12 +71,17 @@ vim.keymap.set("t", "<C-x>", "<C-\\><C-n><C-w>c", { silent = true })
 -- Surround
 vim.g.surround_no_insert_mappings = 1
 
--- Undotree
-lazy.lazy_load("undotree", {
+-- Undotree (built-in, lazy-loaded)
+lazy.lazy_load("nvim.undotree", {
 	keys = {
-		{ "n", "coz", "<cmd>UndotreeToggle<CR>" },
+		{ "n", "coz", "<cmd>Undotree<CR>" },
 	},
-	cmds = { "UndotreeToggle" },
+	cmds = { "Undotree" },
+})
+
+-- TOhtml (built-in, lazy-loaded)
+lazy.lazy_load("nvim.tohtml", {
+	cmds = { "TOhtml" },
 })
 
 -- Colorizer

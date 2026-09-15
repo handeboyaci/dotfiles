@@ -2,28 +2,12 @@
 
 local vimrc_group = vim.api.nvim_create_augroup('vimrc', { clear = true })
 
--- Reload config on save of any config lua file
-vim.api.nvim_create_autocmd('BufWritePost', {
-  group = vimrc_group,
-  pattern = vim.fn.stdpath('config') .. '/**/*.lua',
-  callback = function()
-    -- Clear cache for your custom modules to force reload
-    local modules = { 'options', 'mappings', 'autocommands', 'commands', 'fold_text', 'lazy_loader', 'redir' }
-    for _, name in ipairs(modules) do
-      package.loaded[name] = nil
-    end
-
-    pcall(vim.cmd, 'source ' .. (vim.env.MYVIMRC or '$MYVIMRC'))
-    print("Nvim configuration reloaded!")
-  end
-})
-
--- Toggle relative numbers in insert mode
+-- Toggle relative numbers in insert mode (window-local)
 vim.api.nvim_create_autocmd('InsertEnter', {
   group = vimrc_group,
   pattern = '*',
   callback = function()
-    vim.opt.relativenumber = false
+    vim.wo.relativenumber = false
   end,
 })
 
@@ -32,7 +16,18 @@ vim.api.nvim_create_autocmd('InsertLeave', {
   pattern = '*',
   callback = function()
     if vim.wo.number then
-      vim.opt.relativenumber = true
+      vim.wo.relativenumber = true
+    end
+  end,
+})
+
+-- Treesitter folding for supported filetypes
+vim.api.nvim_create_autocmd('FileType', {
+  group = vimrc_group,
+  callback = function()
+    if vim.treesitter.get_parser(0) then
+      vim.opt_local.foldmethod = 'expr'
+      vim.opt_local.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
     end
   end,
 })
@@ -54,3 +49,4 @@ vim.api.nvim_create_autocmd('SwapExists', {
     vim.v.swapchoice = 'o'
   end,
 })
+

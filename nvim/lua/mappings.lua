@@ -18,8 +18,19 @@ vim.keymap.set('i', '<C-E>', '<End>')
 vim.keymap.set('n', 'p', ']p')
 vim.keymap.set('n', 'P', '[p')
 
--- Redraw screen
-vim.keymap.set('n', 'ZL', '<C-L>')
+-- Redraw screen, clear highlights, and clear multicursors
+vim.keymap.set('n', 'ZL', function()
+  vim.cmd.nohlsearch()
+  vim.cmd.diffupdate()
+  local mc_ns = vim.api.nvim_create_namespace('nvim.multicursor')
+  vim.api.nvim_buf_clear_namespace(0, mc_ns, 0, -1)
+  vim.cmd.normal({ '<C-L>', bang = true })
+end, { desc = 'Redraw, clear search highlights, and clear multicursors' })
+
+-- Restore multicursors
+vim.keymap.set('n', 'g<C-Q>', function()
+  require('vim._core.mcursor').restore()
+end, { desc = 'Restore multicursors' })
 
 -- Swap column / standard visual mode
 vim.keymap.set('n', 'v', '<C-v>')

@@ -1,9 +1,9 @@
 local lazy = require("lazy_loader")
 
-vim.api.nvim_create_autocmd("TextYankPost", {
+vim.api.nvim_create_autocmd({ "TextYankPost", "TextPutPost" }, {
 	group = "vimrc",
 	callback = function()
-		vim.highlight.on_yank({ higroup = "Visual", timeout = 200 })
+		vim.hl.hl_op({ higroup = "Visual", timeout = 200 })
 	end,
 })
 

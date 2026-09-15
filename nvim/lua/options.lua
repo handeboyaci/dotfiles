@@ -5,6 +5,7 @@ vim.g.loaded_tarPlugin = 1
 vim.g.loaded_tar = 1
 vim.g.loaded_zipPlugin = 1
 vim.g.loaded_zip = 1
+vim.g.loaded_nvim_zip_plugin = 1
 vim.g.loaded_gzip = 1
 vim.g.loaded_matchit = 1
 vim.g.loaded_matchparen = 1
@@ -15,10 +16,7 @@ vim.g.loaded_tutor_mode_plugin = 1
 vim.g.loaded_node_provider = 0
 vim.g.loaded_ruby_provider = 0
 vim.g.loaded_perl_provider = 0
-vim.g.loaded_python_provider = 0  -- This is Python2
-if vim.fn.executable('python3') == 1 then
-  vim.g.python3_host_prog = vim.fn.exepath('python3')
-end
+vim.g.loaded_python_provider = 0 -- This is Python2
 vim.g.no_python_maps = 1
 vim.g.python_recommended_style = 0
 vim.g.tex_flavor = 'latex'
@@ -63,7 +61,6 @@ vim.opt.termguicolors = true
 -- UI
 vim.opt.smoothscroll = true
 vim.opt.visualbell = true
-vim.opt.lazyredraw = true
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.signcolumn = 'auto'
@@ -131,8 +128,10 @@ vim.opt.wildmode = 'longest:full,full'
 vim.opt.wildignore = '*.o,*~,*.sw*'
 vim.opt.wildignorecase = true
 
--- Completeopt
-vim.opt.completeopt = 'longest,menuone'
+-- Completeopt and popup menu
+vim.opt.completeopt = 'longest,menuone,popup'
+vim.opt.pumborder = 'rounded'
+vim.opt.pummaxwidth = 80
 
 -- Tabline and match
 vim.opt.showtabline = 0
@@ -147,9 +146,7 @@ vim.opt.switchbuf = 'useopen,usetab'
 
 -- Folds
 vim.opt.fillchars = { vert = '│', fold = '·', diff = '-' }
-vim.opt.foldtext = "v:lua.require('fold_text').foldtext()"
-vim.opt.foldmethod = 'expr'
-vim.opt.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
+vim.opt.foldtext = require('fold_text').foldtext
 vim.opt.foldlevel = 100
 
 -- Matchpairs

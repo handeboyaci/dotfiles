@@ -72,8 +72,6 @@ sudo rm -f \
 nvim --headless -c "TSInstall all" 
 
 nvim --headless \
-  -c 'packadd mason.nvim' \
-  -c 'lua require("mason").setup{}' \
   -c 'MasonInstall lua-language-server pyink basedpyright ruff uv shellcheck shfmt vim-language-server vint' \
   -c qall
 

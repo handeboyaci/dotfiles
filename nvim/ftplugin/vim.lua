@@ -2,20 +2,10 @@ if vim.fn.getcmdwintype() ~= "" then
 	return
 end
 
-local path = os.getenv("HOME") .. "/.local/share/nvim/mason/bin/"
-
-
 vim.lsp.start({
 	name = "vimls",
-	cmd = { path .. "vim-language-server", "--stdio" },
-	root_dir = vim.fs.dirname(vim.fs.find({
-		".git",
-		"autoload",
-		"plugin",
-		"runtime",
-	}, {
-		upward = true,
-	})[1]),
+	cmd = { "vim-language-server", "--stdio" },
+	root_dir = vim.fs.root(0, { ".git", "autoload", "plugin", "runtime" }),
 	single_file_support = true,
 	init_options = {
 		isNeovim = true,

@@ -52,7 +52,7 @@ end)
 
 -- Mason
 lazy.lazy_load("mason.nvim", {
-	cmds = { "Mason" },
+	cmds = { "Mason", "MasonInstall" },
 	on_load = function()
 		require("mason").setup()
 	end,
@@ -100,24 +100,17 @@ vim.api.nvim_create_autocmd("FileType", {
 	once = true,
 	callback = function()
 		local null_ls = require("null-ls")
-		local mason_path = os.getenv("HOME") .. "/.local/share/nvim/mason/bin/"
 
 		null_ls.setup({
 			sources = {
 				null_ls.builtins.formatting.pyink.with({
 					extra_args = { "--pyink-indentation", "2" },
-					command = mason_path .. "pyink",
 				}),
-				null_ls.builtins.formatting.stylua.with({
-					command = mason_path .. "stylua",
-				}),
+				null_ls.builtins.formatting.stylua,
 				null_ls.builtins.formatting.shfmt.with({
-					command = mason_path .. "shfmt",
 					extra_args = { "--indent", 2 },
 				}),
-				null_ls.builtins.diagnostics.vint.with({
-					command = mason_path .. "vint",
-				}),
+				null_ls.builtins.diagnostics.vint,
 			},
 		})
 	end,

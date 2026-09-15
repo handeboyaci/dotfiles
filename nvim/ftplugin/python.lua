@@ -3,7 +3,6 @@ vim.bo.shiftwidth = 2
 vim.bo.softtabstop = 2
 vim.bo.tabstop = 2
 
-local mason_venv_path = vim.fn.stdpath("data") .. "/mason/packages/basedpyright/venv/bin/basedpyright-langserver"
 local root_dir = vim.fs.root(0, {
 	"basedpyrightconfig.json",
 	"pyrightconfig.json",
@@ -17,7 +16,7 @@ local root_dir = vim.fs.root(0, {
 
 vim.lsp.start({
 	name = "BasedPyright",
-	cmd = { mason_venv_path, "--stdio" },
+	cmd = { "basedpyright-langserver", "--stdio" },
 	root_dir = root_dir,
 	single_file_support = true,
 	on_attach = function(client, bufnr)

@@ -23,6 +23,9 @@ vim.g.no_python_maps = 1
 vim.g.python_recommended_style = 0
 vim.g.tex_flavor = 'latex'
 
+-- Add Mason bin to PATH for LSP servers and formatters
+vim.env.PATH = vim.fn.stdpath('data') .. '/mason/bin:' .. vim.env.PATH
+
 -- Clipboard
 if vim.fn.empty(vim.env.TMUX) == 0 and vim.fn.executable('tmux') == 1 then
   vim.g.clipboard = {

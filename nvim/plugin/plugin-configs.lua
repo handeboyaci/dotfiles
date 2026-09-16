@@ -106,6 +106,16 @@ conform.setup({
 	formatters = {
 		pyink = {
 			prepend_args = { "--pyink-indentation", "2" },
+			range_args = function(self, ctx)
+				return {
+					"--line-ranges",
+					string.format("%d-%d", ctx.range.start[1], ctx.range["end"][1]),
+					"--stdin-filename",
+					"$FILENAME",
+					"--quiet",
+					"-",
+				}
+			end,
 		},
 		shfmt = {
 			prepend_args = { "-i", "2" },

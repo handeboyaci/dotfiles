@@ -56,7 +56,6 @@ vim.opt.clipboard = 'unnamedplus'
 
 -- Colorscheme
 vim.cmd('colo ayu')
-vim.opt.termguicolors = true
 
 -- UI
 vim.opt.smoothscroll = true
@@ -87,6 +86,7 @@ vim.opt.breakindent = true
 vim.opt.showbreak = '⌊'
 
 -- Search and display
+vim.opt.gdefault = true
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
 vim.opt.infercase = true
@@ -99,24 +99,16 @@ vim.opt.grepformat = '%f:%l:%c: %#%m,%f:%l: %#%m'
 vim.opt.cpoptions:append('J')
 vim.opt.formatoptions = 'croqbj'
 
--- Shell and modeline
+-- Shell
 if vim.fn.executable('zsh') == 1 then
   vim.opt.shell = vim.fn.exepath('zsh')
 end
-vim.opt.modeline = true
 
 -- Mouse
-vim.opt.mouse = 'a'
 vim.opt.mousehide = true
 
 -- Undo and swap
 vim.opt.undofile = true
-local undo_dir = vim.fn.expand('$HOME') .. '/.cache/vim/undo'
-local swap_dir = vim.fn.expand('$HOME') .. '/.cache/vim/swap'
-vim.fn.mkdir(undo_dir, 'p')
-vim.fn.mkdir(swap_dir, 'p')
-vim.opt.undodir = undo_dir
-vim.opt.directory = swap_dir
 vim.opt.updatetime = 200
 vim.opt.backup = false
 

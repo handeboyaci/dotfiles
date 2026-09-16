@@ -69,11 +69,3 @@ local conflict_backward = [[?^\s*\(>>>>\|====\|<<<<\)<CR>]]
 vim.keymap.set({'n', 'v', 'o'}, ']x', conflict_forward, { silent = true })
 vim.keymap.set({'n', 'v', 'o'}, '[x', conflict_backward, { silent = true })
 
--- Diagnostic jumps
-vim.keymap.set('n', ']e', function()
-  vim.diagnostic.jump({ count = 1 })
-end, { silent = true, desc = 'Next diagnostic' })
-vim.keymap.set('n', '[e', function()
-  vim.diagnostic.jump({ count = -1 })
-end, { silent = true, desc = 'Previous diagnostic' })
-

@@ -2,24 +2,26 @@
 
 git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
 
+VERSION=20
+
 sudo apt install \
-  aptitude autoconf autoconf automake bat bison brightnessctl build-essential \
-  check cmake curl dconf-editor dconf-editor dos2unix fd-find flex foot fzf \
-  gettext gir1.2-playerctl-2.0 git gnome-calendar grim jq kanshi libcairo2-dev \
-  libgdk-pixbuf-2.0-dev libjson-c-dev libpango1.0-dev libstartup-notification0-dev \
-  libwlroots-0.19-dev libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev \
-  libxcb-xrm-dev libxkbcommon-x11-dev meson neovim ninja-build nwg-bar pkg-config \
-  playerctl py3status python3-daemon python3-dateutil python3-googleapi python3-oauth2client \
-  python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip \
-  wl-clipboard wdisplays xdg-desktop-portal-wlr papirus-icon-theme rofi
+  aptitude autoconf automake bat bison brightnessctl build-essential check cmake \
+  curl dconf-editor dos2unix fd-find flex foot fzf gettext gir1.2-playerctl-2.0 \
+  git gnome-calendar grim jq kanshi libcairo2-dev libgdk-pixbuf-2.0-dev libjson-c-dev \
+  libpango1.0-dev libstartup-notification0-dev libwlroots-0.${VERSION}-dev \
+  libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xrm-dev \
+  libxkbcommon-x11-dev meson ninja-build nwg-bar pkg-config playerctl py3status \
+  python3-daemon python3-dateutil python3-googleapi python3-oauth2client python3-pip \
+  ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip wl-clipboard \
+  wdisplays xdg-desktop-portal-wlr papirus-icon-theme rofi
 
 pip install --break-system-packages i3-notifier py3notifier 
 
-mkdir software
-cd software
+mkdir -p $HOME/software
+cd $HOME/software
 
-VERSION=19
 git clone --recursive https://github.com/swaywm/sway.git
+cd sway
 git checkout $(git grep "wlroots_version.*$VERSION" $(git rev-list --all)|head -1|cut -d: -f1)
 git am $HOME/.dotfiles/data/fullscreen.patch
 meson setup build/
@@ -29,7 +31,7 @@ sudo ninja -C build/ install
 cd $HOME
 rm -f .zshenv
 ln -s $HOME/.dotfiles/zsh/zshenv .zshenv
-for f in gitconfig inputrc tmux.conf fonts
+for f in bashrc profile gitconfig inputrc tmux.conf fonts
 do
   rm -rf .$f
   ln -s $HOME/.dotfiles/$f .$f
@@ -37,7 +39,7 @@ done
 
 
 cd $HOME/.config
-for f in i3 rofi foot kanshi nvim rofi sway swayidle swaylock swayosd systemd xdg-desktop-portal
+for f in foot jj kanshi nvim nwg-bar pipewire rofi sunshine sway swayidle swaylock swayosd systemd xdg-desktop-portal
 do
   rm -rf $f
   ln -s $HOME/.dotfiles/$f
@@ -47,16 +49,13 @@ cd $HOME/.local/share; rm -rf applications; ln -s $HOME/.dotfiles/applications
 mkdir -p ~/.local/share/icons/hicolor/
 cd ~/.local/share/icons/hicolor/; ln -s ~/.dotfiles/icons 256x256
 
-
-mkdir software
-cd software
-
 cd $HOME/.dotfiles/tmux/tmux-thumbs
 sh tmux-thumbs-install.sh
 
+cd $HOME/software
 git clone https://github.com/neovim/neovim.git
 cd neovim
-make CMAKE_BUILD_TYPE=Release CMAKE_INSTALL_PREFIX=/usr  -j8
+make CMAKE_BUILD_TYPE=Release CMAKE_INSTALL_PREFIX=/usr -j8
 sudo make install
 cd ..
 
@@ -69,10 +68,10 @@ sudo rm -f \
   /usr/share/nvim/runtime/plugin/netrwPlugin.vim \
   /usr/share/nvim/runtime/syntax/netrw.vim
 
-nvim --headless -c "TSInstall all" 
+nvim --headless -c "TSInstallSync all" -c qall
 
 nvim --headless \
-  -c 'MasonInstall lua-language-server pyink basedpyright ruff uv shellcheck shfmt vim-language-server vint' \
+  -c 'MasonInstall bash-language-server basedpyright lua-language-server pyink ruff shellcheck shfmt stylua texlab uv vim-language-server vint' \
   -c qall
 
 

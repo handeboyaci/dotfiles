@@ -6,7 +6,7 @@ Match host hande exec "nmcli -t -f active,ssid|grep -q 'connected to ev'"
   ProxyJump none
 Host ev
   Hostname sncr.duckdns.org
-  Port 2222
+  Port 2233
   IdentityFile ~/.ssh/id_ev
 Host cloud
   Hostname sselcuk.c.googlers.com

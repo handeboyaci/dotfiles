@@ -14,34 +14,12 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			{ noremap = true, buffer = args.buf, silent = true, desc = "Diagnostics to quickfix" }
 		)
 
-		if client.server_capabilities.documentFormattingProvider then
-			vim.keymap.set(
-				"n",
-				"gQ",
-				vim.lsp.buf.format,
-				{ noremap = true, buffer = args.buf, silent = true, desc = "Format buffer" }
-			)
-		end
-		if client.server_capabilities.documentRangeFormattingProvider then
-			vim.bo[args.buf].formatexpr = "v:lua.vim.lsp.formatexpr()"
-		end
-
-		if client.server_capabilities.hoverProvider then
-			vim.keymap.set(
-				"n",
-				"K",
-				vim.lsp.buf.hover,
-				{ noremap = true, buffer = args.buf, silent = true, desc = "LSP Hover" }
-			)
-		end
 
 		if client.server_capabilities.completionProvider ~= nil then
-			vim.bo[args.buf].omnifunc = "v:lua.vim.lsp.omnifunc"
 			vim.lsp.completion.enable(true, client.id, args.buf, { autotrigger = true })
 		end
 
 		if client.server_capabilities.definitionProvider then
-			vim.bo[args.buf].tagfunc = "v:lua.vim.lsp.tagfunc"
 			vim.keymap.set(
 				"n",
 				"gd",
@@ -98,8 +76,3 @@ vim.diagnostic.config({
 	signs = false,
 	severity_sort = true,
 })
-
-for _, key in ipairs({ "grt", "gri", "gra", "grn", "grr" }) do
-	pcall(vim.keymap.del, "n", key)
-end
-pcall(vim.keymap.del, "x", "gra")

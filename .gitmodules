@@ -28,6 +28,7 @@
 [submodule "nvim/pack/plugins/start/nvim-treesitter-textobjects"]
 	path = nvim/pack/plugins/start/nvim-treesitter-textobjects
 	url = https://github.com/nvim-treesitter/nvim-treesitter-textobjects.git
+	branch = main
 [submodule "nvim/pack/plugins/start/plenary.nvim"]
 	path = nvim/pack/plugins/start/plenary.nvim
 	url = https://github.com/nvim-lua/plenary.nvim
@@ -91,3 +92,6 @@
 [submodule "nvim/pack/sencer/start/vcs.nvim"]
 	path = nvim/pack/sencer/start/vcs.nvim
 	url = git@github.com:sencer/vcs.nvim.git
+[submodule "nvim/pack/plugins/start/mini.ai"]
+	path = nvim/pack/plugins/start/mini.ai
+	url = https://github.com/echasnovski/mini.ai.git

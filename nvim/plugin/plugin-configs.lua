@@ -94,27 +94,30 @@ lazy.lazy_load("nvim-colorizer.lua", {
 	},
 })
 
-vim.api.nvim_create_autocmd("FileType", {
-	group = "vimrc",
-	pattern = { "lua", "python", "sh", "vim", "zsh" },
-	once = true,
-	callback = function()
-		local null_ls = require("null-ls")
-
-		null_ls.setup({
-			sources = {
-				null_ls.builtins.formatting.pyink.with({
-					extra_args = { "--pyink-indentation", "2" },
-				}),
-				null_ls.builtins.formatting.stylua,
-				null_ls.builtins.formatting.shfmt.with({
-					extra_args = { "--indent", 2 },
-				}),
-				null_ls.builtins.diagnostics.vint,
-			},
-		})
-	end,
+-- Conform (formatting)
+local conform = require("conform")
+conform.setup({
+	formatters_by_ft = {
+		lua = { "stylua" },
+		python = { "pyink" },
+		sh = { "shfmt" },
+		zsh = { "shfmt" },
+	},
+	formatters = {
+		pyink = {
+			prepend_args = { "--pyink-indentation", "2" },
+		},
+		shfmt = {
+			prepend_args = { "-i", "2" },
+		},
+	},
 })
+
+vim.o.formatexpr = "v:lua.require'conform'.formatexpr()"
+
+vim.keymap.set({ "n", "v" }, "gQ", function()
+	conform.format({ async = true, lsp_format = "fallback" })
+end, { desc = "Format buffer" })
 -- Fidget setup
 require("fidget").setup({
 	notification = {

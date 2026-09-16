@@ -83,9 +83,6 @@
 [submodule "nvim/pack/sencer/start/synctex.nvim"]
 	path = nvim/pack/sencer/start/synctex.nvim
 	url = git@github.com:sencer/synctex.nvim.git
-[submodule "nvim/pack/plugins/start/none-ls.nvim"]
-	path = nvim/pack/plugins/start/none-ls.nvim
-	url = https://github.com/nvimtools/none-ls.nvim
 [submodule "nvim/pack/sencer/start/relatedfiles"]
 	path = nvim/pack/sencer/start/relatedfiles
 	url = git@github.com:sencer/relatedfiles.git
@@ -95,3 +92,6 @@
 [submodule "nvim/pack/plugins/start/mini.ai"]
 	path = nvim/pack/plugins/start/mini.ai
 	url = https://github.com/echasnovski/mini.ai.git
+[submodule "nvim/pack/plugins/start/conform.nvim"]
+	path = nvim/pack/plugins/start/conform.nvim
+	url = https://github.com/stevearc/conform.nvim.git

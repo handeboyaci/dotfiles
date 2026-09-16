@@ -123,7 +123,14 @@ conform.setup({
 	},
 })
 
-vim.o.formatexpr = "v:lua.require'conform'.formatexpr()"
+_G.conform_formatexpr = function(...)
+	local conform = require("conform")
+	if #conform.list_formatters(0) > 0 then
+		return conform.formatexpr(...)
+	end
+	return 1
+end
+vim.o.formatexpr = "v:lua.conform_formatexpr()"
 
 vim.keymap.set({ "n", "v" }, "gQ", function()
 	conform.format({ async = true, lsp_format = "fallback" })

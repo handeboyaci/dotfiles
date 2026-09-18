@@ -1,0 +1,38 @@
+#!/bin/bash
+set -euo pipefail
+
+if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${SWAYSOCK:-}" ]]; then
+  echo "Error: not in a Sway session" >&2
+  exit 1
+fi
+
+LOCK_DIR="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}"
+mkdir -p "$LOCK_DIR"
+exec 9>"$LOCK_DIR/lock-screen.lock"
+flock -n 9 || exit 0
+
+pgrep -u "$USER" -x swaylock >/dev/null 2>&1 && exit 0
+
+cleanup() {
+  trap - EXIT INT TERM HUP QUIT
+  local pids
+  pids=$(jobs -p)
+  if [[ -n "$pids" ]]; then
+    kill $pids 2>/dev/null || true
+    wait $pids 2>/dev/null || true
+  fi
+  swaymsg "output * dpms on" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM HUP QUIT
+
+if command -v playerctl >/dev/null 2>&1; then
+  (playerctl pause >/dev/null 2>&1 9>&- &)
+fi
+
+swayidle -w \
+  timeout 10 'swaymsg "output * dpms off"' \
+  resume 'swaymsg "output * dpms on"' \
+  timeout 1800 'systemctl hybrid-sleep' 9>&- &
+
+swaylock -c 000000 9>&- &
+wait $!

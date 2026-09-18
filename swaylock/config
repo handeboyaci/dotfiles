@@ -1,7 +1,6 @@
 image=~/.config/sway/bg.jpg
 ignore-empty-password
 show-failed-attempts
-daemonize
 hide-keyboard-layout
 indicator-caps-lock
 color=3A2A21

@@ -67,7 +67,7 @@ bindsym $mod+d focus child
 # make window sticky
 bindsym $mod+s sticky toggle
 
-bindsym Ctrl+$alt+Delete exec lock-screen
+bindsym Ctrl+$alt+Delete exec $HOME/.dotfiles/bin/lock-screen
 bindswitch --locked lid:on exec systemctl hybrid-sleep
 
 # screenshot

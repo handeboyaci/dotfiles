@@ -121,7 +121,7 @@ vim.opt.wildignore = '*.o,*~,*.sw*'
 vim.opt.wildignorecase = true
 
 -- Completeopt and popup menu
-vim.opt.completeopt = 'longest,menuone,popup'
+vim.opt.completeopt = 'menu,menuone,noselect,popup'
 vim.opt.pumborder = 'rounded'
 vim.opt.pummaxwidth = 80
 

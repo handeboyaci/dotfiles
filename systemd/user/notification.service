@@ -1,11 +1,11 @@
 [Unit]
-Description=Start the i3-notifier service
+Description=Start the Quiet notification service
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/i3-notifier --nodaemon
+ExecStart=%h/.local/bin/quiet --nodaemon
 Restart=always
 RestartSec=3
 

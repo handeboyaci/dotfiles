@@ -15,7 +15,15 @@ sudo apt install \
   ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip wl-clipboard \
   wdisplays xdg-desktop-portal-wlr papirus-icon-theme rofi
 
-pip install --break-system-packages i3-notifier py3notifier 
+mkdir tmp 
+cd tmp
+wget https://github.com/sencer/quiet/releases/latest/download/quiet-x86_64-unknown-linux-gnu.tar.gz
+tar xf quiet-x86_64-unknown-linux-gnu.tar.gz
+mv quiet quietctl ~/.local/bin
+cd ..
+rm -rf tmp
+
+pip install --break-system-packages py3notifier 
 
 mkdir -p $HOME/software
 cd $HOME/software

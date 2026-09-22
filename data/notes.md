@@ -18,13 +18,14 @@ sudo apt install \
   ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip wl-clipboard \
   wdisplays xdg-desktop-portal-wlr papirus-icon-theme rofi
 
-mkdir tmp 
-cd tmp
-wget https://github.com/sencer/quiet/releases/latest/download/quiet-x86_64-unknown-linux-gnu.tar.gz
-tar xf quiet-x86_64-unknown-linux-gnu.tar.gz
-mv quiet quietctl ~/.local/bin
-cd ..
-rm -rf tmp
+mkdir -p $HOME/.local/bin
+quiet_tmp=$(mktemp -d)
+cd "$quiet_tmp"
+curl -fLO https://github.com/sencer/quiet/releases/latest/download/quiet-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf quiet-x86_64-unknown-linux-gnu.tar.gz
+install -m 0755 quiet quietctl $HOME/.local/bin
+cd $HOME
+rm -rf "$quiet_tmp"
 
 pip install --break-system-packages py3notifier 
 
@@ -90,12 +91,19 @@ sudo systemctl mask ctrl-alt-del.target
 sudo systemctl daemon-reload
 systemctl --user enable --now kanshi.service notification.service swaybg.service swayidle.service swayosd-server.service
 
-cd $HOME/software
-git clone --branch custom-modules https://github.com/sencer/Waybar.git waybar
-cd waybar
-meson setup build --prefix=$HOME/.local
-ninja -C build
-ninja -C build install
+waybar_tmp=$(mktemp -d)
+cd "$waybar_tmp"
+curl -fLO https://github.com/sencer/Waybar/releases/download/v0.15.0-custom.2/waybar-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf waybar-x86_64-unknown-linux-gnu.tar.gz
+install -m 0755 waybar-x86_64-unknown-linux-gnu/waybar $HOME/.local/bin
+cd $HOME
+rm -rf "$waybar_tmp"
+
+# Source-build fallback for a different architecture or newer custom branch:
+# git clone --branch custom-modules https://github.com/sencer/Waybar.git $HOME/software/waybar
+# meson setup $HOME/software/waybar/build $HOME/software/waybar --prefix=$HOME/.local
+# ninja -C $HOME/software/waybar/build install
+
 cc -O2 -Wall -Wextra -o $HOME/.local/bin/waybar-clock \
   $HOME/.dotfiles/data/waybar-clock.c
 cc -O2 -Wall -Wextra -o $HOME/.local/bin/pixelbuds-pause \

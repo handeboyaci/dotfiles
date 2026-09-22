@@ -4,7 +4,7 @@
     "height": 26,
     "spacing": 0,
     "modules-left": ["sway/workspaces", "sway/scratchpad"],
-    "modules-center": ["custom/clock"],
+    "modules-center": ["clock"],
     "modules-right": [
         "quiet",
         "google_calendar",
@@ -30,11 +30,28 @@
         "on-click": "swaymsg 'scratchpad show'"
     },
 
-    "custom/clock": {
-        "exec": "/home/sselcuk/.dotfiles/bin/waybar-clock",
-        "return-type": "json",
-        "on-click": "pkill -USR1 -x waybar-clock",
-        "on-click-right": "pkill -USR2 -x waybar-clock",
+    "clock": {
+        "interval": 60,
+        "format": "{:%a %d/%b/%Y} <span color='#7d6b5e'>|</span> {:%H:%M}",
+        "format-alt": "{:%a %d/%b/%Y} <span color='#7d6b5e'>|</span> {:%H:%M:%S}",
+        "format-alt-click": 3,
+        "timezones": ["America/New_York", "Europe/Zurich", "Asia/Istanbul"],
+        "tooltip-format": "<tt>{tz_list}\n\n{calendar}</tt>",
+        "timezone-tooltip-format": "{:%H:%M %Z}",
+        "calendar": {
+            "mode": "year",
+            "mode-mon-col": 3,
+            "weeks-pos": "left",
+            "iso8601": true,
+            "format": {
+                "months": "<span color='#ffead3'><b>{}</b></span>",
+                "weekdays": "<span color='#7d6b5e'>{}</span>",
+                "today": "<span background='#ffead3' color='#4a3e35'><b>{}</b></span>"
+            }
+        },
+        "actions": {
+            "on-click": "tz_up"
+        },
         "on-click-middle": "google-chrome --app=http://calendar.google.com/"
     },
 

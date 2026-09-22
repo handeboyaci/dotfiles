@@ -14,7 +14,7 @@ window#waybar {
 
 /* Keep multi-timezone clock tooltips visually balanced. */
 tooltip label {
-    text-align: center;
+    -GtkLabel-justify: center;
 }
 
 #modules-left, #modules-center, #modules-right {

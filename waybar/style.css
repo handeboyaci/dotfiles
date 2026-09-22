@@ -12,11 +12,6 @@ window#waybar {
     border-bottom: 1px solid #7d6b5e;
 }
 
-/* Keep multi-timezone clock tooltips visually balanced. */
-tooltip label {
-    -GtkLabel-justify: center;
-}
-
 #modules-left, #modules-center, #modules-right {
     background: transparent;
 }

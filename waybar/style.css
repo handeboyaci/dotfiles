@@ -10,6 +10,8 @@ window#waybar {
     background-color: rgba(74, 62, 53, 0.8);
     color: #f5e4c6;
     border-bottom: 1px solid #7d6b5e;
+    min-height: 26px;
+    max-height: 26px;
 }
 
 #modules-left, #modules-center, #modules-right {
@@ -83,10 +85,9 @@ window#waybar {
     font-weight: bold;
 }
 
-/* U+23F8 falls back to FreeSans; compensate only while media is playing. */
+/* U+23F8 falls back to FreeSans; keep its size stable while toggling. */
 #mpris.playing {
     font-family: "FreeSans", sans-serif;
-    font-size: 14pt;
 }
 
 /* Battery states */

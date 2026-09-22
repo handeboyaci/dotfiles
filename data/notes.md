@@ -93,9 +93,9 @@ systemctl --user enable --now kanshi.service notification.service swaybg.service
 
 waybar_tmp=$(mktemp -d)
 cd "$waybar_tmp"
-curl -fLO https://github.com/sencer/Waybar/releases/download/v0.15.0-custom.4/waybar-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/sencer/Waybar/releases/download/v0.15.0-custom.5/waybar-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf waybar-x86_64-unknown-linux-gnu.tar.gz
-install -m 0755 waybar-x86_64-unknown-linux-gnu/{waybar,pixelbuds-pause} $HOME/.local/bin
+install -m 0755 waybar-x86_64-unknown-linux-gnu/waybar $HOME/.local/bin
 cd $HOME
 rm -rf "$waybar_tmp"
 
@@ -104,4 +104,7 @@ rm -rf "$waybar_tmp"
 # meson setup $HOME/software/waybar/build $HOME/software/waybar --prefix=$HOME/.local
 # ninja -C $HOME/software/waybar/build install
 
+cc -O2 -Wall -Wextra -o $HOME/.local/bin/pixelbuds-pause \
+  $HOME/.dotfiles/data/pixelbuds-pause.c \
+  $(pkg-config --cflags --libs libsystemd)
 playerctld daemon

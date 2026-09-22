@@ -51,7 +51,7 @@ done
 
 
 cd $HOME/.config
-for f in foot jj kanshi nvim nwg-bar pipewire rofi sunshine sway swayidle swaylock swayosd systemd waybar xdg-desktop-portal
+for f in foot jj kanshi nvim nwg-bar pipewire rofi sunshine sway swayidle swaylock swayosd systemd xdg-desktop-portal
 do
   rm -rf $f
   ln -s $HOME/.dotfiles/$f
@@ -91,18 +91,10 @@ sudo systemctl mask ctrl-alt-del.target
 sudo systemctl daemon-reload
 systemctl --user enable --now kanshi.service notification.service swaybg.service swayidle.service swayosd-server.service
 
-waybar_tmp=$(mktemp -d)
-cd "$waybar_tmp"
-curl -fLO https://github.com/sencer/Waybar/releases/latest/download/waybar-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf waybar-x86_64-unknown-linux-gnu.tar.gz
-install -m 0755 waybar-x86_64-unknown-linux-gnu/waybar $HOME/.local/bin
+cd $HOME/.dotfiles/data
+make
+sudo make install
 cd $HOME
-rm -rf "$waybar_tmp"
-
-# Source-build fallback for a different architecture or newer custom branch:
-# git clone --branch custom-modules https://github.com/sencer/Waybar.git $HOME/software/waybar
-# meson setup $HOME/software/waybar/build $HOME/software/waybar --prefix=$HOME/.local
-# ninja -C $HOME/software/waybar/build install
 
 cc -O2 -Wall -Wextra -o $HOME/.local/bin/pixelbuds-pause \
   $HOME/.dotfiles/data/pixelbuds-pause.c \

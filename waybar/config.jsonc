@@ -64,6 +64,10 @@
         "format-icons": {
             "default": ["🔈", "🔊"]
         },
+        "states": {
+            "zero": 0
+        },
+        "format-zero": "🔇",
         "scroll-step": 2,
         "max-volume": 150,
         "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",

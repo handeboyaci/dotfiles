@@ -3,9 +3,10 @@
     "position": "top",
     "height": 30,
     "spacing": 0,
-    "modules-left": ["sway/workspaces", "sway/scratchpad"],
+    "modules-left": ["sway/workspaces", "sway/mode"],
     "modules-center": ["clock"],
     "modules-right": [
+        "sway/scratchpad",
         "quiet",
         "google_calendar",
         "mpris",
@@ -22,6 +23,11 @@
         "format": "{name}"
     },
 
+    "sway/mode": {
+        "format": "{}",
+        "tooltip": false
+    },
+
     "sway/scratchpad": {
         "format": "⌫ {count}",
         "show-empty": false,
@@ -36,8 +42,9 @@
         "format-alt": "{:%a %d/%b/%Y | %H:%M:%S} {tz_label}",
         "timezones": ["America/New_York", "Europe/Zurich", "Asia/Istanbul"],
         "timezone-labels": ["", "🇨🇭", "🇹🇷"],
+        "timezone-tooltip-labels": ["🇺🇸", "🇨🇭", "🇹🇷"],
         "tooltip-format": "<tt>{tz_list}\n\n{calendar}</tt>",
-        "timezone-tooltip-format": "{:%H:%M %Z}",
+        "timezone-tooltip-format": "{:%H:%M}",
         "calendar": {
             "mode": "year",
             "mode-mon-col": 3,

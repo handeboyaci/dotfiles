@@ -93,7 +93,7 @@ systemctl --user enable --now kanshi.service notification.service swaybg.service
 
 waybar_tmp=$(mktemp -d)
 cd "$waybar_tmp"
-curl -fLO https://github.com/sencer/Waybar/releases/download/v0.15.0-custom.6/waybar-x86_64-unknown-linux-gnu.tar.gz
+curl -fLO https://github.com/sencer/Waybar/releases/download/v0.15.0-custom.7/waybar-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf waybar-x86_64-unknown-linux-gnu.tar.gz
 install -m 0755 waybar-x86_64-unknown-linux-gnu/waybar $HOME/.local/bin
 cd $HOME

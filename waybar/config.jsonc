@@ -1,0 +1,102 @@
+{
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "spacing": 0,
+    "modules-left": ["sway/workspaces", "sway/scratchpad"],
+    "modules-center": ["custom/clock"],
+    "modules-right": [
+        "quiet",
+        "google_calendar",
+        "mpris",
+        "pulseaudio",
+        "namaz",
+        "battery",
+        "screensaver",
+        "tray"
+    ],
+
+    "sway/workspaces": {
+        "disable-scroll": true,
+        "all-outputs": true,
+        "format": "{name}"
+    },
+
+    "sway/scratchpad": {
+        "format": "⌫ {count}",
+        "show-empty": false,
+        "tooltip": true,
+        "tooltip-format": "{app}: {title}",
+        "on-click": "swaymsg 'scratchpad show'"
+    },
+
+    "custom/clock": {
+        "exec": "/home/sselcuk/.dotfiles/bin/waybar-clock",
+        "return-type": "json",
+        "on-click": "pkill -USR1 -x waybar-clock",
+        "on-click-right": "pkill -USR2 -x waybar-clock",
+        "on-click-middle": "google-chrome --app=http://calendar.google.com/"
+    },
+
+    "quiet": {
+        "format": "{}",
+        "tooltip": true
+    },
+
+    "google_calendar": {
+        "format": "{}",
+        "tooltip": true
+    },
+
+    "mpris": {
+        "format": "{status_icon}",
+        "format-paused": "{status_icon}",
+        "status-icons": {
+            "playing": "⏸",
+            "paused": "▶"
+        },
+        "tooltip-format": "{artist} - {title}"
+    },
+
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": "  🔇  ",
+        "format-icons": {
+            "default": ["🔊"]
+        },
+        "scroll-step": 2,
+        "max-volume": 150,
+        "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
+        "tooltip": false
+    },
+
+    "namaz": {
+        "format": "{}",
+        "tooltip": true
+    },
+
+    "battery": {
+        "states": {
+            "warning": 15,
+            "critical": 5
+        },
+        "format": "{icon}",
+        "format-charging": "⚡",
+        "format-plugged": "🔌",
+        "format-icons": ["▁", "⡀", "⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣾", "⣿", "🔋"],
+        "events": {
+            "on-discharging-critical": "notify-send -u critical 'Low Battery' 'Battery is below 5%!'"
+        },
+        "tooltip-format": "{capacity}% ({time})"
+    },
+
+    "screensaver": {
+        "format": "{}",
+        "tooltip": true
+    },
+
+    "tray": {
+        "icon-size": 16,
+        "spacing": 8
+    }
+}

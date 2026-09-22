@@ -1,0 +1,13 @@
+[Unit]
+Description=Auto-pause media on Pixel Buds / Bluetooth earbud removal
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/home/sselcuk/.local/bin/pixelbuds-pause /org/bluez/hci0/dev_70_88_6B_91_E8_E4
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=sway-session.target

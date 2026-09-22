@@ -3367,27 +3367,30 @@ static void handle_pointer_axis(uint32_t axis, int32_t fixed_val) {
         clock_gettime(CLOCK_MONOTONIC, &ts);
         int64_t now_ms = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 
-        /* Reset accumulator after pause or direction reversal */
-        if (now_ms - g_last_scroll_ms > 300 ||
+        /* Reset accumulator if there has been an extended pause or direction reversal */
+        if (now_ms - g_last_scroll_ms > 500 ||
             (fixed_val < 0 && g_scroll_accum > 0) ||
             (fixed_val > 0 && g_scroll_accum < 0)) {
             g_scroll_accum = 0;
         }
         g_scroll_accum += fixed_val;
+        g_last_scroll_ms = now_ms;
 
-        /* 1 discrete scroll wheel notch in Wayland wl_fixed_t (24.8) is ~15.0px = 3840 */
-        const int32_t NOTCH_FIXED = 3840;
-        if (abs(g_scroll_accum) >= NOTCH_FIXED && (now_ms - g_last_scroll_ms) >= 55) {
-            if (g_scroll_accum < 0) {
-                pulse_adjust_volume(+2);
-                g_scroll_accum += NOTCH_FIXED;
-                if (g_scroll_accum < 0) g_scroll_accum = 0;
-            } else {
-                pulse_adjust_volume(-2);
-                g_scroll_accum -= NOTCH_FIXED;
-                if (g_scroll_accum > 0) g_scroll_accum = 0;
-            }
-            g_last_scroll_ms = now_ms;
+        /* Standard discrete wheel step is 10.0 or 15.0 px (2560 to 3840 in wl_fixed 24.8).
+         * Using 1536 (~6.0px) makes both discrete clicks and fine touchpads responsive without lag. */
+        const int32_t STEP_THRESHOLD = 1536;
+        int steps = 0;
+        while (g_scroll_accum <= -STEP_THRESHOLD) {
+            steps++;
+            g_scroll_accum += STEP_THRESHOLD;
+        }
+        while (g_scroll_accum >= STEP_THRESHOLD) {
+            steps--;
+            g_scroll_accum -= STEP_THRESHOLD;
+        }
+
+        if (steps != 0) {
+            pulse_adjust_volume(steps * 2);
             redraw_all();
         }
     }
@@ -3474,6 +3477,7 @@ static void process_wayland_events(void) {
                 if (surf == g_id_bar_surface) {
                     g_hovered_mod = -1;
                     g_hovered_tray_idx = -1;
+                    g_scroll_accum = 0;
                     destroy_tooltip_surface();
                 }
             } else if (opcode == 2 /* motion */) {

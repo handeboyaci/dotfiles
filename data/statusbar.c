@@ -2459,6 +2459,9 @@ static void *audio_event_thread(void *arg) {
 
 static void *battery_uevent_thread(void *arg) {
     (void)arg;
+    poll_battery();
+    notify_main_loop();
+
     int fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_KOBJECT_UEVENT);
     if (fd < 0) return NULL;
 
@@ -3863,6 +3866,9 @@ int main(int argc, char *argv[]) {
         perror("pipe2");
         return 1;
     }
+
+    poll_battery();
+    poll_screensaver();
 
     pthread_t th_sway, th_quiet, th_audio, th_bat, th_bg;
     pthread_create(&th_sway, NULL, sway_event_thread, NULL);

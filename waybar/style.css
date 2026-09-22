@@ -83,11 +83,6 @@ window#waybar {
     font-weight: bold;
 }
 
-/* U+23F8 falls back to FreeSans; keep its size stable while toggling. */
-#mpris.playing {
-    font-family: "FreeSans", sans-serif;
-}
-
 /* Battery states */
 #battery.warning {
     color: #e5a454;

@@ -97,8 +97,8 @@ meson setup build --prefix=$HOME/.local
 ninja -C build
 ninja -C build install
 cc -O2 -Wall -Wextra -o $HOME/.local/bin/waybar-clock \
-  $HOME/.dotfiles/sway/helpers/waybar-clock.c
+  $HOME/.dotfiles/data/waybar-clock.c
 cc -O2 -Wall -Wextra -o $HOME/.local/bin/pixelbuds-pause \
-  $HOME/.dotfiles/sway/helpers/pixelbuds-pause.c \
+  $HOME/.dotfiles/data/pixelbuds-pause.c \
   $(pkg-config --cflags --libs libsystemd)
 playerctld daemon

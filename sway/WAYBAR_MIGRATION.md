@@ -27,5 +27,5 @@ The Sway status bar has been migrated from py3status to a custom Waybar 0.15.0 b
 - Custom Waybar source: `~/src/waybar`
 - Waybar config: `~/.dotfiles/waybar`
 - Sway config: `~/.dotfiles/sway/config`
-- Helper sources: `~/.dotfiles/sway/helpers`; compiled binaries: `~/.local/bin`
+- Helper sources: `~/.dotfiles/data`; compiled binaries: `~/.local/bin`
 - Pixel Buds unit: `~/.dotfiles/systemd/user/pixelbuds-pause.service`

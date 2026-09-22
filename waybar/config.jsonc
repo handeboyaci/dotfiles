@@ -36,6 +36,7 @@
         "format-alt": "{:%a %d/%b/%Y | %H:%M:%S}",
         "format-alt-click": 3,
         "timezones": ["America/New_York", "Europe/Zurich", "Asia/Istanbul"],
+        "timezone-labels": ["NY", "ZRH", "IST"],
         "tooltip-format": "<tt>{tz_list}\n\n{calendar}</tt>",
         "timezone-tooltip-format": "{:%H:%M %Z}",
         "calendar": {

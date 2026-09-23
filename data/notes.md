@@ -47,7 +47,7 @@ done
 
 
 cd $HOME/.config
-for f in foot jj kanshi nvim nwg-bar pipewire rofi sunshine sway swayidle swaylock swayosd systemd xdg-desktop-portal
+for f in foot jj kanshi nvim nwg-bar pipewire rofi sunshine sway swayidle swaylock swayosd systemd wireplumber xdg-desktop-portal
 do
   rm -rf $f
   ln -s $HOME/.dotfiles/$f
@@ -94,4 +94,4 @@ make
 sudo make install
 cd $HOME
 
-systemctl --user enable --now kanshi.service notification.service playerctld.service pixelbuds-pause.service swaybg.service swayidle.service swayosd-server.service
+systemctl --user enable --now kanshi.service mpris-proxy.service notification.service pixelbuds-pause.service swaybg.service swayidle.service swayosd-server.service

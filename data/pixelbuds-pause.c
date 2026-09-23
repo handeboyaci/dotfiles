@@ -126,10 +126,19 @@ static void show_volume_osd(void) {
     (void)status;
 }
 
+static uint64_t g_last_disconnect_handled_usec = 0;
+
 static void handle_disconnect_or_transport_drop(void) {
     uint64_t now = now_usec();
+    if (g_last_disconnect_handled_usec > 0 &&
+        (now - g_last_disconnect_handled_usec) < 1500ULL * USEC_PER_MSEC) {
+        return;
+    }
+    g_last_disconnect_handled_usec = now;
+
     bool currently_playing = check_and_record_playing_player();
-    bool burst_drop = (g_active_when_idled_usec > 0 &&
+    bool burst_drop = g_transport_active ||
+                      (g_active_when_idled_usec > 0 &&
                        (now - g_active_when_idled_usec) <= DROP_BURST_WINDOW_USEC) ||
                       (g_paused_by_idle_usec > 0 &&
                        (now - g_paused_by_idle_usec) <= DROP_BURST_WINDOW_USEC);
@@ -220,7 +229,7 @@ static int property_changed(sd_bus_message *message, void *userdata,
                 // On Linux, removing Pixel Buds from ears sets MediaTransport1 State
                 // to "idle". Schedule a 600ms debounced pause so earbud removal pauses
                 // media promptly while sub-600ms RF hiccups are ignored.
-                if (check_and_record_playing_player()) {
+                if (g_transport_active || check_and_record_playing_player()) {
                     g_active_when_idled_usec = now;
                     g_pause_at_usec = now + IDLE_PAUSE_DEBOUNCE_USEC;
                 } else {
@@ -368,6 +377,9 @@ int main(int argc, char **argv) {
             setenv("DBUS_SESSION_BUS_ADDRESS", addr, 0);
         }
     }
+
+    int wp_status = system("wpctl settings --save bluetooth.autoswitch-to-headset-profile false >/dev/null 2>&1");
+    (void)wp_status;
 
     result = sd_bus_open_system(&bus);
     if (result < 0) {

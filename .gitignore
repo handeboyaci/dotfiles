@@ -21,7 +21,6 @@ sunshine/sunshine_state.json
 *.jetskicli
 scratch/
 /bin/pixelbuds-pause
-
-
-# Neovim undo files
+data/.static_libs/
+data/statusbar
 *.un~

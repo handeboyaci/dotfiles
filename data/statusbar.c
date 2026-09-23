@@ -491,9 +491,15 @@ static uint32_t parse_hex_color(const char *hex, uint32_t fallback) {
     return fallback;
 }
 
-static bool is_color_emoji_cp(uint32_t cp) {
-    if (cp >= 0x1F000 && cp <= 0x1FAFF) return true;
-    if (cp == 0x26A1) return true; /* ⚡ */
+static inline bool is_symbola_forced(uint32_t cp) {
+    /* Braille patterns (U+2800..U+28FF) */
+    if (cp >= 0x2800 && cp <= 0x28FF) return true;
+    /* Speaker icons: 🔇 U+1F507, 🔈 U+1F508, 🔉 U+1F509, 🔊 U+1F50A */
+    if (cp >= 0x1F507 && cp <= 0x1F50A) return true;
+    /* Battery / power icons: 🔋 U+1F50B, ⚡ U+26A1, 🔌 U+1F50C, ▁ U+2581 */
+    if (cp == 0x1F50B || cp == 0x26A1 || cp == 0x1F50C || cp == 0x2581) return true;
+    /* Screensaver icons: 💤 U+1F4A4, 👁 U+1F441 */
+    if (cp == 0x1F4A4 || cp == 0x1F441) return true;
     return false;
 }
 
@@ -503,6 +509,9 @@ static int render_markup_line(SurfaceBuf *s, const char *text, int start_x, int 
     FT_Set_Pixel_Sizes(g_face_reg, 0, px_size);
     FT_Set_Pixel_Sizes(g_face_bold, 0, px_size);
     FT_Set_Pixel_Sizes(g_face_sym, 0, px_size == 16 ? 17 : px_size);
+    if (g_face_symbola) {
+        FT_Set_Pixel_Sizes(g_face_symbola, 0, px_size == 16 ? 18 : px_size);
+    }
 
     uint32_t fg_stack[8];
     uint32_t bg_stack[8];
@@ -576,7 +585,7 @@ static int render_markup_line(SurfaceBuf *s, const char *text, int start_x, int 
         if (cp == 0) break;
         if (cp == 0xFE0F || cp == 0xFE0E) continue; /* Variation selectors */
 
-        /* Check for 2-codepoint Regional Indicator flag sequence (U+1F1E6..U+1F1FF) */
+        /* Check for 2-codepoint Regional Indicator flag sequence (U+1F1E6..U+1F1FF) - only flags use Noto */
         FT_UInt emoji_glyph = 0;
         if (cp >= 0x1F1E6 && cp <= 0x1F1FF && g_face_emoji) {
             const char *peek = p;
@@ -587,8 +596,6 @@ static int render_markup_line(SurfaceBuf *s, const char *text, int start_x, int 
                 FT_UInt g2 = FT_Get_Char_Index(g_face_emoji, cp2);
                 emoji_glyph = emoji_gsub_ligature(g1, g2);
             }
-        } else if (is_color_emoji_cp(cp) && g_face_emoji) {
-            emoji_glyph = FT_Get_Char_Index(g_face_emoji, cp);
         }
 
         if (emoji_glyph != 0 && g_face_emoji) {
@@ -634,13 +641,20 @@ static int render_markup_line(SurfaceBuf *s, const char *text, int start_x, int 
 
         /* Standard / symbol glyph rendering */
         FT_Face face = bold_stack[sp] ? g_face_bold : g_face_reg;
-        FT_UInt gidx = FT_Get_Char_Index(face, cp);
+        FT_UInt gidx = 0;
+
+        if (is_symbola_forced(cp) && g_face_symbola) {
+            gidx = FT_Get_Char_Index(g_face_symbola, cp);
+            if (gidx != 0) face = g_face_symbola;
+        }
+        if (gidx == 0) {
+            gidx = FT_Get_Char_Index(face, cp);
+        }
         if (gidx == 0 && g_face_sym) {
             gidx = FT_Get_Char_Index(g_face_sym, cp);
             if (gidx != 0) face = g_face_sym;
         }
         if (gidx == 0 && g_face_symbola) {
-            FT_Set_Pixel_Sizes(g_face_symbola, 0, px_size == 16 ? 18 : px_size);
             gidx = FT_Get_Char_Index(g_face_symbola, cp);
             if (gidx != 0) face = g_face_symbola;
         }

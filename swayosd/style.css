@@ -18,7 +18,7 @@ window#osd box#container image:disabled {
     min-width: 0px;
     min-height: 0px;
     padding: 0px;
-    margin: -16px;
+    margin: 0px;
     font-size: 0px;
 }
 

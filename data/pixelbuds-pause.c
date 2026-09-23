@@ -96,18 +96,23 @@ static bool check_and_record_playing_player(void) {
 }
 
 static void pause_players(void) {
+    fprintf(stderr, "pixelbuds-pause: pausing all active MPRIS players\n");
+    fflush(stderr);
     int status = system("playerctl -a pause >/dev/null 2>&1");
     (void)status;
 }
 
 static void resume_players(void) {
     char cmd[256];
+    fprintf(stderr, "pixelbuds-pause: auto-resuming MPRIS player (%s)\n",
+            g_playing_instance[0] ? g_playing_instance : "default");
+    fflush(stderr);
     if (g_playing_instance[0] != '\0') {
         snprintf(cmd, sizeof(cmd),
-                 "playerctl -p '%s' play >/dev/null 2>&1 || playerctl play >/dev/null 2>&1",
+                 "playerctl -p '%s' play >/dev/null 2>&1 || playerctl -a play >/dev/null 2>&1",
                  g_playing_instance);
     } else {
-        snprintf(cmd, sizeof(cmd), "playerctl play >/dev/null 2>&1");
+        snprintf(cmd, sizeof(cmd), "playerctl -a play >/dev/null 2>&1");
     }
     int status = system(cmd);
     (void)status;
@@ -195,6 +200,8 @@ static int property_changed(sd_bus_message *message, void *userdata,
             if (result < 0) return result;
 
             uint64_t now = now_usec();
+            fprintf(stderr, "pixelbuds-pause: %s MediaTransport1.State=%s\n", path, state);
+            fflush(stderr);
             if (strcmp(state, "active") == 0) {
                 g_transport_active = true;
                 g_transport_activated_usec = now;
@@ -252,6 +259,8 @@ static int property_changed(sd_bus_message *message, void *userdata,
             result = sd_bus_message_read(message, "b", &connected);
             if (result < 0) return result;
 
+            fprintf(stderr, "pixelbuds-pause: %s Device1.Connected=%d\n", path, connected);
+            fflush(stderr);
             if (!connected) {
                 handle_disconnect_or_transport_drop();
             } else {

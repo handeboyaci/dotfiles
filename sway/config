@@ -1,4 +1,4 @@
-exec_always [ -z "$SWAY_HEADLESS" ] && dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME && systemctl --user start sway-session.target && systemctl --user try-reload-or-restart kanshi.service swayosd-server.service playerctld.service pixelbuds-pause.service
+exec_always [ -z "$SWAY_HEADLESS" ] && dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME && systemctl --user start sway-session.target && systemctl --user try-reload-or-restart kanshi.service swayosd-server.service mpris-proxy.service pixelbuds-pause.service
 
 set $mod Mod4
 set $alt Mod1
@@ -113,13 +113,13 @@ bindsym $mod+Shift+r reload
 set $mode_passthrough ⇸
 mode "$mode_passthrough" {
   bindsym $mod+p mode "default"
-  bindsym --locked XF86AudioPlay exec swayosd-client --playerctl play-pause || playerctl play-pause
-  bindsym --locked XF86AudioPause exec swayosd-client --playerctl play-pause || playerctl play-pause
-  bindsym --locked XF86AudioStop exec swayosd-client --playerctl stop || playerctl stop
-  bindsym --locked XF86AudioNext exec swayosd-client --playerctl next || playerctl next
-  bindsym --locked XF86AudioPrev exec swayosd-client --playerctl prev || playerctl prev
-  bindsym --locked XF86AudioForward exec swayosd-client --playerctl next || playerctl next
-  bindsym --locked XF86AudioRewind exec swayosd-client --playerctl prev || playerctl prev
+  bindsym --locked XF86AudioPlay exec sh -c 'if playerctl -a status 2>/dev/null | grep -q "^Playing$"; then playerctl -a pause; else playerctl -a play; fi'
+  bindsym --locked XF86AudioPause exec sh -c 'if playerctl -a status 2>/dev/null | grep -q "^Playing$"; then playerctl -a pause; else playerctl -a play; fi'
+  bindsym --locked XF86AudioStop exec playerctl -a stop
+  bindsym --locked XF86AudioNext exec playerctl -a next
+  bindsym --locked XF86AudioPrev exec playerctl -a previous
+  bindsym --locked XF86AudioForward exec playerctl -a next
+  bindsym --locked XF86AudioRewind exec playerctl -a previous
   bindsym --locked XF86AudioMute exec swayosd-client --output-volume mute-toggle
   bindsym --locked XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
   bindsym --locked XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200
@@ -238,13 +238,13 @@ focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
 exec /usr/libexec/gsd-rfkill
-bindsym --locked XF86AudioPlay exec swayosd-client --playerctl play-pause || playerctl play-pause
-bindsym --locked XF86AudioPause exec swayosd-client --playerctl play-pause || playerctl play-pause
-bindsym --locked XF86AudioStop exec swayosd-client --playerctl stop || playerctl stop
-bindsym --locked XF86AudioNext exec swayosd-client --playerctl next || playerctl next
-bindsym --locked XF86AudioPrev exec swayosd-client --playerctl prev || playerctl prev
-bindsym --locked XF86AudioForward exec swayosd-client --playerctl next || playerctl next
-bindsym --locked XF86AudioRewind exec swayosd-client --playerctl prev || playerctl prev
+bindsym --locked XF86AudioPlay exec sh -c 'if playerctl -a status 2>/dev/null | grep -q "^Playing$"; then playerctl -a pause; else playerctl -a play; fi'
+bindsym --locked XF86AudioPause exec sh -c 'if playerctl -a status 2>/dev/null | grep -q "^Playing$"; then playerctl -a pause; else playerctl -a play; fi'
+bindsym --locked XF86AudioStop exec playerctl -a stop
+bindsym --locked XF86AudioNext exec playerctl -a next
+bindsym --locked XF86AudioPrev exec playerctl -a previous
+bindsym --locked XF86AudioForward exec playerctl -a next
+bindsym --locked XF86AudioRewind exec playerctl -a previous
 bindsym --locked XF86AudioMute exec swayosd-client --output-volume mute-toggle
 bindsym --locked XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
 bindsym --locked XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200

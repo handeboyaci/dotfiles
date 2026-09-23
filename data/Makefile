@@ -6,7 +6,7 @@ STATIC_LIBDIR := .static_libs
 
 .PHONY: all clean install test
 
-all: statusbar
+all: statusbar pixelbuds-pause
 
 $(STATIC_LIBDIR):
 	mkdir -p $(STATIC_LIBDIR)
@@ -17,12 +17,16 @@ $(STATIC_LIBDIR):
 statusbar: statusbar.c $(STATIC_LIBDIR)
 	$(CC) $(CFLAGS) $(LDFLAGS) statusbar.c -L$(STATIC_LIBDIR) -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -ljson-c -lz -lm -lpthread -o statusbar
 
+pixelbuds-pause: pixelbuds-pause.c
+	$(CC) -O2 -Wall -Wextra pixelbuds-pause.c $$(pkg-config --cflags --libs libsystemd) -o pixelbuds-pause
+
 test: statusbar
 	./statusbar --self-test
 
-install: statusbar
+install: statusbar pixelbuds-pause
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 755 statusbar $(DESTDIR)$(PREFIX)/bin/statusbar
+	install -m 755 pixelbuds-pause $(DESTDIR)$(PREFIX)/bin/pixelbuds-pause
 
 clean:
-	rm -rf statusbar $(STATIC_LIBDIR)
+	rm -rf statusbar pixelbuds-pause $(STATIC_LIBDIR)

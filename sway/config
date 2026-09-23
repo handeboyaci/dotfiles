@@ -114,12 +114,19 @@ bindsym $mod+Shift+r reload
 set $mode_passthrough ⇸
 mode "$mode_passthrough" {
   bindsym $mod+p mode "default"
-  bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
-  bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
-  bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200
-  bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
-  bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
-  bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
+  bindsym --locked XF86AudioPlay exec swayosd-client --playerctl play-pause || playerctl play-pause
+  bindsym --locked XF86AudioPause exec swayosd-client --playerctl play-pause || playerctl play-pause
+  bindsym --locked XF86AudioStop exec swayosd-client --playerctl stop || playerctl stop
+  bindsym --locked XF86AudioNext exec swayosd-client --playerctl next || playerctl next
+  bindsym --locked XF86AudioPrev exec swayosd-client --playerctl prev || playerctl prev
+  bindsym --locked XF86AudioForward exec swayosd-client --playerctl next || playerctl next
+  bindsym --locked XF86AudioRewind exec swayosd-client --playerctl prev || playerctl prev
+  bindsym --locked XF86AudioMute exec swayosd-client --output-volume mute-toggle
+  bindsym --locked XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
+  bindsym --locked XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200
+  bindsym --locked XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
+  bindsym --locked XF86MonBrightnessUp exec swayosd-client --brightness raise
+  bindsym --locked XF86MonBrightnessDown exec swayosd-client --brightness lower
 }
 bindsym $mod+p mode "$mode_passthrough"
 
@@ -232,10 +239,17 @@ focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
 exec /usr/libexec/gsd-rfkill
-bindsym XF86AudioMute exec swayosd-client --output-volume mute-toggle
-bindsym XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
-bindsym XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200
-bindsym XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
-bindsym XF86MonBrightnessUp exec swayosd-client --brightness raise
-bindsym XF86MonBrightnessDown exec swayosd-client --brightness lower
-exec_always [ -z "$SWAY_HEADLESS" ] && systemctl --user try-reload-or-restart kanshi.service swayosd-server.service
+bindsym --locked XF86AudioPlay exec swayosd-client --playerctl play-pause || playerctl play-pause
+bindsym --locked XF86AudioPause exec swayosd-client --playerctl play-pause || playerctl play-pause
+bindsym --locked XF86AudioStop exec swayosd-client --playerctl stop || playerctl stop
+bindsym --locked XF86AudioNext exec swayosd-client --playerctl next || playerctl next
+bindsym --locked XF86AudioPrev exec swayosd-client --playerctl prev || playerctl prev
+bindsym --locked XF86AudioForward exec swayosd-client --playerctl next || playerctl next
+bindsym --locked XF86AudioRewind exec swayosd-client --playerctl prev || playerctl prev
+bindsym --locked XF86AudioMute exec swayosd-client --output-volume mute-toggle
+bindsym --locked XF86AudioMicMute exec swayosd-client --input-volume mute-toggle
+bindsym --locked XF86AudioRaiseVolume exec swayosd-client --output-volume raise --max-volume=200
+bindsym --locked XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
+bindsym --locked XF86MonBrightnessUp exec swayosd-client --brightness raise
+bindsym --locked XF86MonBrightnessDown exec swayosd-client --brightness lower
+exec_always [ -z "$SWAY_HEADLESS" ] && systemctl --user try-reload-or-restart kanshi.service swayosd-server.service playerctld.service pixelbuds-pause.service

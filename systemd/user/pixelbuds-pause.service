@@ -1,11 +1,11 @@
 [Unit]
-Description=Auto-pause media on Pixel Buds / Bluetooth earbud removal
+Description=Auto-pause and auto-resume media on Pixel Buds / Bluetooth connection changes
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/home/sselcuk/.local/bin/pixelbuds-pause /org/bluez/hci0/dev_70_88_6B_91_E8_E4
+ExecStart=/bin/sh -c 'if [ -x "$HOME/.local/bin/pixelbuds-pause" ]; then exec "$HOME/.local/bin/pixelbuds-pause"; else exec /usr/bin/pixelbuds-pause; fi'
 Restart=on-failure
 RestartSec=5
 

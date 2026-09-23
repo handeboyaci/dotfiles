@@ -6,17 +6,15 @@ VERSION=20
 
 sudo apt install \
   aptitude autoconf automake bat bison brightnessctl build-essential check cmake \
-  curl dconf-editor dos2unix fd-find flex foot fzf gettext gir1.2-playerctl-2.0 \
-  git gnome-calendar grim jq kanshi libcairo2-dev libgdk-pixbuf-2.0-dev libjson-c-dev \
-  libcurl4-openssl-dev libdbusmenu-gtk3-dev libevdev-dev libfmt-dev libgtkmm-3.0-dev \
-  libjsoncpp-dev libnl-3-dev libnl-genl-3-dev libpango1.0-dev libplayerctl-dev \
-  libpulse-dev libspdlog-dev libstartup-notification0-dev libsystemd-dev libupower-glib-dev \
+  curl dconf-editor dos2unix fd-find flex foot fzf gettext \
+  git gnome-calendar grim jq kanshi libbrotli-dev libbz2-dev libcairo2-dev \
+  libevdev-dev libfreetype-dev libgdk-pixbuf-2.0-dev libjson-c-dev \
+  libpango1.0-dev libpng-dev libstartup-notification0-dev libsystemd-dev \
   libwayland-dev libwlroots-0.${VERSION}-dev wayland-protocols \
   libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xrm-dev \
-  libxkbcommon-x11-dev meson ninja-build nwg-bar pkg-config playerctl py3status \
-  python3-daemon python3-dateutil python3-googleapi python3-oauth2client python3-pip \
-  ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip wl-clipboard \
-  wdisplays xdg-desktop-portal-wlr papirus-icon-theme rofi
+  libxkbcommon-x11-dev meson ninja-build nwg-bar pkg-config playerctl \
+  python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip wl-clipboard \
+  wdisplays xdg-desktop-portal-wlr zlib1g-dev papirus-icon-theme rofi
 
 mkdir -p $HOME/.local/bin
 quiet_tmp=$(mktemp -d)
@@ -26,8 +24,6 @@ tar -xzf quiet-x86_64-unknown-linux-gnu.tar.gz
 install -m 0755 quiet quietctl $HOME/.local/bin
 cd $HOME
 rm -rf "$quiet_tmp"
-
-pip install --break-system-packages py3notifier 
 
 mkdir -p $HOME/software
 cd $HOME/software
@@ -89,14 +85,13 @@ nvim --headless \
 
 sudo systemctl mask ctrl-alt-del.target
 sudo systemctl daemon-reload
-systemctl --user enable --now kanshi.service notification.service swaybg.service swayidle.service swayosd-server.service
+
+# Initialize Google Calendar OAuth token (requires ~/.dotfiles/tmp/google_calendar.credentials.json)
+$HOME/.dotfiles/bin/gcal-auth
 
 cd $HOME/.dotfiles/data
 make
 sudo make install
 cd $HOME
 
-cc -O2 -Wall -Wextra -o $HOME/.local/bin/pixelbuds-pause \
-  $HOME/.dotfiles/data/pixelbuds-pause.c \
-  $(pkg-config --cflags --libs libsystemd)
-playerctld daemon
+systemctl --user enable --now kanshi.service notification.service playerctld.service pixelbuds-pause.service swaybg.service swayidle.service swayosd-server.service

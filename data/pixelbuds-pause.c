@@ -1,24 +1,166 @@
-// BlueZ Pixel Buds media-pausing helper.
+// BlueZ Pixel Buds media helper:
+// - Pauses media players on genuine Bluetooth disconnect / transport teardown
+// - Ignores transient A2DP "idle" states (buffering, seeking, RF blips)
+// - Automatically resumes playback if the connection/transport recovers
+//   momentarily (within AUTO_RESUME_WINDOW_USEC)
+// - Displays SwayOSD volume popup on Pixel Buds AVRCP volume swipes
 #define _GNU_SOURCE
 
+#include <ctype.h>
+#include <errno.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <systemd/sd-bus.h>
+#include <time.h>
+
+#define USEC_PER_SEC  1000000ULL
+#define USEC_PER_MSEC 1000ULL
+
+// If Bluetooth reconnects within 25s of a drop while playing, auto-resume.
+#define AUTO_RESUME_WINDOW_USEC (25ULL * USEC_PER_SEC)
+// How long after MediaTransport1 appears to wait for PipeWire sink creation.
+#define TRANSPORT_SETTLE_USEC   (700ULL * USEC_PER_MSEC)
+// Fallback settle delay after Device1.Connected=true if transport already up.
+#define CONNECT_SETTLE_USEC     (1500ULL * USEC_PER_MSEC)
+// Window linking an active->idle transition to an immediate disconnect/teardown.
+#define DROP_BURST_WINDOW_USEC  (3ULL * USEC_PER_SEC)
+// Minimum interval between SwayOSD volume popups on earbud swipe.
+#define VOLUME_OSD_DEBOUNCE_USEC (150ULL * USEC_PER_MSEC)
+
+static const char *g_device_prefix = "/org/bluez";
+static bool g_transport_active = false;
+static uint64_t g_active_when_idled_usec = 0;
+static uint64_t g_transport_activated_usec = 0;
+static uint64_t g_last_vol_osd_usec = 0;
+
+static bool g_pending_resume = false;
+static uint64_t g_disconnect_usec = 0;
+static uint64_t g_resume_at_usec = 0;
+static char g_playing_instance[128] = "";
+
+static uint64_t now_usec(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) return 0;
+    return (uint64_t)ts.tv_sec * USEC_PER_SEC + (uint64_t)(ts.tv_nsec / 1000);
+}
+
+static bool path_matches_device(const char *path) {
+    if (!path || !g_device_prefix) return false;
+    size_t len = strlen(g_device_prefix);
+    if (strncmp(path, g_device_prefix, len) != 0) return false;
+    return path[len] == '\0' || path[len] == '/';
+}
+
+// Checks if any MPRIS player is currently Playing, and records its instance name.
+static bool check_and_record_playing_player(void) {
+    FILE *fp = popen("playerctl -a status -f '{{playerInstance}}\t{{status}}' 2>/dev/null", "r");
+    if (!fp) return false;
+
+    char line[256];
+    bool found = false;
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        char *tab = strchr(line, '\t');
+        if (!tab) continue;
+        *tab = '\0';
+        char *status = tab + 1;
+        size_t slen = strlen(status);
+        while (slen > 0 && (status[slen - 1] == '\n' || status[slen - 1] == '\r')) {
+            status[--slen] = '\0';
+        }
+        if (strcmp(status, "Playing") == 0) {
+            // Sanitize player instance name for safe shell use.
+            bool safe = line[0] != '\0';
+            for (const char *p = line; *p; p++) {
+                if (!isalnum((unsigned char)*p) && *p != '.' && *p != '_' && *p != '-') {
+                    safe = false;
+                    break;
+                }
+            }
+            if (safe) {
+                snprintf(g_playing_instance, sizeof(g_playing_instance), "%.127s", line);
+            }
+            found = true;
+            break;
+        }
+    }
+    pclose(fp);
+    return found;
+}
 
 static void pause_players(void) {
-    int status = system("playerctl pause -a >/dev/null 2>&1");
+    int status = system("playerctl -a pause >/dev/null 2>&1");
     (void)status;
+}
+
+static void resume_players(void) {
+    char cmd[256];
+    if (g_playing_instance[0] != '\0') {
+        snprintf(cmd, sizeof(cmd),
+                 "playerctl -p '%s' play >/dev/null 2>&1 || playerctl play >/dev/null 2>&1",
+                 g_playing_instance);
+    } else {
+        snprintf(cmd, sizeof(cmd), "playerctl play >/dev/null 2>&1");
+    }
+    int status = system(cmd);
+    (void)status;
+}
+
+static void show_volume_osd(void) {
+    uint64_t now = now_usec();
+    if (now - g_last_vol_osd_usec < VOLUME_OSD_DEBOUNCE_USEC) return;
+    g_last_vol_osd_usec = now;
+    int status = system("swayosd-client --output-volume +0 >/dev/null 2>&1 &");
+    (void)status;
+}
+
+static void handle_disconnect_or_transport_drop(void) {
+    uint64_t now = now_usec();
+    bool currently_playing = check_and_record_playing_player();
+    bool burst_drop = (g_active_when_idled_usec > 0 &&
+                       (now - g_active_when_idled_usec) <= DROP_BURST_WINDOW_USEC);
+    bool was_playing = currently_playing || burst_drop;
+
+    g_transport_active = false;
+    g_active_when_idled_usec = 0;
+
+    // Always pause on disconnect/transport loss so audio never leaks to laptop speakers.
+    pause_players();
+
+    if (was_playing) {
+        g_pending_resume = true;
+        g_disconnect_usec = now;
+        g_resume_at_usec = 0;
+    }
+}
+
+static void schedule_auto_resume(uint64_t delay_usec) {
+    if (!g_pending_resume) return;
+    uint64_t now = now_usec();
+    if (now - g_disconnect_usec > AUTO_RESUME_WINDOW_USEC) {
+        g_pending_resume = false;
+        g_resume_at_usec = 0;
+        g_playing_instance[0] = '\0';
+        return;
+    }
+    uint64_t target = now + delay_usec;
+    if (g_resume_at_usec == 0 || target < g_resume_at_usec) {
+        g_resume_at_usec = target;
+    }
 }
 
 static int property_changed(sd_bus_message *message, void *userdata,
                             sd_bus_error *error) {
     const char *interface = NULL;
+    const char *path = sd_bus_message_get_path(message);
     int result;
 
     (void)userdata;
     (void)error;
+
+    if (!path_matches_device(path)) return 0;
 
     result = sd_bus_message_read(message, "s", &interface);
     if (result < 0) return result;
@@ -42,7 +184,50 @@ static int property_changed(sd_bus_message *message, void *userdata,
             if (result < 0) return result;
             result = sd_bus_message_read(message, "s", &state);
             if (result < 0) return result;
-            if (strcmp(state, "idle") == 0) pause_players();
+
+            uint64_t now = now_usec();
+            if (strcmp(state, "active") == 0) {
+                g_transport_active = true;
+                g_transport_activated_usec = now;
+                g_active_when_idled_usec = 0;
+                if (g_pending_resume) {
+                    schedule_auto_resume(200ULL * USEC_PER_MSEC);
+                }
+            } else if (strcmp(state, "pending") == 0) {
+                if (g_pending_resume) {
+                    schedule_auto_resume(TRANSPORT_SETTLE_USEC);
+                }
+            } else if (strcmp(state, "idle") == 0) {
+                // Do NOT pause on "idle": PipeWire/BlueZ idles the transport during
+                // buffering, seeking, or sub-second RF hiccups. Only record whether
+                // a player was actively playing in case a disconnect immediately follows.
+                if (g_transport_active && check_and_record_playing_player()) {
+                    g_active_when_idled_usec = now;
+                } else {
+                    g_active_when_idled_usec = 0;
+                }
+                g_transport_active = false;
+            }
+
+            result = sd_bus_message_exit_container(message);
+            if (result < 0) return result;
+        } else if (strcmp(interface, "org.bluez.MediaTransport1") == 0 &&
+                   strcmp(property, "Volume") == 0) {
+            uint16_t vol = 0;
+            result = sd_bus_message_enter_container(
+                message, SD_BUS_TYPE_VARIANT, "q");
+            if (result < 0) return result;
+            result = sd_bus_message_read(message, "q", &vol);
+            if (result < 0) return result;
+            (void)vol;
+
+            // Show volume OSD when user swipes volume on Pixel Buds (ignore initial
+            // volume report during the first 2 seconds of transport activation).
+            if (g_transport_activated_usec > 0 &&
+                (now_usec() - g_transport_activated_usec) > 2ULL * USEC_PER_SEC) {
+                show_volume_osd();
+            }
+
             result = sd_bus_message_exit_container(message);
             if (result < 0) return result;
         } else if (strcmp(interface, "org.bluez.Device1") == 0 &&
@@ -54,7 +239,13 @@ static int property_changed(sd_bus_message *message, void *userdata,
             if (result < 0) return result;
             result = sd_bus_message_read(message, "b", &connected);
             if (result < 0) return result;
-            if (!connected) pause_players();
+
+            if (!connected) {
+                handle_disconnect_or_transport_drop();
+            } else {
+                schedule_auto_resume(CONNECT_SETTLE_USEC);
+            }
+
             result = sd_bus_message_exit_container(message);
             if (result < 0) return result;
         } else {
@@ -70,34 +261,93 @@ static int property_changed(sd_bus_message *message, void *userdata,
     return sd_bus_message_exit_container(message);
 }
 
-int main(int argc, char **argv) {
-    const char *device_path;
-    char media_match[512];
-    char device_match[512];
-    sd_bus *bus = NULL;
-    sd_bus_slot *media_slot = NULL;
-    sd_bus_slot *device_slot = NULL;
+static int interfaces_added(sd_bus_message *message, void *userdata,
+                            sd_bus_error *error) {
+    const char *object_path = NULL;
     int result;
 
-    if (argc != 2 || strncmp(argv[1], "/org/bluez/", 11) != 0) {
-        fprintf(stderr, "usage: %s /org/bluez/.../dev_XX_XX_XX_XX_XX_XX\n",
+    (void)userdata;
+    (void)error;
+
+    result = sd_bus_message_read(message, "o", &object_path);
+    if (result < 0) return result;
+    if (!path_matches_device(object_path)) return 0;
+
+    result = sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "{sa{sv}}");
+    if (result < 0) return result;
+
+    while ((result = sd_bus_message_enter_container(
+                message, SD_BUS_TYPE_DICT_ENTRY, "sa{sv}")) > 0) {
+        const char *iface = NULL;
+        result = sd_bus_message_read(message, "s", &iface);
+        if (result < 0) return result;
+
+        if (strcmp(iface, "org.bluez.MediaTransport1") == 0) {
+            g_transport_activated_usec = now_usec();
+            schedule_auto_resume(TRANSPORT_SETTLE_USEC);
+        }
+
+        result = sd_bus_message_skip(message, "a{sv}");
+        if (result < 0) return result;
+        result = sd_bus_message_exit_container(message);
+        if (result < 0) return result;
+    }
+
+    if (result < 0) return result;
+    return sd_bus_message_exit_container(message);
+}
+
+static int interfaces_removed(sd_bus_message *message, void *userdata,
+                              sd_bus_error *error) {
+    const char *object_path = NULL;
+    int result;
+
+    (void)userdata;
+    (void)error;
+
+    result = sd_bus_message_read(message, "o", &object_path);
+    if (result < 0) return result;
+    if (!path_matches_device(object_path)) return 0;
+
+    result = sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "s");
+    if (result < 0) return result;
+
+    const char *iface = NULL;
+    while ((result = sd_bus_message_read(message, "s", &iface)) > 0) {
+        if (strcmp(iface, "org.bluez.MediaTransport1") == 0) {
+            handle_disconnect_or_transport_drop();
+        }
+    }
+
+    if (result < 0) return result;
+    return sd_bus_message_exit_container(message);
+}
+
+int main(int argc, char **argv) {
+    sd_bus *bus = NULL;
+    sd_bus_slot *props_slot = NULL;
+    sd_bus_slot *added_slot = NULL;
+    sd_bus_slot *removed_slot = NULL;
+    int result;
+
+    if (argc > 2 || (argc == 2 && strncmp(argv[1], "/org/bluez/", 11) != 0)) {
+        fprintf(stderr, "usage: %s [/org/bluez/.../dev_XX_XX_XX_XX_XX_XX]\n",
                 argv[0]);
         return EXIT_FAILURE;
     }
-    device_path = argv[1];
+    if (argc == 2) {
+        g_device_prefix = argv[1];
+    }
 
-    snprintf(media_match, sizeof(media_match),
-             "type='signal',sender='org.bluez',"
-             "interface='org.freedesktop.DBus.Properties',"
-             "member='PropertiesChanged',path_namespace='%s',"
-             "arg0='org.bluez.MediaTransport1'",
-             device_path);
-    snprintf(device_match, sizeof(device_match),
-             "type='signal',sender='org.bluez',"
-             "interface='org.freedesktop.DBus.Properties',"
-             "member='PropertiesChanged',path='%s',"
-             "arg0='org.bluez.Device1'",
-             device_path);
+    // Ensure session D-Bus address is set when run under systemd user manager.
+    if (!getenv("DBUS_SESSION_BUS_ADDRESS")) {
+        const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
+        if (runtime_dir && runtime_dir[0]) {
+            char addr[256];
+            snprintf(addr, sizeof(addr), "unix:path=%s/bus", runtime_dir);
+            setenv("DBUS_SESSION_BUS_ADDRESS", addr, 0);
+        }
+    }
 
     result = sd_bus_open_system(&bus);
     if (result < 0) {
@@ -106,25 +356,69 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    result = sd_bus_add_match(bus, &media_slot, media_match,
-                              property_changed, NULL);
+    result = sd_bus_add_match(
+        bus, &props_slot,
+        "type='signal',sender='org.bluez',"
+        "interface='org.freedesktop.DBus.Properties',"
+        "member='PropertiesChanged',path_namespace='/org/bluez'",
+        property_changed, NULL);
     if (result < 0) goto fail;
-    result = sd_bus_add_match(bus, &device_slot, device_match,
-                              property_changed, NULL);
+
+    result = sd_bus_add_match(
+        bus, &added_slot,
+        "type='signal',sender='org.bluez',"
+        "interface='org.freedesktop.DBus.ObjectManager',"
+        "member='InterfacesAdded'",
+        interfaces_added, NULL);
+    if (result < 0) goto fail;
+
+    result = sd_bus_add_match(
+        bus, &removed_slot,
+        "type='signal',sender='org.bluez',"
+        "interface='org.freedesktop.DBus.ObjectManager',"
+        "member='InterfacesRemoved'",
+        interfaces_removed, NULL);
     if (result < 0) goto fail;
 
     for (;;) {
         result = sd_bus_process(bus, NULL);
         if (result < 0) goto fail;
+
+        uint64_t now = now_usec();
+        if (g_pending_resume) {
+            if (now - g_disconnect_usec > AUTO_RESUME_WINDOW_USEC) {
+                g_pending_resume = false;
+                g_resume_at_usec = 0;
+                g_playing_instance[0] = '\0';
+            } else if (g_resume_at_usec > 0 && now >= g_resume_at_usec) {
+                g_pending_resume = false;
+                g_resume_at_usec = 0;
+                resume_players();
+                g_playing_instance[0] = '\0';
+            }
+        }
+
         if (result > 0) continue;
-        result = sd_bus_wait(bus, UINT64_MAX);
-        if (result < 0) goto fail;
+
+        uint64_t wait_usec = UINT64_MAX;
+        if (g_pending_resume) {
+            uint64_t expire_at = g_disconnect_usec + AUTO_RESUME_WINDOW_USEC;
+            uint64_t next_wakeup = expire_at;
+            if (g_resume_at_usec > 0 && g_resume_at_usec < next_wakeup) {
+                next_wakeup = g_resume_at_usec;
+            }
+            wait_usec = (next_wakeup > now) ? (next_wakeup - now) : 0;
+        }
+
+        result = sd_bus_wait(bus, wait_usec);
+        if (result < 0 && result != -EINTR) goto fail;
     }
 
 fail:
     fprintf(stderr, "pixelbuds-pause: D-Bus error: %s\n", strerror(-result));
-    sd_bus_slot_unref(device_slot);
-    sd_bus_slot_unref(media_slot);
+    sd_bus_slot_unref(removed_slot);
+    sd_bus_slot_unref(added_slot);
+    sd_bus_slot_unref(props_slot);
     sd_bus_unref(bus);
     return EXIT_FAILURE;
 }

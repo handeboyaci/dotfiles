@@ -23,4 +23,5 @@ scratch/
 /bin/pixelbuds-pause
 data/.static_libs/
 data/statusbar
+data/pixelbuds-pause
 *.un~

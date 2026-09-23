@@ -1,2 +1,2 @@
-[backend]
-evdev-filter = [ "KEY_CAPSLOCK" ]
+[input]
+ignore_caps_lock_key = true

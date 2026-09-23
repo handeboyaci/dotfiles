@@ -83,7 +83,7 @@ nvim --headless \
   -c qall
 
 
-sudo systemctl mask ctrl-alt-del.target
+sudo systemctl mask --now ctrl-alt-del.target swayosd-libinput-backend.service
 sudo systemctl daemon-reload
 
 # Initialize Google Calendar OAuth token (requires ~/.dotfiles/tmp/google_calendar.credentials.json)

@@ -1,18 +1,60 @@
-/* Target the window and the internal box to force them to 0px */
-window#osd,
-window#osd box#container {
-    min-width: 0px;
-    min-height: 0px;
-    margin: 0px;
-    padding: 0px;
+window#osd {
+    border-radius: 999px;
     border: none;
-    background: transparent;
-    box-shadow: none;
+    background: rgba(30, 30, 30, 0.88);
 }
 
-/* Hide the actual content so it doesn't "overflow" the 0px box */
-window#osd box#container label.title-4,
-window#osd box#container image:disabled {
-    opacity: 0;
-    margin: -1000px;
+window#osd #container {
+    margin: 12px 20px;
+}
+
+window#osd image,
+window#osd label {
+    color: #f5e4c6;
+}
+
+window#osd progressbar:disabled,
+window#osd image:disabled {
+    opacity: 0.5;
+}
+
+window#osd progressbar,
+window#osd segmentedprogress {
+    min-height: 6px;
+    min-width: 140px;
+    margin: 0px;
+    padding: 0px;
+    border-radius: 999px;
+    background: transparent;
+    border: none;
+}
+
+window#osd trough,
+window#osd segment {
+    min-height: 6px;
+    min-width: 6px;
+    margin: 0px;
+    padding: 0px;
+    border-radius: 999px;
+    border: none;
+    background: rgba(245, 228, 198, 0.3);
+}
+
+window#osd progress,
+window#osd segment.active {
+    min-height: 6px;
+    min-width: 6px;
+    margin: 0px;
+    padding: 0px;
+    border-radius: 999px;
+    border: none;
+    background: #3eaeff;
+}
+
+window#osd segment {
+    margin-left: 8px;
+}
+
+window#osd segment:first-child {
+    margin-left: 0;
 }

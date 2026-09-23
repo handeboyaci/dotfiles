@@ -1,6 +1,7 @@
 [Unit]
 Description=SwayOSD display server
-After=graphical-session.target swayosd-libinput-backend.service
+After=graphical-session.target sway-session.target
+PartOf=sway-session.target
 BindsTo=sway-session.target
 
 [Service]

@@ -1,5 +1,4 @@
-exec dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME
-exec [ -z "$SWAY_HEADLESS" ] && systemctl --user start sway-session.target
+exec_always [ -z "$SWAY_HEADLESS" ] && dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME && systemctl --user start sway-session.target && systemctl --user try-reload-or-restart kanshi.service swayosd-server.service playerctld.service pixelbuds-pause.service
 
 set $mod Mod4
 set $alt Mod1
@@ -252,4 +251,3 @@ bindsym --locked XF86AudioRaiseVolume exec swayosd-client --output-volume raise 
 bindsym --locked XF86AudioLowerVolume exec swayosd-client --output-volume lower --max-volume=200
 bindsym --locked XF86MonBrightnessUp exec swayosd-client --brightness raise
 bindsym --locked XF86MonBrightnessDown exec swayosd-client --brightness lower
-exec_always [ -z "$SWAY_HEADLESS" ] && systemctl --user try-reload-or-restart kanshi.service swayosd-server.service playerctld.service pixelbuds-pause.service

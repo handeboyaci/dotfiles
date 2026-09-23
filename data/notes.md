@@ -94,4 +94,4 @@ make
 sudo make install
 cd $HOME
 
-systemctl --user enable --now kanshi.service mpris-proxy.service notification.service pixelbuds-pause.service swaybg.service swayidle.service swayosd-server.service
+systemctl --user enable --now mpris-proxy.service notification.service pixelbuds-pause.service swayidle.service

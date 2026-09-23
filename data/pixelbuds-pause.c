@@ -1,8 +1,9 @@
 // BlueZ Pixel Buds media helper:
-// - Pauses media players on genuine Bluetooth disconnect / transport teardown
-// - Ignores transient A2DP "idle" states (buffering, seeking, RF blips)
-// - Automatically resumes playback if the connection/transport recovers
-//   momentarily (within AUTO_RESUME_WINDOW_USEC)
+// - Pauses media players when earbuds are removed from ears (MediaTransport1
+//   State=="idle" debounced by 600ms so brief RF blips are ignored) or when
+//   Bluetooth disconnects (Device1.Connected==false / InterfacesRemoved)
+// - Automatically resumes playback if an idle/pause is caused by a momentary
+//   Bluetooth connection/transport drop that reconnects within 25s
 // - Displays SwayOSD volume popup on Pixel Buds AVRCP volume swipes
 #define _GNU_SOURCE
 
@@ -19,23 +20,28 @@
 #define USEC_PER_SEC  1000000ULL
 #define USEC_PER_MSEC 1000ULL
 
+// Debounce before pausing on MediaTransport1 State=="idle" (earbud removal).
+// Filters out sub-600ms RF hiccups while still pausing promptly when buds are removed.
+#define IDLE_PAUSE_DEBOUNCE_USEC (600ULL * USEC_PER_MSEC)
 // If Bluetooth reconnects within 25s of a drop while playing, auto-resume.
-#define AUTO_RESUME_WINDOW_USEC (25ULL * USEC_PER_SEC)
+#define AUTO_RESUME_WINDOW_USEC  (25ULL * USEC_PER_SEC)
 // How long after MediaTransport1 appears to wait for PipeWire sink creation.
-#define TRANSPORT_SETTLE_USEC   (700ULL * USEC_PER_MSEC)
+#define TRANSPORT_SETTLE_USEC    (700ULL * USEC_PER_MSEC)
 // Fallback settle delay after Device1.Connected=true if transport already up.
-#define CONNECT_SETTLE_USEC     (1500ULL * USEC_PER_MSEC)
-// Window linking an active->idle transition to an immediate disconnect/teardown.
-#define DROP_BURST_WINDOW_USEC  (3ULL * USEC_PER_SEC)
+#define CONNECT_SETTLE_USEC      (1500ULL * USEC_PER_MSEC)
+// Window linking an idle-pause to a subsequent HCI link supervision disconnect (~2-5s).
+#define DROP_BURST_WINDOW_USEC   (6ULL * USEC_PER_SEC)
 // Minimum interval between SwayOSD volume popups on earbud swipe.
 #define VOLUME_OSD_DEBOUNCE_USEC (150ULL * USEC_PER_MSEC)
 
 static const char *g_device_prefix = "/org/bluez";
 static bool g_transport_active = false;
 static uint64_t g_active_when_idled_usec = 0;
+static uint64_t g_paused_by_idle_usec = 0;
 static uint64_t g_transport_activated_usec = 0;
 static uint64_t g_last_vol_osd_usec = 0;
 
+static uint64_t g_pause_at_usec = 0;
 static bool g_pending_resume = false;
 static uint64_t g_disconnect_usec = 0;
 static uint64_t g_resume_at_usec = 0;
@@ -71,7 +77,6 @@ static bool check_and_record_playing_player(void) {
             status[--slen] = '\0';
         }
         if (strcmp(status, "Playing") == 0) {
-            // Sanitize player instance name for safe shell use.
             bool safe = line[0] != '\0';
             for (const char *p = line; *p; p++) {
                 if (!isalnum((unsigned char)*p) && *p != '.' && *p != '_' && *p != '-') {
@@ -120,11 +125,15 @@ static void handle_disconnect_or_transport_drop(void) {
     uint64_t now = now_usec();
     bool currently_playing = check_and_record_playing_player();
     bool burst_drop = (g_active_when_idled_usec > 0 &&
-                       (now - g_active_when_idled_usec) <= DROP_BURST_WINDOW_USEC);
+                       (now - g_active_when_idled_usec) <= DROP_BURST_WINDOW_USEC) ||
+                      (g_paused_by_idle_usec > 0 &&
+                       (now - g_paused_by_idle_usec) <= DROP_BURST_WINDOW_USEC);
     bool was_playing = currently_playing || burst_drop;
 
     g_transport_active = false;
+    g_pause_at_usec = 0;
     g_active_when_idled_usec = 0;
+    g_paused_by_idle_usec = 0;
 
     // Always pause on disconnect/transport loss so audio never leaks to laptop speakers.
     pause_players();
@@ -189,22 +198,27 @@ static int property_changed(sd_bus_message *message, void *userdata,
             if (strcmp(state, "active") == 0) {
                 g_transport_active = true;
                 g_transport_activated_usec = now;
+                g_pause_at_usec = 0;
                 g_active_when_idled_usec = 0;
+                g_paused_by_idle_usec = 0;
                 if (g_pending_resume) {
                     schedule_auto_resume(200ULL * USEC_PER_MSEC);
                 }
             } else if (strcmp(state, "pending") == 0) {
+                g_pause_at_usec = 0;
                 if (g_pending_resume) {
                     schedule_auto_resume(TRANSPORT_SETTLE_USEC);
                 }
             } else if (strcmp(state, "idle") == 0) {
-                // Do NOT pause on "idle": PipeWire/BlueZ idles the transport during
-                // buffering, seeking, or sub-second RF hiccups. Only record whether
-                // a player was actively playing in case a disconnect immediately follows.
-                if (g_transport_active && check_and_record_playing_player()) {
+                // On Linux, removing Pixel Buds from ears sets MediaTransport1 State
+                // to "idle". Schedule a 600ms debounced pause so earbud removal pauses
+                // media promptly while sub-600ms RF hiccups are ignored.
+                if (check_and_record_playing_player()) {
                     g_active_when_idled_usec = now;
+                    g_pause_at_usec = now + IDLE_PAUSE_DEBOUNCE_USEC;
                 } else {
                     g_active_when_idled_usec = 0;
+                    g_pause_at_usec = 0;
                 }
                 g_transport_active = false;
             }
@@ -221,8 +235,6 @@ static int property_changed(sd_bus_message *message, void *userdata,
             if (result < 0) return result;
             (void)vol;
 
-            // Show volume OSD when user swipes volume on Pixel Buds (ignore initial
-            // volume report during the first 2 seconds of transport activation).
             if (g_transport_activated_usec > 0 &&
                 (now_usec() - g_transport_activated_usec) > 2ULL * USEC_PER_SEC) {
                 show_volume_osd();
@@ -339,7 +351,6 @@ int main(int argc, char **argv) {
         g_device_prefix = argv[1];
     }
 
-    // Ensure session D-Bus address is set when run under systemd user manager.
     if (!getenv("DBUS_SESSION_BUS_ADDRESS")) {
         const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
         if (runtime_dir && runtime_dir[0]) {
@@ -385,6 +396,15 @@ int main(int argc, char **argv) {
         if (result < 0) goto fail;
 
         uint64_t now = now_usec();
+
+        if (g_pause_at_usec > 0 && now >= g_pause_at_usec) {
+            g_pause_at_usec = 0;
+            if (check_and_record_playing_player()) {
+                pause_players();
+                g_paused_by_idle_usec = now;
+            }
+        }
+
         if (g_pending_resume) {
             if (now - g_disconnect_usec > AUTO_RESUME_WINDOW_USEC) {
                 g_pending_resume = false;
@@ -401,13 +421,17 @@ int main(int argc, char **argv) {
         if (result > 0) continue;
 
         uint64_t wait_usec = UINT64_MAX;
+        if (g_pause_at_usec > 0) {
+            wait_usec = (g_pause_at_usec > now) ? (g_pause_at_usec - now) : 0;
+        }
         if (g_pending_resume) {
             uint64_t expire_at = g_disconnect_usec + AUTO_RESUME_WINDOW_USEC;
             uint64_t next_wakeup = expire_at;
             if (g_resume_at_usec > 0 && g_resume_at_usec < next_wakeup) {
                 next_wakeup = g_resume_at_usec;
             }
-            wait_usec = (next_wakeup > now) ? (next_wakeup - now) : 0;
+            uint64_t resume_wait = (next_wakeup > now) ? (next_wakeup - now) : 0;
+            if (resume_wait < wait_usec) wait_usec = resume_wait;
         }
 
         result = sd_bus_wait(bus, wait_usec);

@@ -1,60 +1,31 @@
-window#osd {
-    border-radius: 999px;
+/* Target the window and the internal box to force them to 1px minimum
+ * (GTK4 Wayland requires size.width > 0 and size.height > 0) */
+window#osd,
+window#osd box#container {
+    min-width: 1px;
+    min-height: 1px;
+    margin: 0px;
+    padding: 0px;
     border: none;
-    background: rgba(30, 30, 30, 0.88);
+    background: transparent;
+    box-shadow: none;
 }
 
-window#osd #container {
-    margin: 12px 20px;
-}
-
-window#osd image,
-window#osd label {
-    color: #f5e4c6;
-}
-
-window#osd progressbar:disabled,
-window#osd image:disabled {
-    opacity: 0.5;
+/* Hide Caps Lock label and disabled icon without negative widget sizes */
+window#osd box#container label.title-4,
+window#osd box#container image:disabled {
+    opacity: 0;
+    min-width: 0px;
+    min-height: 0px;
+    padding: 0px;
+    margin: -16px;
+    font-size: 0px;
 }
 
 window#osd progressbar,
-window#osd segmentedprogress {
-    min-height: 6px;
-    min-width: 140px;
-    margin: 0px;
-    padding: 0px;
-    border-radius: 999px;
-    background: transparent;
-    border: none;
-}
-
 window#osd trough,
-window#osd segment {
-    min-height: 6px;
-    min-width: 6px;
+window#osd progress {
+    min-width: 0px;
     margin: 0px;
     padding: 0px;
-    border-radius: 999px;
-    border: none;
-    background: rgba(245, 228, 198, 0.3);
-}
-
-window#osd progress,
-window#osd segment.active {
-    min-height: 6px;
-    min-width: 6px;
-    margin: 0px;
-    padding: 0px;
-    border-radius: 999px;
-    border: none;
-    background: #3eaeff;
-}
-
-window#osd segment {
-    margin-left: 8px;
-}
-
-window#osd segment:first-child {
-    margin-left: 0;
 }

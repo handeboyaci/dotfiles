@@ -1473,10 +1473,7 @@ static void *quiet_dbus_thread(void *arg) {
         len += dbus_build_call(req + len, 5, 0, "org.freedesktop.DBus", "/org/freedesktop/DBus",
                                "org.freedesktop.DBus", "AddMatch",
                                "type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0namespace='org.mpris.MediaPlayer2'");
-        len += dbus_build_call(req + len, 6, 0, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-                               "org.freedesktop.DBus", "AddMatch",
-                               "type='signal',sender='org.freedesktop.systemd1',path='/org/freedesktop/systemd1/unit/swayidle_2eservice'");
-        len += dbus_build_call(req + len, 7, 0, "org.freedesktop.Notifications",
+        len += dbus_build_call(req + len, 6, 0, "org.freedesktop.Notifications",
                                "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
                                "SignalNotificationCount", NULL);
         if (write(fd, req, len) <= 0) {
@@ -1558,11 +1555,6 @@ static void *quiet_dbus_thread(void *arg) {
                     else if (memmem(buf + pos + 16, fields_len, "/org/mpris/MediaPlayer2", 23) ||
                              memmem(buf + pos + 16, fields_len, "NameOwnerChanged", 16)) {
                         poll_mpris();
-                        notify_main_loop();
-                    }
-                    /* 3. systemd user manager unit state change (swayidle.service) */
-                    else if (memmem(buf + pos + 16, fields_len, "org.freedesktop.systemd1", 24)) {
-                        poll_screensaver();
                         notify_main_loop();
                     }
                 }
@@ -2154,40 +2146,33 @@ static void pulse_toggle_mute(void) {
     spawn_detached(cmd);
 }
 
+static void sync_idle_inhibitor(void);
+
 static void poll_screensaver(void) {
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd),
-             "XDG_RUNTIME_DIR=%s DBUS_SESSION_BUS_ADDRESS=unix:path=%s/bus "
-             "systemctl --user is-active --quiet swayidle.service",
-             g_runtime_dir, g_runtime_dir);
-    int ret = system(cmd);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/statusbar.inhibit", g_runtime_dir);
+    bool inhibited = (access(path, F_OK) == 0);
     pthread_mutex_lock(&g_mutex);
-    g_screensaver_active = (ret == 0);
+    g_screensaver_active = !inhibited;
     pthread_mutex_unlock(&g_mutex);
 }
 
 static void toggle_screensaver(void) {
-    bool was_active;
+    bool active;
     pthread_mutex_lock(&g_mutex);
-    was_active = g_screensaver_active;
-    g_screensaver_active = !was_active;
+    g_screensaver_active = !g_screensaver_active;
+    active = g_screensaver_active;
     pthread_mutex_unlock(&g_mutex);
 
-    char cmd[256];
-    if (was_active) {
-        snprintf(cmd, sizeof(cmd),
-                 "XDG_RUNTIME_DIR=%s DBUS_SESSION_BUS_ADDRESS=unix:path=%s/bus "
-                 "systemctl --user stop --quiet swayidle.service >/dev/null 2>&1",
-                 g_runtime_dir, g_runtime_dir);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/statusbar.inhibit", g_runtime_dir);
+    if (active) {
+        unlink(path);
     } else {
-        snprintf(cmd, sizeof(cmd),
-                 "XDG_RUNTIME_DIR=%s DBUS_SESSION_BUS_ADDRESS=unix:path=%s/bus "
-                 "systemctl --user start --quiet swayidle.service >/dev/null 2>&1",
-                 g_runtime_dir, g_runtime_dir);
+        int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (fd >= 0) close(fd);
     }
-    int r = system(cmd);
-    (void)r;
-    poll_screensaver();
+    sync_idle_inhibitor();
 }
 
 static long read_sysfs_long(const char *dir, const char *file) {
@@ -2686,8 +2671,9 @@ static void render_bar(SurfaceBuf *s) {
     if (g_bat_present) {
         static const char *bat_icons[11] = {"▁", "⡀", "⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣾", "⣿", "🔋"};
         const char *b_icon = bat_icons[(g_bat_capacity * 10) / 100];
-        if (strcmp(g_bat_status, "Charging") == 0) b_icon = "⚡";
-        else if (strcmp(g_bat_status, "Full") == 0 || strcmp(g_bat_status, "Not charging") == 0) b_icon = "🔌";
+        if (strcmp(g_bat_status, "Full") == 0 || strcmp(g_bat_status, "Not charging") == 0 ||
+            (strcmp(g_bat_status, "Charging") == 0 && g_bat_capacity >= 98)) b_icon = "🔌";
+        else if (strcmp(g_bat_status, "Charging") == 0) b_icon = "⚡";
 
         uint32_t b_fg = COL_TEXT;
         uint32_t b_bg = 0;
@@ -2898,6 +2884,8 @@ static uint32_t g_id_shm = 0;
 static uint32_t g_id_seat = 0;
 static uint32_t g_id_pointer = 0;
 static uint32_t g_id_layer_shell = 0;
+static uint32_t g_id_idle_inhibit_mgr = 0;
+static uint32_t g_id_idle_inhibitor = 0;
 
 static uint32_t g_id_bar_surface = 0;
 static uint32_t g_id_bar_layer = 0;
@@ -3086,6 +3074,18 @@ static void update_tooltip_surface(void) {
     }
 }
 
+static void sync_idle_inhibitor(void) {
+    if (g_wl_fd < 0 || !g_id_idle_inhibit_mgr) return;
+    bool should_inhibit = !g_screensaver_active && g_id_bar_surface != 0;
+    if (should_inhibit && !g_id_idle_inhibitor) {
+        g_id_idle_inhibitor = g_wl_next_id++;
+        wl_send_u32_2(g_id_idle_inhibit_mgr, 1 /* create_inhibitor */, g_id_idle_inhibitor, g_id_bar_surface);
+    } else if (!should_inhibit && g_id_idle_inhibitor) {
+        wl_send_msg(g_id_idle_inhibitor, 0 /* zwp_idle_inhibitor_v1.destroy */, NULL, 0, -1);
+        g_id_idle_inhibitor = 0;
+    }
+}
+
 static void show_bar_surface(void) {
     if (g_bar_visible) return;
     g_bar_visible = true;
@@ -3103,6 +3103,7 @@ static void show_bar_surface(void) {
         wl_send_u32_1(g_id_bar_layer, 4 /* set_keyboard_interactivity */, 0);
         wl_send_msg(g_id_bar_surface, 6 /* commit */, NULL, 0, -1);
     }
+    sync_idle_inhibitor();
 }
 
 static void hide_bar_surface(void) {
@@ -3112,6 +3113,10 @@ static void hide_bar_surface(void) {
     g_hovered_mod = -1;
     g_hovered_tray_idx = -1;
 
+    if (g_id_idle_inhibitor) {
+        wl_send_msg(g_id_idle_inhibitor, 0 /* zwp_idle_inhibitor_v1.destroy */, NULL, 0, -1);
+        g_id_idle_inhibitor = 0;
+    }
     if (g_id_bar_layer) {
         wl_send_msg(g_id_bar_layer, 7 /* zwlr_layer_surface_v1.destroy */, NULL, 0, -1);
         g_id_bar_layer = 0;
@@ -3459,6 +3464,10 @@ static void process_wayland_events(void) {
             } else if (strcmp(iface, "zwlr_layer_shell_v1") == 0) {
                 g_id_layer_shell = g_wl_next_id++;
                 wl_registry_bind(name, iface, ver < 4 ? ver : 4, g_id_layer_shell);
+            } else if (strcmp(iface, "zwp_idle_inhibit_manager_v1") == 0) {
+                g_id_idle_inhibit_mgr = g_wl_next_id++;
+                wl_registry_bind(name, iface, 1, g_id_idle_inhibit_mgr);
+                sync_idle_inhibitor();
             }
         } else if (obj_id == g_id_seat && opcode == 0 /* capabilities */) {
             uint32_t caps = *(const uint32_t *)p;
@@ -3475,6 +3484,7 @@ static void process_wayland_events(void) {
             wl_send_u32_1(g_id_bar_layer, 6 /* ack_configure */, serial);
             g_bar_configured = true;
             redraw_all();
+            sync_idle_inhibitor();
         } else if (obj_id == g_id_tip_layer && opcode == 0 /* configure */) {
             uint32_t serial = *(const uint32_t *)p;
             wl_send_u32_1(g_id_tip_layer, 6 /* ack_configure */, serial);
@@ -3863,7 +3873,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Create top bar layer surface */
+    /* Create top bar layer surface (load screensaver state first so inhibitor attaches if needed) */
+    poll_screensaver();
     show_bar_surface();
 
     if (wayland_test) {

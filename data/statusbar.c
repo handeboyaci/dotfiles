@@ -102,11 +102,15 @@ typedef struct {
     char location[128];
     char start_short[16];
     char time_range[24];
-    char color[16];
     time_t start_ts;
     time_t end_ts;
     bool filtered;
 } GCalEvent;
+
+typedef struct {
+    time_t start_ts;
+    char summary[128];
+} GCalNotified;
 
 typedef struct {
     char service[128];
@@ -168,6 +172,8 @@ static time_t g_quiet_preview_until = 0;
 #define MAX_LOC_PREFIXES 16
 static GCalEvent g_gcal_events[MAX_GCAL_EVENTS];
 static int g_gcal_count = 0;
+static GCalNotified g_gcal_notified[MAX_GCAL_EVENTS];
+static int g_gcal_notified_count = 0;
 static bool g_gcal_show_details = false;
 static bool g_gcal_fetching = false;
 static char g_gcal_access_token[1024] = "";
@@ -247,6 +253,34 @@ static void spawn_detached(const char *cmd) {
             if (devnull > 2) close(devnull);
         }
         execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+        _exit(127);
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+}
+
+static void notify_urgent(const char *summary, const char *body) {
+    pid_t pid = fork();
+    if (pid < 0) return;
+    if (pid == 0) {
+        pid_t pid2 = fork();
+        if (pid2 < 0) _exit(127);
+        if (pid2 > 0) _exit(0);
+        setsid();
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            dup2(devnull, STDIN_FILENO);
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            if (devnull > 2) close(devnull);
+        }
+        if (g_runtime_dir[0]) {
+            char bus[512];
+            snprintf(bus, sizeof(bus), "unix:path=%s/bus", g_runtime_dir);
+            setenv("DBUS_SESSION_BUS_ADDRESS", bus, 0);
+        }
+        execlp("notify-send", "notify-send", "-u", "critical",
+               summary ? summary : "", body ? body : "", (char *)NULL);
         _exit(127);
     }
     int st = 0;
@@ -1890,9 +1924,6 @@ static void fetch_gcal_events(void) {
 
     GCalEvent new_evs[MAX_GCAL_EVENTS];
     int new_cnt = 0;
-    static const char *colors[7] = {
-        "#d0e6ff", "#bbdaff", "#99c7ff", "#86bcff", "#62a9ff", "#8c8cff", "#7979ff"
-    };
 
     for (int c = 0; c < g_gcal_cal_count && new_cnt < MAX_GCAL_EVENTS; c++) {
         char *resp = fetch_gcal_calendar_json(g_gcal_calendars[c], min_buf, max_buf);
@@ -1976,10 +2007,12 @@ static void fetch_gcal_events(void) {
                     is_filtered = true;
                 }
 
-                /* Deduplicate by summary across calendars */
+                /* Deduplicate by (summary, start_ts, end_ts) across calendars */
                 bool dup = false;
                 for (int k = 0; k < new_cnt; k++) {
-                    if (strcmp(new_evs[k].summary, sum) == 0) {
+                    if (strcmp(new_evs[k].summary, sum) == 0 &&
+                        new_evs[k].start_ts == start_ts &&
+                        new_evs[k].end_ts == end_ts) {
                         if (new_evs[k].filtered && !is_filtered) {
                             new_evs[k].filtered = false;
                         }
@@ -2014,7 +2047,7 @@ static void fetch_gcal_events(void) {
         free(resp);
     }
 
-    /* Sort combined events by start_ts ascending, then assign color gradient */
+    /* Sort combined events by start_ts ascending */
     for (int i = 0; i < new_cnt - 1; i++) {
         for (int j = i + 1; j < new_cnt; j++) {
             if (new_evs[j].start_ts < new_evs[i].start_ts ||
@@ -2025,15 +2058,6 @@ static void fetch_gcal_events(void) {
                 new_evs[i] = new_evs[j];
                 new_evs[j] = tmp;
             }
-        }
-    }
-    int color_idx = 0;
-    for (int i = 0; i < new_cnt; i++) {
-        if (new_evs[i].filtered) {
-            snprintf(new_evs[i].color, sizeof(new_evs[i].color), "#8c7a6b");
-        } else {
-            snprintf(new_evs[i].color, sizeof(new_evs[i].color), "%s", colors[color_idx % 7]);
-            color_idx++;
         }
     }
 
@@ -3143,6 +3167,42 @@ static void render_bar(SurfaceBuf *s) {
     const GCalEvent *ev1 = NULL;
 
     if (has_gcal) {
+        /* Send an urgent notification once when an unfiltered event is <= 5 minutes away */
+        for (int i = 0; i < gcal_vis_cnt; i++) {
+            const GCalEvent *wev = &g_gcal_events[gcal_vis_idxs[i]];
+            int wmins = (wev->start_ts > now) ? (int)((wev->start_ts - now + 59) / 60)
+                                              : -(int)((now - wev->start_ts) / 60);
+            if (wmins > 0 && wmins <= 5) {
+                bool already = false;
+                for (int n = 0; n < g_gcal_notified_count; n++) {
+                    if (g_gcal_notified[n].start_ts == wev->start_ts &&
+                        strcmp(g_gcal_notified[n].summary, wev->summary) == 0) {
+                        already = true;
+                        break;
+                    }
+                }
+                if (!already) {
+                    if (g_gcal_notified_count >= MAX_GCAL_EVENTS) {
+                        memmove(&g_gcal_notified[0], &g_gcal_notified[1],
+                                sizeof(GCalNotified) * (MAX_GCAL_EVENTS - 1));
+                        g_gcal_notified_count = MAX_GCAL_EVENTS - 1;
+                    }
+                    g_gcal_notified[g_gcal_notified_count].start_ts = wev->start_ts;
+                    snprintf(g_gcal_notified[g_gcal_notified_count].summary,
+                             sizeof(g_gcal_notified[0].summary), "%s", wev->summary);
+                    g_gcal_notified_count++;
+
+                    char nbody[256];
+                    if (wev->location[0]) {
+                        snprintf(nbody, sizeof(nbody), "in %dm @ %s", wmins, wev->location);
+                    } else {
+                        snprintf(nbody, sizeof(nbody), "in %dm", wmins);
+                    }
+                    notify_urgent(wev->summary, nbody);
+                }
+            }
+        }
+
         if (gcal_icon_only) {
             snprintf(gc_bar, sizeof(gc_bar), "📅");
         } else {
@@ -3153,8 +3213,13 @@ static void render_bar(SurfaceBuf *s) {
             bool show_cd0 = (mins0 < 30);
             if (g_gcal_show_details) show_cd0 = !show_cd0;
             if (show_cd0) {
-                if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in %dminutes @ %s", mins0, ev0->location);
-                else snprintf(gc_suf0, sizeof(gc_suf0), " in %dminutes", mins0);
+                if (mins0 < 0) {
+                    if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in <span color='#cc6666'>%dm</span> @ %s", mins0, ev0->location);
+                    else snprintf(gc_suf0, sizeof(gc_suf0), " in <span color='#cc6666'>%dm</span>", mins0);
+                } else {
+                    if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in %dm @ %s", mins0, ev0->location);
+                    else snprintf(gc_suf0, sizeof(gc_suf0), " in %dm", mins0);
+                }
             } else {
                 snprintf(gc_suf0, sizeof(gc_suf0), " %s", ev0->start_short);
             }
@@ -3170,8 +3235,13 @@ static void render_bar(SurfaceBuf *s) {
                     bool show_cd1 = (mins1 < 30);
                     if (g_gcal_show_details) show_cd1 = !show_cd1;
                     if (show_cd1) {
-                        if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in %dminutes @ %s", mins1, ev1->location);
-                        else snprintf(gc_suf1, sizeof(gc_suf1), " in %dminutes", mins1);
+                        if (mins1 < 0) {
+                            if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in <span color='#cc6666'>%dm</span> @ %s", mins1, ev1->location);
+                            else snprintf(gc_suf1, sizeof(gc_suf1), " in <span color='#cc6666'>%dm</span>", mins1);
+                        } else {
+                            if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in %dm @ %s", mins1, ev1->location);
+                            else snprintf(gc_suf1, sizeof(gc_suf1), " in %dm", mins1);
+                        }
                     } else {
                         snprintf(gc_suf1, sizeof(gc_suf1), " %s", ev1->start_short);
                     }
@@ -3179,11 +3249,9 @@ static void render_bar(SurfaceBuf *s) {
             }
 
             if (gcal_two) {
-                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s | <span color='%s'>%s</span>%s",
-                         ev0->color, gc_sum0, gc_suf0, ev1->color, gc_sum1, gc_suf1);
+                snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum0, gc_suf0, gc_sum1, gc_suf1);
             } else {
-                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s",
-                         ev0->color, gc_sum0, gc_suf0);
+                snprintf(gc_bar, sizeof(gc_bar), "%s%s", gc_sum0, gc_suf0);
             }
         }
         gcal_natural_box_w = measure_markup_line(gc_bar, 16, false) + 20;
@@ -3201,11 +3269,11 @@ static void render_bar(SurfaceBuf *s) {
                 }
             } else {
                 if (tev->location[0]) {
-                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s%s <span color='%s'>%s</span>, %s",
-                                     (i > 0) ? "\n" : "", tev->time_range, tev->color, tev->summary, tev->location);
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s%s %s, %s",
+                                     (i > 0) ? "\n" : "", tev->time_range, tev->summary, tev->location);
                 } else {
-                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s%s <span color='%s'>%s</span>",
-                                     (i > 0) ? "\n" : "", tev->time_range, tev->color, tev->summary);
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s%s %s",
+                                     (i > 0) ? "\n" : "", tev->time_range, tev->summary);
                 }
             }
         }
@@ -3269,13 +3337,12 @@ static void render_bar(SurfaceBuf *s) {
                 int max_each_px = (gcal_max_box - 20 - suf_w) / 2;
                 truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_each_px, 16, false);
                 truncate_utf8_to_px(gc_sum1, sizeof(gc_sum1), max_each_px, 16, false);
-                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s | <span color='%s'>%s</span>%s",
-                         ev0->color, gc_sum0, gc_suf0, ev1->color, gc_sum1, gc_suf1);
+                snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum0, gc_suf0, gc_sum1, gc_suf1);
             } else {
                 int suffix_w = measure_markup_line(gc_suf0, 16, false);
                 int max_sum_px = gcal_max_box - 20 - suffix_w;
                 truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_sum_px, 16, false);
-                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s", ev0->color, gc_sum0, gc_suf0);
+                snprintf(gc_bar, sizeof(gc_bar), "%s%s", gc_sum0, gc_suf0);
             }
         }
         if (gcal_icon_only || gc_sum0[0] || !has_quiet) {

@@ -6,6 +6,7 @@
 #include <math.h>
 #include <poll.h>
 #include <pthread.h>
+#include <regex.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -182,11 +183,12 @@ static char g_gcal_client_secret[256] = "";
 static char g_gcal_refresh_token[512] = "";
 static char g_gcal_token_file[512] = "";
 static time_t g_gcal_token_expiry = 0;
-static char g_gcal_calendars[MAX_GCAL_CALS][128] = {"primary", "sencerselcuk@gmail.com"};
-static int g_gcal_cal_count = 2;
-static char g_gcal_loc_prefixes[MAX_LOC_PREFIXES][64] = {"US-NYC-9TH-", "NYC-"};
-static int g_gcal_loc_prefix_count = 2;
+static char g_gcal_calendars[MAX_GCAL_CALS][128] = {"primary"};
+static int g_gcal_cal_count = 1;
+static char g_gcal_loc_prefixes[MAX_LOC_PREFIXES][128];
+static int g_gcal_loc_prefix_count = 0;
 static int g_gcal_max_duration_mins = 360; /* Default 6h (ignore_long_event_threshold) */
+static int g_gcal_notify_mins = 5;         /* Default 5m urgent notification before start */
 
 /* MPRIS */
 static int g_mpris_state = 0; /* 0=hidden, 1=Playing, 2=Paused */
@@ -197,9 +199,9 @@ static int g_pulse_vol = 40;
 static bool g_pulse_muted = false;
 
 /* Namaz (Offline Astronomical Moonsighting Committee) */
-static char g_namaz_city[64] = "Jersey City";
-static double g_namaz_lat = 40.7137;
-static double g_namaz_lon = -74.0399;
+static char g_namaz_city[64] = "";
+static double g_namaz_lat = 0.0;
+static double g_namaz_lon = 0.0;
 static char g_namaz_today[6][16]; /* Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha */
 static char g_namaz_tom_fajr[16] = "";
 static bool g_namaz_loaded = false;
@@ -279,7 +281,7 @@ static void notify_urgent(const char *summary, const char *body) {
             snprintf(bus, sizeof(bus), "unix:path=%s/bus", g_runtime_dir);
             setenv("DBUS_SESSION_BUS_ADDRESS", bus, 0);
         }
-        execlp("notify-send", "notify-send", "-u", "critical",
+        execlp("notify-send", "notify-send", "-a", "Calendar", "-i", "calendar", "-u", "critical",
                summary ? summary : "", body ? body : "", (char *)NULL);
         _exit(127);
     }
@@ -1786,21 +1788,41 @@ static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
     }
     if (tok_cnt == 0) return;
 
-    /* 3. Match against configured relevant location prefixes in priority order (cap at 3 locations) */
+    /* 3. Match against configured relevant location prefixes/regexes in priority order (cap at 3 locations) */
     for (int pr = 0; pr < g_gcal_loc_prefix_count; pr++) {
         const char *pref = g_gcal_loc_prefixes[pr];
         size_t plen = strlen(pref);
         if (plen == 0) continue;
 
+        char pat[160];
+        if (pref[0] == '^') snprintf(pat, sizeof(pat), "%s", pref);
+        else snprintf(pat, sizeof(pat), "^(%s)", pref);
+
+        regex_t re;
+        bool has_re = (regcomp(&re, pat, REG_EXTENDED) == 0);
+
         int matched = 0;
         size_t off = 0;
         for (int t = 0; t < tok_cnt && matched < 3; t++) {
-            if (strncmp(tokens[t], pref, plen) == 0 && tokens[t][plen] != '\0') {
-                off += snprintf(out + off, out_sz - off, "%s%s",
-                                (matched > 0) ? ", " : "", tokens[t] + plen);
-                matched++;
+            const char *sub = NULL;
+            regmatch_t pm;
+            if (has_re) {
+                if (regexec(&re, tokens[t], 1, &pm, 0) == 0 && pm.rm_so == 0 && pm.rm_eo > 0) {
+                    sub = tokens[t] + pm.rm_eo;
+                }
+            } else if (strncmp(tokens[t], pref, plen) == 0) {
+                sub = tokens[t] + plen;
+            }
+            if (sub) {
+                while (*sub && isspace((unsigned char)*sub)) sub++;
+                if (*sub != '\0') {
+                    off += snprintf(out + off, out_sz - off, "%s%s",
+                                    (matched > 0) ? ", " : "", sub);
+                    matched++;
+                }
             }
         }
+        if (has_re) regfree(&re);
         if (matched > 0) return;
     }
 
@@ -3167,12 +3189,12 @@ static void render_bar(SurfaceBuf *s) {
     const GCalEvent *ev1 = NULL;
 
     if (has_gcal) {
-        /* Send an urgent notification once when an unfiltered event is <= 5 minutes away */
-        for (int i = 0; i < gcal_vis_cnt; i++) {
+        /* Send an urgent notification once when an unfiltered event is <= g_gcal_notify_mins away */
+        for (int i = 0; i < gcal_vis_cnt && g_gcal_notify_mins > 0; i++) {
             const GCalEvent *wev = &g_gcal_events[gcal_vis_idxs[i]];
             int wmins = (wev->start_ts > now) ? (int)((wev->start_ts - now + 59) / 60)
                                               : -(int)((now - wev->start_ts) / 60);
-            if (wmins > 0 && wmins <= 5) {
+            if (wmins > 0 && wmins <= g_gcal_notify_mins) {
                 bool already = false;
                 for (int n = 0; n < g_gcal_notified_count; n++) {
                     if (g_gcal_notified[n].start_ts == wev->start_ts &&
@@ -3249,7 +3271,7 @@ static void render_bar(SurfaceBuf *s) {
             }
 
             if (gcal_two) {
-                snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum0, gc_suf0, gc_sum1, gc_suf1);
+                snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum1, gc_suf1, gc_sum0, gc_suf0);
             } else {
                 snprintf(gc_bar, sizeof(gc_bar), "%s%s", gc_sum0, gc_suf0);
             }
@@ -3337,7 +3359,7 @@ static void render_bar(SurfaceBuf *s) {
                 int max_each_px = (gcal_max_box - 20 - suf_w) / 2;
                 truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_each_px, 16, false);
                 truncate_utf8_to_px(gc_sum1, sizeof(gc_sum1), max_each_px, 16, false);
-                snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum0, gc_suf0, gc_sum1, gc_suf1);
+                snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum1, gc_suf1, gc_sum0, gc_suf0);
             } else {
                 int suffix_w = measure_markup_line(gc_suf0, 16, false);
                 int max_sum_px = gcal_max_box - 20 - suffix_w;
@@ -4217,6 +4239,11 @@ static bool load_config_file(const char *path) {
             if (eq) {
                 g_gcal_max_duration_mins = parse_duration_mins(eq + 1);
             }
+        } else if (strncmp(s, "gcal_notify_mins", 16) == 0 || strncmp(s, "warn_threshold", 14) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                g_gcal_notify_mins = atoi(eq + 1);
+            }
         } else if (strncmp(s, "gcal_calendars", 14) == 0 || strncmp(s, "calendars", 9) == 0) {
             char *eq = strchr(s, '=');
             if (eq) {
@@ -4328,13 +4355,14 @@ static void print_usage(const char *prog) {
            "  --tz <TZ>[=<EMOJI_OR_LABEL>]            Add a timezone and optional label/emoji (repeatable;\n"
            "                                          label/emoji can be empty, e.g. --tz 'UTC=' or --tz 'America/New_York=NY 🇺🇸')\n"
            "  --gcal-token <PATH_OR_TOKEN>            Path to Google Calendar OAuth JSON token file or raw Bearer token\n"
-           "  --gcal-calendar <CAL_ID>                Calendar ID(s) to query (default: primary, sencerselcuk@gmail.com)\n"
-           "  --relevant-locations <PREFIX1,PREFIX2>  Location prefixes to prioritize & strip (default: US-NYC-9TH-,NYC-)\n"
+           "  --gcal-calendar <CAL_ID>                Calendar ID(s) to query (default: primary)\n"
+           "  --relevant-locations <REGEX1,REGEX2>    Location regexes/prefixes to prioritize & strip\n"
            "  --ignore-long-event-threshold <DUR>     Ignore events longer than threshold (default: 6h)\n"
-           "  --lat <DEGREES>                         Latitude for offline prayer times (default: 40.7137)\n"
-           "  --lon <DEGREES>                         Longitude for offline prayer times (default: -74.0399)\n"
-           "  --city <NAME>                           City label for prayer times (default: Jersey City)\n"
-           "  --config <PATH>                         Load configuration from file (default: $XDG_CONFIG_HOME/statusbar.conf)\n"
+           "  --gcal-notify-mins <MINS>               Urgent notification lead time in minutes (default: 5)\n"
+           "  --lat <DEGREES>                         Latitude for offline prayer times\n"
+           "  --lon <DEGREES>                         Longitude for offline prayer times\n"
+           "  --city <NAME>                           City label for prayer times\n"
+           "  --config <PATH>                         Load configuration from file (default: $XDG_CONFIG_HOME/statusbar/statusbar.conf)\n"
            "  --self-test                             Render bar & calendar tooltip offscreen and verify all modules\n"
            "  --wayland-test                          Connect to live Wayland display, configure layer surface & present frame\n"
            "  -h, --help                              Show this help message\n",
@@ -4355,16 +4383,17 @@ int main(int argc, char *argv[]) {
     if (rdir && *rdir) snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s", rdir);
     else snprintf(g_runtime_dir, sizeof(g_runtime_dir), "/run/user/%u", getuid());
 
-    /* Load configuration from $XDG_CONFIG_HOME/statusbar.conf (or ~/.config/statusbar.conf) */
+    /* Load configuration from $XDG_CONFIG_HOME/statusbar.conf (or ~/.config/statusbar/statusbar.conf) */
     const char *xdg_cfg = getenv("XDG_CONFIG_HOME");
     char cfg_dir[512];
     if (xdg_cfg && *xdg_cfg) snprintf(cfg_dir, sizeof(cfg_dir), "%s", xdg_cfg);
     else snprintf(cfg_dir, sizeof(cfg_dir), "%s/.config", g_home_dir);
 
-    char cpath1[512], cpath2[512], cpath3[512];
+    char cpath1[512], cpath2[512], cpath3[512], cpath4[512];
     snprintf(cpath1, sizeof(cpath1), "%s/statusbar.conf", cfg_dir);
     snprintf(cpath2, sizeof(cpath2), "%s/statusbar/statusbar.conf", cfg_dir);
-    snprintf(cpath3, sizeof(cpath3), "%s/waybar/statusbar.conf", cfg_dir);
+    snprintf(cpath3, sizeof(cpath3), "%s/sway/statusbar.conf", cfg_dir);
+    snprintf(cpath4, sizeof(cpath4), "%s/.dotfiles/statusbar/statusbar.conf", g_home_dir);
 
     if (load_config_file(cpath1)) {
         snprintf(g_config_path, sizeof(g_config_path), "%s", cpath1);
@@ -4372,6 +4401,8 @@ int main(int argc, char *argv[]) {
         snprintf(g_config_path, sizeof(g_config_path), "%s", cpath2);
     } else if (load_config_file(cpath3)) {
         snprintf(g_config_path, sizeof(g_config_path), "%s", cpath3);
+    } else if (load_config_file(cpath4)) {
+        snprintf(g_config_path, sizeof(g_config_path), "%s", cpath4);
     }
 
     bool cli_tz_reset = false;
@@ -4441,6 +4472,8 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "--ignore-long-event-threshold") == 0 && i + 1 < argc) {
             g_gcal_max_duration_mins = parse_duration_mins(argv[++i]);
+        } else if (strcmp(argv[i], "--gcal-notify-mins") == 0 && i + 1 < argc) {
+            g_gcal_notify_mins = atoi(argv[++i]);
         } else if ((strcmp(argv[i], "--lat") == 0 || strcmp(argv[i], "--latitude") == 0) && i + 1 < argc) {
             g_namaz_lat = atof(argv[++i]);
         } else if ((strcmp(argv[i], "--lon") == 0 || strcmp(argv[i], "--lng") == 0 || strcmp(argv[i], "--longitude") == 0) && i + 1 < argc) {

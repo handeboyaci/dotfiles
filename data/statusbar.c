@@ -189,6 +189,7 @@ static char g_gcal_loc_prefixes[MAX_LOC_PREFIXES][128];
 static int g_gcal_loc_prefix_count = 0;
 static int g_gcal_max_duration_mins = 360; /* Default 6h (ignore_long_event_threshold) */
 static int g_gcal_notify_mins = 5;         /* Default 5m urgent notification before start */
+static char g_gcal_open_cmd[512] = "google-chrome --profile-directory=Default --app=https://calendar.google.com/";
 
 /* MPRIS */
 static int g_mpris_state = 0; /* 0=hidden, 1=Playing, 2=Paused */
@@ -2951,11 +2952,15 @@ static void *background_worker_thread(void *arg) {
  * Bar & Tooltip Rendering (Dynamic Space Calculation + Clock Left-Shift)
  * ============================================================================ */
 static void truncate_utf8_to_px(char *str, size_t buf_sz, int max_px, int font_px, bool is_bold) {
-    if (max_px <= 16) {
+    if (max_px <= 0) {
         str[0] = '\0';
         return;
     }
     if (measure_markup_line(str, font_px, is_bold) <= max_px) return;
+    if (max_px <= 16) {
+        str[0] = '\0';
+        return;
+    }
 
     size_t len = strlen(str);
     while (len > 0) {
@@ -3357,10 +3362,16 @@ static void render_bar(SurfaceBuf *s) {
                             measure_markup_line(" | ", 16, false) +
                             measure_markup_line(gc_suf1, 16, false);
                 int max_each_px = (gcal_max_box - 20 - suf_w) / 2;
-                truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_each_px, 16, false);
-                truncate_utf8_to_px(gc_sum1, sizeof(gc_sum1), max_each_px, 16, false);
-                snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum1, gc_suf1, gc_sum0, gc_suf0);
-            } else {
+                if (max_each_px > 16) {
+                    truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_each_px, 16, false);
+                    truncate_utf8_to_px(gc_sum1, sizeof(gc_sum1), max_each_px, 16, false);
+                    snprintf(gc_bar, sizeof(gc_bar), "%s%s | %s%s", gc_sum1, gc_suf1, gc_sum0, gc_suf0);
+                } else {
+                    /* Not enough width for two events: fall back to current/next single event */
+                    gcal_two = false;
+                }
+            }
+            if (!gcal_two) {
                 int suffix_w = measure_markup_line(gc_suf0, 16, false);
                 int max_sum_px = gcal_max_box - 20 - suffix_w;
                 truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_sum_px, 16, false);
@@ -3375,8 +3386,12 @@ static void render_bar(SurfaceBuf *s) {
     if (has_quiet) {
         int rem_box_w = right_x - min_right_x;
         int max_txt_px = rem_box_w - 20;
-        if (max_txt_px >= 16) {
+        if (max_txt_px > 0) {
             truncate_utf8_to_px(q_bar, sizeof(q_bar), max_txt_px, 16, q_urg);
+            if (!q_bar[0] && g_quiet_preview[0]) {
+                snprintf(q_bar, sizeof(q_bar), "%u", g_quiet_count);
+                truncate_utf8_to_px(q_bar, sizeof(q_bar), max_txt_px, 16, q_urg);
+            }
             if (q_bar[0]) {
                 DRAW_RIGHT_MOD(MOD_QUIET, q_bar, q_urg ? COL_URGENT : COL_TEXT, q_urg, 0, q_tip);
             }
@@ -3853,7 +3868,7 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
                 if (g_tz_count > 0) g_tz_idx = (g_tz_idx + 1) % g_tz_count;
                 redraw_all();
             } else if (btn == 2) { /* on-click-middle */
-                spawn_detached("google-chrome --app=http://calendar.google.com/");
+                spawn_detached(g_gcal_open_cmd);
             } else if (btn == 3) { /* format-alt-click: 3 */
                 g_clock_alt = !g_clock_alt;
                 redraw_all();
@@ -3873,7 +3888,7 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
 
         case MOD_GCAL:
             if (btn == 3 || (btn == 1 && is_double)) {
-                spawn_detached("google-chrome --app=http://calendar.google.com/");
+                spawn_detached(g_gcal_open_cmd);
             } else if (btn == 1) {
                 pthread_mutex_lock(&g_mutex);
                 g_gcal_show_details = !g_gcal_show_details;
@@ -4244,6 +4259,13 @@ static bool load_config_file(const char *path) {
             if (eq) {
                 g_gcal_notify_mins = atoi(eq + 1);
             }
+        } else if (strncmp(s, "gcal_open_cmd", 13) == 0 || strncmp(s, "calendar_cmd", 12) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                if (eq[0]) snprintf(g_gcal_open_cmd, sizeof(g_gcal_open_cmd), "%s", eq);
+            }
         } else if (strncmp(s, "gcal_calendars", 14) == 0 || strncmp(s, "calendars", 9) == 0) {
             char *eq = strchr(s, '=');
             if (eq) {
@@ -4362,7 +4384,7 @@ static void print_usage(const char *prog) {
            "  --lat <DEGREES>                         Latitude for offline prayer times\n"
            "  --lon <DEGREES>                         Longitude for offline prayer times\n"
            "  --city <NAME>                           City label for prayer times\n"
-           "  --config <PATH>                         Load configuration from file (default: $XDG_CONFIG_HOME/statusbar/statusbar.conf)\n"
+           "  --config <PATH>                         Load configuration from file (default: $XDG_CONFIG_HOME/statusbar.conf)\n"
            "  --self-test                             Render bar & calendar tooltip offscreen and verify all modules\n"
            "  --wayland-test                          Connect to live Wayland display, configure layer surface & present frame\n"
            "  -h, --help                              Show this help message\n",
@@ -4383,7 +4405,7 @@ int main(int argc, char *argv[]) {
     if (rdir && *rdir) snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s", rdir);
     else snprintf(g_runtime_dir, sizeof(g_runtime_dir), "/run/user/%u", getuid());
 
-    /* Load configuration from $XDG_CONFIG_HOME/statusbar.conf (or ~/.config/statusbar/statusbar.conf) */
+    /* Load configuration from $XDG_CONFIG_HOME/statusbar.conf (or ~/.config/statusbar.conf) */
     const char *xdg_cfg = getenv("XDG_CONFIG_HOME");
     char cfg_dir[512];
     if (xdg_cfg && *xdg_cfg) snprintf(cfg_dir, sizeof(cfg_dir), "%s", xdg_cfg);
@@ -4393,7 +4415,7 @@ int main(int argc, char *argv[]) {
     snprintf(cpath1, sizeof(cpath1), "%s/statusbar.conf", cfg_dir);
     snprintf(cpath2, sizeof(cpath2), "%s/statusbar/statusbar.conf", cfg_dir);
     snprintf(cpath3, sizeof(cpath3), "%s/sway/statusbar.conf", cfg_dir);
-    snprintf(cpath4, sizeof(cpath4), "%s/.dotfiles/statusbar/statusbar.conf", g_home_dir);
+    snprintf(cpath4, sizeof(cpath4), "%s/.dotfiles/statusbar.conf", g_home_dir);
 
     if (load_config_file(cpath1)) {
         snprintf(g_config_path, sizeof(g_config_path), "%s", cpath1);

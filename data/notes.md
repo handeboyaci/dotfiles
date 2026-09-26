@@ -47,7 +47,7 @@ done
 
 
 cd $HOME/.config
-for f in foot jj kanshi nvim nwg-bar pipewire rofi statusbar sunshine sway swayidle swaylock swayosd systemd wireplumber xdg-desktop-portal
+for f in foot jj kanshi nvim nwg-bar pipewire rofi statusbar.conf sunshine sway swayidle swaylock swayosd systemd wireplumber xdg-desktop-portal
 do
   rm -rf $f
   ln -s $HOME/.dotfiles/$f

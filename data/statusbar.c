@@ -282,7 +282,7 @@ static void notify_urgent(const char *summary, const char *body) {
             snprintf(bus, sizeof(bus), "unix:path=%s/bus", g_runtime_dir);
             setenv("DBUS_SESSION_BUS_ADDRESS", bus, 0);
         }
-        execlp("notify-send", "notify-send", "-a", "Calendar", "-i", "calendar", "-u", "critical",
+        execlp("notify-send", "notify-send", "-a", "Google Calendar", "-i", "calendar", "-u", "critical",
                summary ? summary : "", body ? body : "", (char *)NULL);
         _exit(127);
     }

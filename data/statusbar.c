@@ -2639,24 +2639,29 @@ static void render_bar(SurfaceBuf *s) {
         snprintf(g_mod_boxes[MOD_TRAY].tooltip, sizeof(g_mod_boxes[0].tooltip), "System Tray");
     }
 
-    /* Helper macro to draw a right-side module with right border separator */
+    bool has_right_mod = (g_tray_count > 0);
+
+    /* Helper macro to draw a right-side module (with right border separator if another module is to its right) */
 #define DRAW_RIGHT_MOD(mod_id, txt_str, fg_col, is_bold, bg_box_col, tip_str)          \
     do {                                                                               \
         int _tw = measure_markup_line((txt_str), 16, (is_bold));                       \
         int _x2 = right_x;                                                             \
-        int _sep_x = right_x - 8;                                                      \
-        int _tx = _sep_x - 8 - _tw;                                                    \
+        int _sep_x = has_right_mod ? (right_x - 8) : right_x;                          \
+        int _tx = has_right_mod ? (_sep_x - 8 - _tw) : (right_x - _tw);                \
         int _x1 = _tx - 4;                                                             \
         if ((bg_box_col) != 0) {                                                       \
             fill_rect(s, _x1, 0, _sep_x - _x1, BAR_HEIGHT - 1, (bg_box_col));          \
         }                                                                              \
-        draw_separator(s, _sep_x);                                                     \
+        if (has_right_mod) {                                                           \
+            draw_separator(s, _sep_x);                                                 \
+        }                                                                              \
         render_markup_line(s, (txt_str), _tx, baseline_y, 16, (fg_col), (is_bold), true); \
         g_mod_boxes[(mod_id)].x1 = _x1;                                                \
         g_mod_boxes[(mod_id)].x2 = _x2;                                                \
         g_mod_boxes[(mod_id)].visible = true;                                          \
         snprintf(g_mod_boxes[(mod_id)].tooltip, sizeof(g_mod_boxes[0].tooltip), "%s", (tip_str)); \
         right_x = _x1;                                                                 \
+        has_right_mod = true;                                                          \
     } while (0)
 
     /* 3.5 screensaver */

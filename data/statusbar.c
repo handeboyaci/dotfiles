@@ -3231,7 +3231,7 @@ static void render_bar(SurfaceBuf *s) {
         }
 
         if (gcal_icon_only) {
-            snprintf(gc_bar, sizeof(gc_bar), "📅");
+            snprintf(gc_bar, sizeof(gc_bar), "📆");
         } else {
             ev0 = &g_gcal_events[gcal_vis_idxs[0]];
             int mins0 = (ev0->start_ts > now) ? (int)((ev0->start_ts - now + 59) / 60)

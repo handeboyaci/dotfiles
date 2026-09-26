@@ -100,10 +100,12 @@ typedef struct {
 typedef struct {
     char summary[128];
     char location[128];
-    char start_time[32];
-    char end_time[32];
+    char start_short[16];
+    char time_range[24];
     char color[16];
-    int minutes_until;
+    time_t start_ts;
+    time_t end_ts;
+    bool filtered;
 } GCalEvent;
 
 typedef struct {
@@ -161,7 +163,10 @@ static char g_quiet_preview[256] = "";
 static time_t g_quiet_preview_until = 0;
 
 /* Google Calendar */
-static GCalEvent g_gcal_events[16];
+#define MAX_GCAL_EVENTS 32
+#define MAX_GCAL_CALS 8
+#define MAX_LOC_PREFIXES 16
+static GCalEvent g_gcal_events[MAX_GCAL_EVENTS];
 static int g_gcal_count = 0;
 static bool g_gcal_show_details = false;
 static bool g_gcal_fetching = false;
@@ -171,6 +176,11 @@ static char g_gcal_client_secret[256] = "";
 static char g_gcal_refresh_token[512] = "";
 static char g_gcal_token_file[512] = "";
 static time_t g_gcal_token_expiry = 0;
+static char g_gcal_calendars[MAX_GCAL_CALS][128] = {"primary", "sencerselcuk@gmail.com"};
+static int g_gcal_cal_count = 2;
+static char g_gcal_loc_prefixes[MAX_LOC_PREFIXES][64] = {"US-NYC-9TH-", "NYC-"};
+static int g_gcal_loc_prefix_count = 2;
+static int g_gcal_max_duration_mins = 360; /* Default 6h (ignore_long_event_threshold) */
 
 /* MPRIS */
 static int g_mpris_state = 0; /* 0=hidden, 1=Playing, 2=Paused */
@@ -500,6 +510,8 @@ static inline bool is_symbola_forced(uint32_t cp) {
     if (cp == 0x1F50B || cp == 0x26A1 || cp == 0x1F50C || cp == 0x2581) return true;
     /* Screensaver icons: 💤 U+1F4A4, 👁 U+1F441 */
     if (cp == 0x1F4A4 || cp == 0x1F441) return true;
+    /* Calendar icons: 📅 U+1F4C5, 📆 U+1F4C6, 🗓 U+1F5D3 */
+    if (cp == 0x1F4C5 || cp == 0x1F4C6 || cp == 0x1F5D3) return true;
     return false;
 }
 
@@ -1637,21 +1649,215 @@ static bool refresh_gcal_token(void) {
     return ok;
 }
 
-static void format_iso_12h(const char *iso, char *out, size_t out_sz, int *out_h, int *out_m) {
-    out[0] = '\0';
+static bool parse_iso_datetime(const char *iso, time_t *out_ts, int *out_h, int *out_m) {
+    *out_ts = 0;
     *out_h = 0;
     *out_m = 0;
-    const char *t = strchr(iso, 'T');
-    if (t && strlen(t) >= 6) {
-        int h = (t[1] - '0') * 10 + (t[2] - '0');
-        int m = (t[4] - '0') * 10 + (t[5] - '0');
-        *out_h = h;
-        *out_m = m;
-        const char *ampm = (h >= 12) ? "PM" : "AM";
-        int h12 = h % 12;
-        if (h12 == 0) h12 = 12;
-        snprintf(out, out_sz, "%d:%02d %s", h12, m, ampm);
+    if (!iso || !*iso) return false;
+
+    int Y = 0, M = 0, D = 0, h = 0, m = 0, s = 0;
+    if (sscanf(iso, "%d-%d-%dT%d:%d:%d", &Y, &M, &D, &h, &m, &s) != 6) {
+        return false;
     }
+    *out_h = h;
+    *out_m = m;
+
+    struct tm tm_utc;
+    memset(&tm_utc, 0, sizeof(tm_utc));
+    tm_utc.tm_year = Y - 1900;
+    tm_utc.tm_mon = M - 1;
+    tm_utc.tm_mday = D;
+    tm_utc.tm_hour = h;
+    tm_utc.tm_min = m;
+    tm_utc.tm_sec = s;
+    time_t ts = timegm(&tm_utc);
+
+    const char *t = strchr(iso, 'T');
+    if (t) {
+        const char *tz_p = t + 1;
+        while (*tz_p && *tz_p != 'Z' && *tz_p != 'z' && *tz_p != '+' && *tz_p != '-') {
+            tz_p++;
+        }
+        if (*tz_p == '+' || *tz_p == '-') {
+            int zh = 0, zm = 0;
+            sscanf(tz_p + 1, "%d:%d", &zh, &zm);
+            int off_sec = (zh * 3600 + zm * 60) * (*tz_p == '-' ? -1 : 1);
+            ts -= off_sec;
+        }
+    }
+    *out_ts = ts;
+    return true;
+}
+
+static void format_short_12h(int h, int m, char *out, size_t out_sz) {
+    const char *ampm = (h >= 12) ? "pm" : "am";
+    int h12 = h % 12;
+    if (h12 == 0) h12 = 12;
+    if (m == 0) {
+        snprintf(out, out_sz, "%d%s", h12, ampm);
+    } else {
+        snprintf(out, out_sz, "%d:%02d%s", h12, m, ampm);
+    }
+}
+
+static void format_fixed_range_12h(int sh, int sm, int eh, int em, char *out, size_t out_sz) {
+    const char *sampm = (sh >= 12) ? "pm" : "am";
+    int sh12 = sh % 12;
+    if (sh12 == 0) sh12 = 12;
+    const char *eampm = (eh >= 12) ? "pm" : "am";
+    int eh12 = eh % 12;
+    if (eh12 == 0) eh12 = 12;
+    snprintf(out, out_sz, "%2d:%02d%s - %2d:%02d%s", sh12, sm, sampm, eh12, em, eampm);
+}
+
+static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
+    out[0] = '\0';
+    if (!raw_loc || !*raw_loc) return;
+
+    /* 1. Strip "\s*\(\d+\) \[GVC[^\]]*\]" capacity/GVC suffixes */
+    char cleaned[512];
+    size_t clen = 0;
+    const char *p = raw_loc;
+    while (*p && clen + 1 < sizeof(cleaned)) {
+        if (*p == '(') {
+            const char *q = p + 1;
+            while (*q && isdigit((unsigned char)*q)) q++;
+            if (q > p + 1 && strncmp(q, ") [GVC", 6) == 0) {
+                const char *close_br = strchr(q + 6, ']');
+                if (close_br) {
+                    while (clen > 0 && cleaned[clen - 1] == ' ') clen--;
+                    p = close_br + 1;
+                    continue;
+                }
+            }
+        }
+        cleaned[clen++] = *p++;
+    }
+    cleaned[clen] = '\0';
+
+    /* 2. Split comma-separated locations and trim whitespace */
+    char tokens[16][128];
+    int tok_cnt = 0;
+    char *saveptr = NULL;
+    char *tok = strtok_r(cleaned, ",", &saveptr);
+    while (tok && tok_cnt < 16) {
+        while (*tok && isspace((unsigned char)*tok)) tok++;
+        size_t tlen = strlen(tok);
+        while (tlen > 0 && isspace((unsigned char)tok[tlen - 1])) tok[--tlen] = '\0';
+        if (tlen > 0) {
+            snprintf(tokens[tok_cnt], sizeof(tokens[0]), "%s", tok);
+            tok_cnt++;
+        }
+        tok = strtok_r(NULL, ",", &saveptr);
+    }
+    if (tok_cnt == 0) return;
+
+    /* 3. Match against configured relevant location prefixes in priority order (cap at 3 locations) */
+    for (int pr = 0; pr < g_gcal_loc_prefix_count; pr++) {
+        const char *pref = g_gcal_loc_prefixes[pr];
+        size_t plen = strlen(pref);
+        if (plen == 0) continue;
+
+        int matched = 0;
+        size_t off = 0;
+        for (int t = 0; t < tok_cnt && matched < 3; t++) {
+            if (strncmp(tokens[t], pref, plen) == 0 && tokens[t][plen] != '\0') {
+                off += snprintf(out + off, out_sz - off, "%s%s",
+                                (matched > 0) ? ", " : "", tokens[t] + plen);
+                matched++;
+            }
+        }
+        if (matched > 0) return;
+    }
+
+    /* 4. Fallback: join up to 3 cleaned locations */
+    size_t off = 0;
+    for (int t = 0; t < tok_cnt && t < 3; t++) {
+        off += snprintf(out + off, out_sz - off, "%s%s", (t > 0) ? ", " : "", tokens[t]);
+    }
+}
+
+static bool gcal_rsvp_accepted(struct json_object *it) {
+    bool i_organized = false;
+    struct json_object *j_org = NULL, *j_self = NULL;
+    if (json_object_object_get_ex(it, "organizer", &j_org) && j_org &&
+        json_object_object_get_ex(j_org, "self", &j_self)) {
+        i_organized = json_object_get_boolean(j_self);
+    }
+
+    struct json_object *j_att = NULL;
+    if (!json_object_object_get_ex(it, "attendees", &j_att) ||
+        !json_object_is_type(j_att, json_type_array)) {
+        return i_organized;
+    }
+    int alen = json_object_array_length(j_att);
+    if (alen == 0) return i_organized;
+
+    for (int a = 0; a < alen; a++) {
+        struct json_object *att = json_object_array_get_idx(j_att, a);
+        struct json_object *a_self = NULL, *a_resp = NULL;
+        if (att && json_object_object_get_ex(att, "self", &a_self) && json_object_get_boolean(a_self)) {
+            if (json_object_object_get_ex(att, "responseStatus", &a_resp) && json_object_get_string(a_resp)) {
+                return strcmp(json_object_get_string(a_resp), "accepted") == 0;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+static void url_encode_cal_id(const char *in, char *out, size_t out_sz) {
+    size_t j = 0;
+    for (size_t i = 0; in[i] && j + 4 < out_sz; i++) {
+        if (in[i] == '@') {
+            memcpy(out + j, "%40", 3);
+            j += 3;
+        } else {
+            out[j++] = in[i];
+        }
+    }
+    out[j] = '\0';
+}
+
+static char *fetch_gcal_calendar_json(const char *cal_id, const char *min_buf, const char *max_buf) {
+    char enc_cal[256];
+    url_encode_cal_id(cal_id, enc_cal, sizeof(enc_cal));
+
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd),
+             "curl -s --max-time 10 -H 'Authorization: Bearer %s' "
+             "'https://www.googleapis.com/calendar/v3/calendars/%s/events?timeMin=%s&timeMax=%s&singleEvents=true&orderBy=startTime'",
+             g_gcal_access_token, enc_cal, min_buf, max_buf);
+
+    char *resp = run_cmd_capture(cmd, 131072);
+    if (resp && strstr(resp, "\"UNAUTHENTICATED\"")) {
+        free(resp);
+        if (refresh_gcal_token()) {
+            snprintf(cmd, sizeof(cmd),
+                     "curl -s --max-time 10 -H 'Authorization: Bearer %s' "
+                     "'https://www.googleapis.com/calendar/v3/calendars/%s/events?timeMin=%s&timeMax=%s&singleEvents=true&orderBy=startTime'",
+                     g_gcal_access_token, enc_cal, min_buf, max_buf);
+            resp = run_cmd_capture(cmd, 131072);
+        } else {
+            resp = NULL;
+        }
+    }
+    return resp;
+}
+
+static bool parse_iso_date_local(const char *date_str, time_t *out_ts) {
+    *out_ts = 0;
+    if (!date_str || !*date_str) return false;
+    int Y = 0, M = 0, D = 0;
+    if (sscanf(date_str, "%d-%d-%d", &Y, &M, &D) != 3) return false;
+    struct tm tm_loc;
+    memset(&tm_loc, 0, sizeof(tm_loc));
+    tm_loc.tm_year = Y - 1900;
+    tm_loc.tm_mon = M - 1;
+    tm_loc.tm_mday = D;
+    tm_loc.tm_isdst = -1;
+    *out_ts = mktime(&tm_loc);
+    return true;
 }
 
 static void fetch_gcal_events(void) {
@@ -1682,77 +1888,153 @@ static void fetch_gcal_events(void) {
     gmtime_r(&later, &tm_utc);
     strftime(max_buf, sizeof(max_buf), "%Y-%m-%dT%H:%M:%SZ", &tm_utc);
 
-    char cmd[2048];
-    snprintf(cmd, sizeof(cmd),
-             "curl -s --max-time 10 -H 'Authorization: Bearer %s' "
-             "'https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=%s&timeMax=%s&singleEvents=true&orderBy=startTime'",
-             g_gcal_access_token, min_buf, max_buf);
-
-    char *resp = run_cmd_capture(cmd, 131072);
-    if (resp && strstr(resp, "\"UNAUTHENTICATED\"")) {
-        free(resp);
-        if (refresh_gcal_token()) {
-            snprintf(cmd, sizeof(cmd),
-                     "curl -s --max-time 10 -H 'Authorization: Bearer %s' "
-                     "'https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=%s&timeMax=%s&singleEvents=true&orderBy=startTime'",
-                     g_gcal_access_token, min_buf, max_buf);
-            resp = run_cmd_capture(cmd, 131072);
-        } else {
-            resp = NULL;
-        }
-    }
-
-    GCalEvent new_evs[16];
+    GCalEvent new_evs[MAX_GCAL_EVENTS];
     int new_cnt = 0;
     static const char *colors[7] = {
         "#d0e6ff", "#bbdaff", "#99c7ff", "#86bcff", "#62a9ff", "#8c8cff", "#7979ff"
     };
 
-    if (resp) {
+    for (int c = 0; c < g_gcal_cal_count && new_cnt < MAX_GCAL_EVENTS; c++) {
+        char *resp = fetch_gcal_calendar_json(g_gcal_calendars[c], min_buf, max_buf);
+        if (!resp) continue;
+
         struct json_object *root = json_tokener_parse(resp);
         struct json_object *items = NULL;
         if (root && json_object_object_get_ex(root, "items", &items) && json_object_is_type(items, json_type_array)) {
             int len = json_object_array_length(items);
-            struct tm tm_loc;
-            localtime_r(&now, &tm_loc);
-            int cur_mins = tm_loc.tm_hour * 60 + tm_loc.tm_min;
 
-            for (int i = 0; i < len && new_cnt < 16; i++) {
+            for (int i = 0; i < len && new_cnt < MAX_GCAL_EVENTS; i++) {
                 struct json_object *it = json_object_array_get_idx(items, i);
-                struct json_object *j_sum = NULL, *j_start = NULL, *j_end = NULL, *j_dt = NULL, *j_loc = NULL;
-                const char *sum = (json_object_object_get_ex(it, "summary", &j_sum) && json_object_get_string(j_sum))
-                                      ? json_object_get_string(j_sum)
-                                      : "";
-                if (strstr(sum, "CANCELLED") || strstr(sum, "[TBC]")) continue;
-                if (!json_object_object_get_ex(it, "start", &j_start)) continue;
-                if (json_object_object_get_ex(j_start, "date", &j_dt)) continue; /* Skip all-day */
-                if (!json_object_object_get_ex(j_start, "dateTime", &j_dt) || !json_object_get_string(j_dt)) continue;
-                const char *start_iso = json_object_get_string(j_dt);
-                const char *end_iso = "";
-                if (json_object_object_get_ex(it, "end", &j_end) &&
-                    json_object_object_get_ex(j_end, "dateTime", &j_dt) && json_object_get_string(j_dt))
-                    end_iso = json_object_get_string(j_dt);
+                if (!it) continue;
 
+                struct json_object *j_status = NULL;
+                if (json_object_object_get_ex(it, "status", &j_status) && json_object_get_string(j_status) &&
+                    strcasecmp(json_object_get_string(j_status), "cancelled") == 0) {
+                    continue;
+                }
+
+                struct json_object *j_sum = NULL, *j_start = NULL, *j_end = NULL, *j_dt = NULL, *j_loc = NULL;
+                const char *raw_sum = (json_object_object_get_ex(it, "summary", &j_sum) && json_object_get_string(j_sum))
+                                          ? json_object_get_string(j_sum)
+                                          : "";
+                char sum[128];
+                snprintf(sum, sizeof(sum), "%s", raw_sum);
+                /* Trim whitespace */
+                char *s_start = sum;
+                while (*s_start && isspace((unsigned char)*s_start)) s_start++;
+                if (s_start != sum) memmove(sum, s_start, strlen(s_start) + 1);
+                size_t slen = strlen(sum);
+                while (slen > 0 && isspace((unsigned char)sum[slen - 1])) sum[--slen] = '\0';
+
+                bool is_filtered = false;
+                if (strcasestr(sum, "CANCELLED") || strcasestr(sum, "[TBC]")) {
+                    is_filtered = true;
+                }
+                if (!gcal_rsvp_accepted(it)) {
+                    is_filtered = true;
+                }
+
+                if (!json_object_object_get_ex(it, "start", &j_start) ||
+                    !json_object_object_get_ex(it, "end", &j_end)) {
+                    continue;
+                }
+
+                time_t start_ts = 0, end_ts = 0;
                 int sh = 0, sm = 0, eh = 0, em = 0;
+                bool is_all_day = false;
+
+                if (json_object_object_get_ex(j_start, "date", &j_dt) && json_object_get_string(j_dt)) {
+                    const char *s_date = json_object_get_string(j_dt);
+                    struct json_object *j_edt = NULL;
+                    const char *e_date = (json_object_object_get_ex(j_end, "date", &j_edt) && json_object_get_string(j_edt))
+                                             ? json_object_get_string(j_edt)
+                                             : s_date;
+                    if (!parse_iso_date_local(s_date, &start_ts) || !parse_iso_date_local(e_date, &end_ts)) {
+                        continue;
+                    }
+                    if (end_ts <= start_ts) end_ts = start_ts + 86400;
+                    is_all_day = true;
+                    is_filtered = true;
+                } else if (json_object_object_get_ex(j_start, "dateTime", &j_dt) && json_object_get_string(j_dt)) {
+                    const char *start_iso = json_object_get_string(j_dt);
+                    struct json_object *j_edt = NULL;
+                    if (!json_object_object_get_ex(j_end, "dateTime", &j_edt) || !json_object_get_string(j_edt)) {
+                        continue;
+                    }
+                    const char *end_iso = json_object_get_string(j_edt);
+                    if (!parse_iso_datetime(start_iso, &start_ts, &sh, &sm) ||
+                        !parse_iso_datetime(end_iso, &end_ts, &eh, &em)) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+
+                if (end_ts <= now) continue;
+                if (g_gcal_max_duration_mins > 0 &&
+                    (end_ts - start_ts) > (time_t)g_gcal_max_duration_mins * 60) {
+                    is_filtered = true;
+                }
+
+                /* Deduplicate by summary across calendars */
+                bool dup = false;
+                for (int k = 0; k < new_cnt; k++) {
+                    if (strcmp(new_evs[k].summary, sum) == 0) {
+                        if (new_evs[k].filtered && !is_filtered) {
+                            new_evs[k].filtered = false;
+                        }
+                        dup = true;
+                        break;
+                    }
+                }
+                if (dup) continue;
+
                 GCalEvent *ev = &new_evs[new_cnt];
                 memset(ev, 0, sizeof(*ev));
                 snprintf(ev->summary, sizeof(ev->summary), "%s", sum);
-                format_iso_12h(start_iso, ev->start_time, sizeof(ev->start_time), &sh, &sm);
-                format_iso_12h(end_iso, ev->end_time, sizeof(ev->end_time), &eh, &em);
-                ev->minutes_until = (sh * 60 + sm) - cur_mins;
+                ev->start_ts = start_ts;
+                ev->end_ts = end_ts;
+                ev->filtered = is_filtered;
+                if (is_all_day) {
+                    snprintf(ev->start_short, sizeof(ev->start_short), "all-day");
+                    snprintf(ev->time_range, sizeof(ev->time_range), "     all-day     ");
+                } else {
+                    format_short_12h(sh, sm, ev->start_short, sizeof(ev->start_short));
+                    format_fixed_range_12h(sh, sm, eh, em, ev->time_range, sizeof(ev->time_range));
+                }
 
                 const char *loc = (json_object_object_get_ex(it, "location", &j_loc) && json_object_get_string(j_loc))
                                       ? json_object_get_string(j_loc)
                                       : "";
-                if (strncmp(loc, "US-NYC-9TH-", 11) == 0) loc += 11;
-                else if (strncmp(loc, "NYC-", 4) == 0) loc += 4;
-                snprintf(ev->location, sizeof(ev->location), "%s", loc);
-                snprintf(ev->color, sizeof(ev->color), "%s", colors[new_cnt % 7]);
+                parse_gcal_location(loc, ev->location, sizeof(ev->location));
                 new_cnt++;
             }
         }
         if (root) json_object_put(root);
         free(resp);
+    }
+
+    /* Sort combined events by start_ts ascending, then assign color gradient */
+    for (int i = 0; i < new_cnt - 1; i++) {
+        for (int j = i + 1; j < new_cnt; j++) {
+            if (new_evs[j].start_ts < new_evs[i].start_ts ||
+                (new_evs[j].start_ts == new_evs[i].start_ts && !new_evs[j].filtered && new_evs[i].filtered) ||
+                (new_evs[j].start_ts == new_evs[i].start_ts && new_evs[j].filtered == new_evs[i].filtered &&
+                 new_evs[j].end_ts < new_evs[i].end_ts)) {
+                GCalEvent tmp = new_evs[i];
+                new_evs[i] = new_evs[j];
+                new_evs[j] = tmp;
+            }
+        }
+    }
+    int color_idx = 0;
+    for (int i = 0; i < new_cnt; i++) {
+        if (new_evs[i].filtered) {
+            snprintf(new_evs[i].color, sizeof(new_evs[i].color), "#8c7a6b");
+        } else {
+            snprintf(new_evs[i].color, sizeof(new_evs[i].color), "%s", colors[color_idx % 7]);
+            color_idx++;
+        }
     }
 
     pthread_mutex_lock(&g_mutex);
@@ -2191,10 +2473,22 @@ static void poll_battery(void) {
     if (!d) return;
     struct dirent *de;
     char bat_dir[512] = "";
+    int ac_found = 0;
+    int ac_online = 0;
     while ((de = readdir(d)) != NULL) {
+        if (de->d_name[0] == '.') continue;
         if (strncmp(de->d_name, "BAT", 3) == 0) {
-            snprintf(bat_dir, sizeof(bat_dir), "/sys/class/power_supply/%s", de->d_name);
-            break;
+            if (!bat_dir[0]) {
+                snprintf(bat_dir, sizeof(bat_dir), "/sys/class/power_supply/%s", de->d_name);
+            }
+        } else {
+            char pdir[512];
+            snprintf(pdir, sizeof(pdir), "/sys/class/power_supply/%s", de->d_name);
+            long onl = read_sysfs_long(pdir, "online");
+            if (onl >= 0) {
+                ac_found = 1;
+                if (onl > 0) ac_online = 1;
+            }
         }
     }
     closedir(d);
@@ -2222,6 +2516,12 @@ static void poll_battery(void) {
         fclose(sf);
     }
 
+    long stop_thresh = read_sysfs_long(bat_dir, "charge_control_end_threshold");
+    if (stop_thresh <= 0 || stop_thresh > 100)
+        stop_thresh = read_sysfs_long(bat_dir, "charge_stop_threshold");
+    if (stop_thresh <= 0 || stop_thresh > 100)
+        stop_thresh = 100;
+
     long e_now = read_sysfs_long(bat_dir, "energy_now");
     if (e_now < 0) e_now = read_sysfs_long(bat_dir, "charge_now");
     long e_full = read_sysfs_long(bat_dir, "energy_full");
@@ -2229,18 +2529,43 @@ static void poll_battery(void) {
     long p_now = read_sysfs_long(bat_dir, "power_now");
     if (p_now < 0) p_now = read_sysfs_long(bat_dir, "current_now");
 
+    pthread_mutex_lock(&g_mutex);
+    /* Latch Full state while on AC power so EC/BMS trickle top-off oscillations
+     * between "Full"/"Not charging" and "Charging" (or 94%+ charged) don't flicker the icon. */
+    static bool s_bat_full_latched = false;
+    static long s_bat_full_cap = 0;
+    if (strcmp(status, "Discharging") == 0 || (ac_found && !ac_online)) {
+        s_bat_full_latched = false;
+        s_bat_full_cap = 0;
+    } else {
+        if (strcmp(status, "Full") == 0 || strcmp(status, "Not charging") == 0 ||
+            (strcmp(status, "Charging") == 0 && cap >= stop_thresh - 6)) {
+            s_bat_full_latched = true;
+            if (cap > s_bat_full_cap) s_bat_full_cap = cap;
+        }
+        if (s_bat_full_latched) {
+            if (cap < s_bat_full_cap - 6 && cap < stop_thresh - 6) {
+                s_bat_full_latched = false;
+            } else {
+                snprintf(status, sizeof(status), "Full");
+            }
+        }
+    }
+
     char tstr[32] = "";
-    if (p_now > 0 && e_now >= 0) {
+    if (p_now > 0 && e_now >= 0 &&
+        (strcmp(status, "Charging") == 0 || strcmp(status, "Discharging") == 0)) {
         double hrs = 0;
         if (strcmp(status, "Charging") == 0 && e_full > e_now)
             hrs = (double)(e_full - e_now) / (double)p_now;
-        else
+        else if (strcmp(status, "Discharging") == 0)
             hrs = (double)e_now / (double)p_now;
-        int total_m = (int)(hrs * 60.0);
-        snprintf(tstr, sizeof(tstr), "%d:%02d", total_m / 60, total_m % 60);
+        if (hrs > 0) {
+            int total_m = (int)(hrs * 60.0);
+            snprintf(tstr, sizeof(tstr), "%d:%02d", total_m / 60, total_m % 60);
+        }
     }
 
-    pthread_mutex_lock(&g_mutex);
     g_bat_present = true;
     g_bat_capacity = (int)cap;
     snprintf(g_bat_status, sizeof(g_bat_status), "%s", status);
@@ -2456,40 +2781,109 @@ static void *audio_event_thread(void *arg) {
     return NULL;
 }
 
+static int dbus_connect_system_upower(void) {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return -1;
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "/run/dbus/system_bus_socket");
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        close(fd);
+        return -1;
+    }
+    uint8_t req[1024];
+    static const unsigned char hs[] = "\0AUTH EXTERNAL\r\nDATA\r\nBEGIN\r\n";
+    int len = (int)sizeof(hs) - 1;
+    memcpy(req, hs, len);
+    len += dbus_build_call(req + len, 1, 0, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                           "org.freedesktop.DBus", "Hello", NULL);
+    len += dbus_build_call(req + len, 2, 0, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                           "org.freedesktop.DBus", "AddMatch",
+                           "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/freedesktop/UPower'");
+    if (write(fd, req, len) <= 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
 static void *battery_uevent_thread(void *arg) {
     (void)arg;
     poll_battery();
     notify_main_loop();
 
-    int fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_KOBJECT_UEVENT);
-    if (fd < 0) return NULL;
-
-    struct sockaddr_nl sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.nl_family = AF_NETLINK;
-    sa.nl_groups = 1; /* Kernel uevent multicast group */
-    if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-        close(fd);
-        return NULL;
+    int nl_fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_KOBJECT_UEVENT);
+    if (nl_fd >= 0) {
+        struct sockaddr_nl sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.nl_family = AF_NETLINK;
+        sa.nl_groups = 1; /* Kernel uevent multicast group */
+        if (bind(nl_fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+            close(nl_fd);
+            nl_fd = -1;
+        }
     }
 
-    struct pollfd pfd = {.fd = fd, .events = POLLIN};
-    char buf[4096];
+    int dbus_fd = dbus_connect_system_upower();
+    time_t last_dbus_try = time(NULL);
+    if (nl_fd < 0 && dbus_fd < 0) return NULL;
 
+    char buf[8192];
     while (1) {
-        if (poll(&pfd, 1, -1) > 0) {
-            ssize_t n = recv(fd, buf, sizeof(buf) - 1, MSG_DONTWAIT);
-            if (n <= 0) continue;
-            buf[n] = '\0';
-            if (memmem(buf, (size_t)n, "power_supply", 12) != NULL ||
-                memmem(buf, (size_t)n, "SUBSYSTEM=power_supply", 22) != NULL) {
-                /* AC adapter connected/disconnected or battery charging state change */
+        if (dbus_fd < 0 && time(NULL) - last_dbus_try >= 5) {
+            last_dbus_try = time(NULL);
+            dbus_fd = dbus_connect_system_upower();
+        }
+        struct pollfd pfds[2];
+        int nfds = 0;
+        int nl_idx = -1, dbus_idx = -1;
+        if (nl_fd >= 0) {
+            nl_idx = nfds;
+            pfds[nfds].fd = nl_fd;
+            pfds[nfds].events = POLLIN;
+            nfds++;
+        }
+        if (dbus_fd >= 0) {
+            dbus_idx = nfds;
+            pfds[nfds].fd = dbus_fd;
+            pfds[nfds].events = POLLIN;
+            nfds++;
+        }
+        if (nfds == 0) {
+            sleep(5);
+            continue;
+        }
+
+        if (poll(pfds, nfds, -1) > 0) {
+            bool updated = false;
+            if (nl_idx >= 0 && (pfds[nl_idx].revents & POLLIN)) {
+                ssize_t n = recv(nl_fd, buf, sizeof(buf) - 1, MSG_DONTWAIT);
+                if (n > 0) {
+                    buf[n] = '\0';
+                    if (memmem(buf, (size_t)n, "power_supply", 12) != NULL ||
+                        memmem(buf, (size_t)n, "SUBSYSTEM=power_supply", 22) != NULL) {
+                        updated = true;
+                    }
+                }
+            }
+            if (dbus_idx >= 0 && (pfds[dbus_idx].revents & (POLLIN | POLLHUP | POLLERR))) {
+                ssize_t n = read(dbus_fd, buf, sizeof(buf));
+                if (n <= 0) {
+                    close(dbus_fd);
+                    dbus_fd = -1;
+                } else if (memmem(buf, (size_t)n, "/org/freedesktop/UPower", 23) != NULL) {
+                    updated = true;
+                }
+            }
+            if (updated) {
                 poll_battery();
                 notify_main_loop();
             }
         }
     }
-    close(fd);
+    if (nl_fd >= 0) close(nl_fd);
+    if (dbus_fd >= 0) close(dbus_fd);
     return NULL;
 }
 
@@ -2677,7 +3071,7 @@ static void render_bar(SurfaceBuf *s) {
         static const char *bat_icons[11] = {"▁", "⡀", "⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣾", "⣿", "🔋"};
         const char *b_icon = bat_icons[(g_bat_capacity * 10) / 100];
         if (strcmp(g_bat_status, "Full") == 0 || strcmp(g_bat_status, "Not charging") == 0 ||
-            (strcmp(g_bat_status, "Charging") == 0 && g_bat_capacity >= 98)) b_icon = "🔌";
+            (strcmp(g_bat_status, "Charging") == 0 && g_bat_capacity >= 94)) b_icon = "🔌";
         else if (strcmp(g_bat_status, "Charging") == 0) b_icon = "⚡";
 
         uint32_t b_fg = COL_TEXT;
@@ -2725,35 +3119,100 @@ static void render_bar(SurfaceBuf *s) {
     int clk_w = measure_markup_line(clk_bar, 16, false);
 
     /* Prepare Google Calendar strings & natural width */
-    bool has_gcal = (g_gcal_count > 0);
-    char gc_sum[256] = "", gc_suffix[256] = "", gc_bar[512] = "", gc_tip[4096] = "";
-    int gcal_natural_box_w = 0;
-    if (has_gcal) {
-        GCalEvent *ev = &g_gcal_events[0];
-        snprintf(gc_sum, sizeof(gc_sum), "%s", ev->summary);
-        if (!g_gcal_show_details) {
-            snprintf(gc_suffix, sizeof(gc_suffix), " (%s - %s)", ev->start_time, ev->end_time);
-        } else {
-            size_t eoff = 0;
-            if (ev->location[0]) eoff += snprintf(gc_suffix + eoff, sizeof(gc_suffix) - eoff, " (%s)", ev->location);
-            if (ev->minutes_until > 0 && ev->minutes_until <= 180)
-                eoff += snprintf(gc_suffix + eoff, sizeof(gc_suffix) - eoff, " <span color='#ff7f7f'>(%dm)</span>", ev->minutes_until);
+    time_t now = time(NULL);
+    int gcal_all_idxs[MAX_GCAL_EVENTS];
+    int gcal_all_cnt = 0;
+    int gcal_vis_idxs[MAX_GCAL_EVENTS];
+    int gcal_vis_cnt = 0;
+    for (int i = 0; i < g_gcal_count; i++) {
+        if (g_gcal_events[i].end_ts > now) {
+            gcal_all_idxs[gcal_all_cnt++] = i;
+            if (!g_gcal_events[i].filtered) {
+                gcal_vis_idxs[gcal_vis_cnt++] = i;
+            }
         }
-        snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s", ev->color, gc_sum, gc_suffix);
+    }
+    bool has_gcal = (gcal_all_cnt > 0);
+    bool gcal_icon_only = (gcal_vis_cnt == 0 && gcal_all_cnt > 0);
+    bool gcal_two = false;
+    char gc_sum0[256] = "", gc_suf0[256] = "";
+    char gc_sum1[256] = "", gc_suf1[256] = "";
+    char gc_bar[1024] = "", gc_tip[8192] = "";
+    int gcal_natural_box_w = 0;
+    const GCalEvent *ev0 = NULL;
+    const GCalEvent *ev1 = NULL;
+
+    if (has_gcal) {
+        if (gcal_icon_only) {
+            snprintf(gc_bar, sizeof(gc_bar), "📅");
+        } else {
+            ev0 = &g_gcal_events[gcal_vis_idxs[0]];
+            int mins0 = (ev0->start_ts > now) ? (int)((ev0->start_ts - now + 59) / 60)
+                                              : -(int)((now - ev0->start_ts) / 60);
+            snprintf(gc_sum0, sizeof(gc_sum0), "%s", ev0->summary);
+            bool show_cd0 = (mins0 < 30);
+            if (g_gcal_show_details) show_cd0 = !show_cd0;
+            if (show_cd0) {
+                if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in %dminutes @ %s", mins0, ev0->location);
+                else snprintf(gc_suf0, sizeof(gc_suf0), " in %dminutes", mins0);
+            } else {
+                snprintf(gc_suf0, sizeof(gc_suf0), " %s", ev0->start_short);
+            }
+
+            if (mins0 <= 0 && gcal_vis_cnt > 1) {
+                const GCalEvent *cand1 = &g_gcal_events[gcal_vis_idxs[1]];
+                int mins1 = (cand1->start_ts > now) ? (int)((cand1->start_ts - now + 59) / 60)
+                                                    : -(int)((now - cand1->start_ts) / 60);
+                if (mins1 < 30) {
+                    gcal_two = true;
+                    ev1 = cand1;
+                    snprintf(gc_sum1, sizeof(gc_sum1), "%s", ev1->summary);
+                    bool show_cd1 = (mins1 < 30);
+                    if (g_gcal_show_details) show_cd1 = !show_cd1;
+                    if (show_cd1) {
+                        if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in %dminutes @ %s", mins1, ev1->location);
+                        else snprintf(gc_suf1, sizeof(gc_suf1), " in %dminutes", mins1);
+                    } else {
+                        snprintf(gc_suf1, sizeof(gc_suf1), " %s", ev1->start_short);
+                    }
+                }
+            }
+
+            if (gcal_two) {
+                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s | <span color='%s'>%s</span>%s",
+                         ev0->color, gc_sum0, gc_suf0, ev1->color, gc_sum1, gc_suf1);
+            } else {
+                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s",
+                         ev0->color, gc_sum0, gc_suf0);
+            }
+        }
         gcal_natural_box_w = measure_markup_line(gc_bar, 16, false) + 20;
 
         size_t toff = 0;
-        for (int i = 0; i < g_gcal_count; i++) {
-            toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s• %s (%s - %s)",
-                             (i > 0) ? "\n" : "", g_gcal_events[i].summary,
-                             g_gcal_events[i].start_time, g_gcal_events[i].end_time);
-            if (g_gcal_events[i].location[0])
-                toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "\n  Location: %s", g_gcal_events[i].location);
+        for (int i = 0; i < gcal_all_cnt && toff + 128 < sizeof(gc_tip); i++) {
+            const GCalEvent *tev = &g_gcal_events[gcal_all_idxs[i]];
+            if (tev->filtered) {
+                if (tev->location[0]) {
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s<span color='#8c7a6b'>%s %s, %s</span>",
+                                     (i > 0) ? "\n" : "", tev->time_range, tev->summary, tev->location);
+                } else {
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s<span color='#8c7a6b'>%s %s</span>",
+                                     (i > 0) ? "\n" : "", tev->time_range, tev->summary);
+                }
+            } else {
+                if (tev->location[0]) {
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s%s <span color='%s'>%s</span>, %s",
+                                     (i > 0) ? "\n" : "", tev->time_range, tev->color, tev->summary, tev->location);
+                } else {
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s%s <span color='%s'>%s</span>",
+                                     (i > 0) ? "\n" : "", tev->time_range, tev->color, tev->summary);
+                }
+            }
         }
     }
 
     /* Prepare Quiet notification strings & natural width */
-    if (g_quiet_preview_until > 0 && time(NULL) >= g_quiet_preview_until) {
+    if (g_quiet_preview_until > 0 && now >= g_quiet_preview_until) {
         g_quiet_preview[0] = '\0';
         g_quiet_preview_until = 0;
     }
@@ -2789,7 +3248,7 @@ static void render_bar(SurfaceBuf *s) {
     int min_right_x = clk_x + clk_w + 16;
     int total_avail = right_x - min_right_x;
 
-    if (has_gcal && total_avail > 40) {
+    if (has_gcal && total_avail > 24) {
         int gcal_max_box = total_avail;
         if (has_quiet) {
             /* Reserve space for quiet: if quiet is showing preview text, split space; if just count, reserve quiet_natural_box_w */
@@ -2802,13 +3261,24 @@ static void render_bar(SurfaceBuf *s) {
                 gcal_max_box = total_avail - reserve_quiet;
             }
         }
-        if (gcal_natural_box_w > gcal_max_box) {
-            int suffix_w = measure_markup_line(gc_suffix, 16, false);
-            int max_sum_px = gcal_max_box - 20 - suffix_w;
-            truncate_utf8_to_px(gc_sum, sizeof(gc_sum), max_sum_px, 16, false);
-            snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s", g_gcal_events[0].color, gc_sum, gc_suffix);
+        if (!gcal_icon_only && gcal_natural_box_w > gcal_max_box) {
+            if (gcal_two) {
+                int suf_w = measure_markup_line(gc_suf0, 16, false) +
+                            measure_markup_line(" | ", 16, false) +
+                            measure_markup_line(gc_suf1, 16, false);
+                int max_each_px = (gcal_max_box - 20 - suf_w) / 2;
+                truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_each_px, 16, false);
+                truncate_utf8_to_px(gc_sum1, sizeof(gc_sum1), max_each_px, 16, false);
+                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s | <span color='%s'>%s</span>%s",
+                         ev0->color, gc_sum0, gc_suf0, ev1->color, gc_sum1, gc_suf1);
+            } else {
+                int suffix_w = measure_markup_line(gc_suf0, 16, false);
+                int max_sum_px = gcal_max_box - 20 - suffix_w;
+                truncate_utf8_to_px(gc_sum0, sizeof(gc_sum0), max_sum_px, 16, false);
+                snprintf(gc_bar, sizeof(gc_bar), "<span color='%s'>%s</span>%s", ev0->color, gc_sum0, gc_suf0);
+            }
         }
-        if (gc_sum[0] || !has_quiet) {
+        if (gcal_icon_only || gc_sum0[0] || !has_quiet) {
             DRAW_RIGHT_MOD(MOD_GCAL, gc_bar, COL_TEXT, false, 0, gc_tip);
         }
     }
@@ -2863,13 +3333,13 @@ static void render_tooltip(SurfaceBuf *s, const char *tip) {
         line[len] = '\0';
 
         int draw_x = 8;
-        if (is_first_line) {
+        if (is_first_line && g_hovered_mod == MOD_CLOCK) {
             int lw = measure_markup_line(line, 15, false);
             if (s->w > lw + 16) {
                 draw_x = (s->w - lw) / 2;
             }
-            is_first_line = false;
         }
+        is_first_line = false;
 
         render_markup_line(s, line, draw_x, y, 15, COL_TEXT, false, true);
         y += 18;
@@ -3583,11 +4053,50 @@ static void add_tz_entry(const char *raw_spec) {
     g_tz_count++;
 }
 
+static void add_loc_prefix(const char *raw_spec) {
+    if (g_gcal_loc_prefix_count >= MAX_LOC_PREFIXES) return;
+    char spec[128];
+    snprintf(spec, sizeof(spec), "%s", raw_spec);
+    trim_and_unquote(spec);
+    if (!spec[0]) return;
+    snprintf(g_gcal_loc_prefixes[g_gcal_loc_prefix_count], sizeof(g_gcal_loc_prefixes[0]), "%s", spec);
+    g_gcal_loc_prefix_count++;
+}
+
+static void add_gcal_calendar(const char *raw_spec) {
+    if (g_gcal_cal_count >= MAX_GCAL_CALS) return;
+    char spec[128];
+    snprintf(spec, sizeof(spec), "%s", raw_spec);
+    trim_and_unquote(spec);
+    if (!spec[0]) return;
+    snprintf(g_gcal_calendars[g_gcal_cal_count], sizeof(g_gcal_calendars[0]), "%s", spec);
+    g_gcal_cal_count++;
+}
+
+static int parse_duration_mins(const char *raw_val) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s", raw_val);
+    trim_and_unquote(buf);
+    if (!buf[0]) return 360;
+    double v = atof(buf);
+    if (v <= 0) return 0;
+    if (strchr(buf, 'h') || strchr(buf, 'H')) {
+        return (int)(v * 60.0 + 0.5);
+    }
+    if (strchr(buf, 'm') || strchr(buf, 'M')) {
+        return (int)(v + 0.5);
+    }
+    /* Bare number: <= 48 treated as hours, otherwise minutes */
+    return (v <= 48.0) ? (int)(v * 60.0 + 0.5) : (int)(v + 0.5);
+}
+
 static bool load_config_file(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return false;
     char line[512];
     bool reset_tz = false;
+    bool reset_loc = false;
+    bool reset_cals = false;
     while (fgets(line, sizeof(line), f)) {
         char *s = line;
         while (*s && isspace((unsigned char)*s)) s++;
@@ -3620,6 +4129,41 @@ static bool load_config_file(const char *path) {
                 eq++;
                 trim_and_unquote(eq);
                 expand_tilde_path(eq, g_gcal_token_arg, sizeof(g_gcal_token_arg));
+            }
+        } else if (strncmp(s, "relevant_locations", 18) == 0 || strncmp(s, "location_prefixes", 17) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                if (!reset_loc) {
+                    g_gcal_loc_prefix_count = 0;
+                    reset_loc = true;
+                }
+                char *tok = strtok(eq, ",");
+                while (tok) {
+                    add_loc_prefix(tok);
+                    tok = strtok(NULL, ",");
+                }
+            }
+        } else if (strncmp(s, "ignore_long_event_threshold", 27) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                g_gcal_max_duration_mins = parse_duration_mins(eq + 1);
+            }
+        } else if (strncmp(s, "gcal_calendars", 14) == 0 || strncmp(s, "calendars", 9) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                if (!reset_cals) {
+                    g_gcal_cal_count = 0;
+                    reset_cals = true;
+                }
+                char *tok = strtok(eq, ",");
+                while (tok) {
+                    add_gcal_calendar(tok);
+                    tok = strtok(NULL, ",");
+                }
             }
         } else if (strncmp(s, "lat", 3) == 0 || strncmp(s, "latitude", 8) == 0) {
             char *eq = strchr(s, '=');
@@ -3712,18 +4256,21 @@ static void print_usage(const char *prog) {
     printf("Usage: %s [OPTIONS]\n\n"
            "Pure-C statically linked Wayland Layer-Shell statusbar matching custom Waybar.\n\n"
            "Configurability Options:\n"
-           "  --toggle                      Toggle visibility (hide/unhide) of running statusbar (or start if not running)\n"
-           "  --kill                        Terminate any running statusbar instance\n"
-           "  --tz <TZ>[=<EMOJI_OR_LABEL>]  Add a timezone and optional label/emoji (repeatable;\n"
-           "                                label/emoji can be empty, e.g. --tz 'UTC=' or --tz 'America/New_York=NY 🇺🇸')\n"
-           "  --gcal-token <PATH_OR_TOKEN>  Path to Google Calendar OAuth JSON token file or raw Bearer token\n"
-           "  --lat <DEGREES>               Latitude for offline prayer times (default: 40.7137)\n"
-           "  --lon <DEGREES>               Longitude for offline prayer times (default: -74.0399)\n"
-           "  --city <NAME>                 City label for prayer times (default: Jersey City)\n"
-           "  --config <PATH>               Load configuration from file (default: $XDG_CONFIG_HOME/statusbar.conf)\n"
-           "  --self-test                   Render bar & calendar tooltip offscreen and verify all modules\n"
-           "  --wayland-test                Connect to live Wayland display, configure layer surface & present frame\n"
-           "  -h, --help                    Show this help message\n",
+           "  --toggle                                Toggle visibility (hide/unhide) of running statusbar (or start if not running)\n"
+           "  --kill                                  Terminate any running statusbar instance\n"
+           "  --tz <TZ>[=<EMOJI_OR_LABEL>]            Add a timezone and optional label/emoji (repeatable;\n"
+           "                                          label/emoji can be empty, e.g. --tz 'UTC=' or --tz 'America/New_York=NY 🇺🇸')\n"
+           "  --gcal-token <PATH_OR_TOKEN>            Path to Google Calendar OAuth JSON token file or raw Bearer token\n"
+           "  --gcal-calendar <CAL_ID>                Calendar ID(s) to query (default: primary, sencerselcuk@gmail.com)\n"
+           "  --relevant-locations <PREFIX1,PREFIX2>  Location prefixes to prioritize & strip (default: US-NYC-9TH-,NYC-)\n"
+           "  --ignore-long-event-threshold <DUR>     Ignore events longer than threshold (default: 6h)\n"
+           "  --lat <DEGREES>                         Latitude for offline prayer times (default: 40.7137)\n"
+           "  --lon <DEGREES>                         Longitude for offline prayer times (default: -74.0399)\n"
+           "  --city <NAME>                           City label for prayer times (default: Jersey City)\n"
+           "  --config <PATH>                         Load configuration from file (default: $XDG_CONFIG_HOME/statusbar.conf)\n"
+           "  --self-test                             Render bar & calendar tooltip offscreen and verify all modules\n"
+           "  --wayland-test                          Connect to live Wayland display, configure layer surface & present frame\n"
+           "  -h, --help                              Show this help message\n",
            prog);
 }
 
@@ -3761,6 +4308,8 @@ int main(int argc, char *argv[]) {
     }
 
     bool cli_tz_reset = false;
+    bool cli_loc_reset = false;
+    bool cli_cal_reset = false;
     bool self_test = false;
     bool wayland_test = false;
     for (int i = 1; i < argc; i++) {
@@ -3798,6 +4347,33 @@ int main(int argc, char *argv[]) {
             add_tz_entry(argv[++i]);
         } else if (strcmp(argv[i], "--gcal-token") == 0 && i + 1 < argc) {
             expand_tilde_path(argv[++i], g_gcal_token_arg, sizeof(g_gcal_token_arg));
+        } else if (strcmp(argv[i], "--gcal-calendar") == 0 && i + 1 < argc) {
+            if (!cli_cal_reset) {
+                g_gcal_cal_count = 0;
+                cli_cal_reset = true;
+            }
+            char tmp_c[256];
+            snprintf(tmp_c, sizeof(tmp_c), "%s", argv[++i]);
+            char *tok = strtok(tmp_c, ",");
+            while (tok) {
+                add_gcal_calendar(tok);
+                tok = strtok(NULL, ",");
+            }
+        } else if ((strcmp(argv[i], "--relevant-locations") == 0 ||
+                    strcmp(argv[i], "--location-prefix") == 0) && i + 1 < argc) {
+            if (!cli_loc_reset) {
+                g_gcal_loc_prefix_count = 0;
+                cli_loc_reset = true;
+            }
+            char tmp_l[256];
+            snprintf(tmp_l, sizeof(tmp_l), "%s", argv[++i]);
+            char *tok = strtok(tmp_l, ",");
+            while (tok) {
+                add_loc_prefix(tok);
+                tok = strtok(NULL, ",");
+            }
+        } else if (strcmp(argv[i], "--ignore-long-event-threshold") == 0 && i + 1 < argc) {
+            g_gcal_max_duration_mins = parse_duration_mins(argv[++i]);
         } else if ((strcmp(argv[i], "--lat") == 0 || strcmp(argv[i], "--latitude") == 0) && i + 1 < argc) {
             g_namaz_lat = atof(argv[++i]);
         } else if ((strcmp(argv[i], "--lon") == 0 || strcmp(argv[i], "--lng") == 0 || strcmp(argv[i], "--longitude") == 0) && i + 1 < argc) {
@@ -3950,7 +4526,6 @@ int main(int argc, char *argv[]) {
             }
         } else if (ret == 0) {
             g_bat_blink_on = !g_bat_blink_on;
-            poll_battery();
             static int s_last_day = -1;
             struct tm tm_cur;
             time_t t_cur = time(NULL);

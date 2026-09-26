@@ -73,7 +73,7 @@ else
     exit 1
 fi
 
-# 5. Non-Destructive In-Place AdGuard Split-Horizon Update (Host Python 3 + PyYAML)
+# 5. Non-Destructive In-Place AdGuard Client-Scoped Rewrite Update (Host Python 3 + PyYAML)
 ADGUARD_YAML="${ADGUARD_CONF_DIR}/AdGuardHome.yaml"
 if [[ -f "$ADGUARD_YAML" ]]; then
     # Self-healing permission check
@@ -81,32 +81,64 @@ if [[ -f "$ADGUARD_YAML" ]]; then
         docker run --rm -v "${ADGUARD_CONF_DIR}":/conf alpine chmod 666 /conf/AdGuardHome.yaml >/dev/null 2>&1 || true
     fi
 
-    echo "[$(date -Iseconds)] [ADGUARD] Synchronizing wildcard DNS rewrite in-place..."
+    echo "[$(date -Iseconds)] [ADGUARD] Synchronizing router-scoped DNS rewrite rules in-place..."
     
     PYTHON_OUT=$(python3 - <<PYTHON_EOF
 import yaml, sys
 
 yaml_path = "${ADGUARD_YAML}"
-domain_target = "*.${DUCKDNS_DOMAIN}.duckdns.org"
+domain_name = "${DUCKDNS_DOMAIN}.duckdns.org"
+local_ipv4 = "${LOCAL_IPV4}"
 new_ipv6 = "${CURRENT_IPV6}"
+rewrite_clients = "${ADGUARD_REWRITE_CLIENTS:-192.168.1.1}"
+
+managed_suffixes = (
+    f"\$client={rewrite_clients},dnstype=A,dnsrewrite=NOERROR;A;",
+    f"\$client={rewrite_clients},dnstype=AAAA,dnsrewrite=NOERROR;AAAA;",
+)
 
 try:
     with open(yaml_path, "r") as f:
         data = yaml.safe_load(f) or {}
 
-    rewrites = data.setdefault("filtering", {}).setdefault("rewrites", [])
     updated = False
+    filtering = data.setdefault("filtering", {})
 
-    for r in rewrites:
-        if r.get("domain") == domain_target and ":" in r.get("answer", ""):
-            if r.get("answer") != new_ipv6:
-                r["answer"] = new_ipv6
-                r["enabled"] = True
-                updated = True
-            break
-    else:
-        rewrites.append({"domain": domain_target, "answer": new_ipv6, "enabled": True})
+    # Legacy DNS rewrites are global in AdGuard Home. Keep this empty for
+    # sncr.duckdns.org so WAN Private DNS clients don't receive LAN answers.
+    rewrites = filtering.setdefault("rewrites", [])
+    filtered_rewrites = [
+        r for r in rewrites
+        if r.get("domain") not in (domain_name, f"*.{domain_name}")
+    ]
+    if filtered_rewrites != rewrites:
+        filtering["rewrites"] = filtered_rewrites
         updated = True
+
+    desired_rules = [
+        f"||{domain_name}^\$client={rewrite_clients},dnstype=A,dnsrewrite=NOERROR;A;{local_ipv4}",
+        f"||{domain_name}^\$client={rewrite_clients},dnstype=AAAA,dnsrewrite=NOERROR;AAAA;{new_ipv6}",
+        f"@@||{domain_name}^\$client=~{rewrite_clients}",
+    ]
+
+    rules = data.setdefault("user_rules", [])
+    cleaned_rules = []
+    for rule in rules:
+        if rule.startswith(f"||{domain_name}") and any(suffix in rule for suffix in managed_suffixes):
+            continue
+        if rule == f"@@||{domain_name}^\$client=~{rewrite_clients}":
+            continue
+        cleaned_rules.append(rule)
+
+    for rule in desired_rules:
+        cleaned_rules.append(rule)
+
+    if cleaned_rules != rules:
+        data["user_rules"] = cleaned_rules
+        updated = True
+
+    filtering["rewrites_enabled"] = True
+    filtering["filtering_enabled"] = True
 
     if updated:
         with open(yaml_path, "w") as f:
@@ -122,7 +154,7 @@ PYTHON_EOF
 
     if echo "$PYTHON_OUT" | grep -q "MODIFIED"; then
         docker restart "$ADGUARD_CONTAINER" >/dev/null 2>&1 || true
-        echo "[$(date -Iseconds)] [ADGUARD] AdGuard restarted with verified split-horizon IPv6."
+        echo "[$(date -Iseconds)] [ADGUARD] AdGuard restarted with verified client-scoped rewrites."
     else
         echo "[$(date -Iseconds)] [ADGUARD] Configuration already up to date, zero container restart required."
     fi

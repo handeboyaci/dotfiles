@@ -3510,7 +3510,10 @@ static void wl_send_msg(uint32_t obj_id, uint16_t opcode, const void *payload, s
         memcpy(CMSG_DATA(cm), &fd_to_pass, sizeof(int));
     }
 
-    sendmsg(g_wl_fd, &msg, MSG_NOSIGNAL);
+    ssize_t ret = sendmsg(g_wl_fd, &msg, MSG_NOSIGNAL);
+    if (ret < 0 && (errno == EPIPE || errno == ECONNRESET || errno == EBADF)) {
+        exit(0);
+    }
 }
 
 static void wl_send_u32_1(uint32_t obj, uint16_t op, uint32_t a) {
@@ -4004,7 +4007,15 @@ static void process_wayland_events(void) {
     bool read_any = false;
     while (rfilled < sizeof(rbuf)) {
         ssize_t n = recv(g_wl_fd, rbuf + rfilled, sizeof(rbuf) - rfilled, MSG_DONTWAIT);
-        if (n <= 0) break;
+        if (n == 0) {
+            /* Wayland compositor closed connection */
+            exit(0);
+        }
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            /* Wayland connection error / reset */
+            exit(0);
+        }
         rfilled += (size_t)n;
         read_any = true;
     }
@@ -4635,6 +4646,9 @@ int main(int argc, char *argv[]) {
         }
         int ret = poll(fds, 2, timeout_ms);
         if (ret > 0) {
+            if (fds[0].revents & (POLLHUP | POLLERR | POLLNVAL)) {
+                exit(0);
+            }
             if (fds[0].revents & POLLIN) process_wayland_events();
             if (fds[1].revents & POLLIN) {
                 char drain[64];

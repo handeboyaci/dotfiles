@@ -1,5 +1,7 @@
 output * bg $HOME/.config/sway/bg.jpg fill
-exec [ -z "$SWAY_HEADLESS" ] && dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME && systemctl --user start sway-session.target
+exec_always dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP=sway SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME
+exec [ -z "$SWAY_HEADLESS" ] && systemctl --user start sway-session.target
+exec_always systemctl --user try-reload-or-restart notification.service
 exec [ -z "$SWAY_HEADLESS" ] && kanshi
 exec [ -z "$SWAY_HEADLESS" ] && swayosd-server
 exec_always [ -z "$SWAY_HEADLESS" ] && kanshictl reload
@@ -241,7 +243,7 @@ client.urgent           #00FF00   #00FF00   #00ff00   #00FF00
 focus_follows_mouse no
 workspace_auto_back_and_forth yes
 
-exec /usr/libexec/gsd-rfkill
+exec [ -z "$SWAY_HEADLESS" ] && /usr/libexec/gsd-rfkill
 bindsym --locked XF86AudioPlay exec sh -c 'if playerctl -a status 2>/dev/null | grep -q "^Playing$"; then playerctl -a pause; else playerctl -a play; fi'
 bindsym --locked XF86AudioPause exec sh -c 'if playerctl -a status 2>/dev/null | grep -q "^Playing$"; then playerctl -a pause; else playerctl -a play; fi'
 bindsym --locked XF86AudioStop exec playerctl -a stop

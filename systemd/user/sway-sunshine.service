@@ -1,6 +1,8 @@
 [Unit]
 Description=Headless Sway session for Sunshine streaming
 ConditionPathExists=%h/software/sunshine.AppImage
+PartOf=sunshine-headless.service
+BindsTo=sunshine-headless.service
 Before=sway-session.target
 Before=sway-headless-session.target
 Wants=sway-headless-session.target
@@ -18,11 +20,10 @@ Environment=SWAYSOCK=%t/sway-sunshine.sock
 Environment=PULSE_SINK=sink-sunshine-stereo
 ExecStartPre=-/bin/rm -f %t/sway-sunshine.sock
 ExecStart=/usr/bin/sway --config %h/.config/sway/sunshine.conf
-ExecStopPost=-/usr/bin/systemctl --user stop sunshine-headless.service
 ExecStopPost=-/usr/bin/systemctl --user --no-block start sunshine-headless.socket
 Restart=on-failure
 RestartSec=5
-KillMode=control-group
+KillMode=process
 TimeoutStopSec=5s
 
 [Install]

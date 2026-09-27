@@ -4,6 +4,7 @@ ConditionPathExists=%h/software/sunshine.AppImage
 
 [Socket]
 ListenStream=47989
+ReusePort=true
 # This ensures that when the port is hit, it triggers the service of the same name
 Service=sunshine-headless.service
 

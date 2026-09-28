@@ -27,7 +27,7 @@ bindsym $mod+space exec rofi -modi drun -show drun -show-icons
 
 bindsym $mod+b exec rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
 
-bindsym $mod+e exec /home/sselcuk/.local/bin/quietctl --toggle
+bindsym $mod+e exec $HOME/.local/bin/quietctl --toggle
 
 # change focus
 bindsym $mod+h focus left

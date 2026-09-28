@@ -187,6 +187,9 @@ static char g_gcal_calendars[MAX_GCAL_CALS][128] = {"primary"};
 static int g_gcal_cal_count = 1;
 static char g_gcal_loc_prefixes[MAX_LOC_PREFIXES][128];
 static int g_gcal_loc_prefix_count = 0;
+#define MAX_IGNORED_EVENTS 32
+static char g_gcal_ignored_events[MAX_IGNORED_EVENTS][128];
+static int g_gcal_ignored_event_count = 0;
 static int g_gcal_max_duration_mins = 360; /* Default 6h (ignore_long_event_threshold) */
 static int g_gcal_notify_mins = 5;         /* Default 5m urgent notification before start */
 static char g_gcal_open_cmd[512] = "google-chrome --profile-directory=Default --app=https://calendar.google.com/";
@@ -1917,6 +1920,43 @@ static bool parse_iso_date_local(const char *date_str, time_t *out_ts) {
     return true;
 }
 
+static bool is_gcal_ignored_event(const char *sum) {
+    if (!sum || !sum[0]) return false;
+    for (int i = 0; i < g_gcal_ignored_event_count; i++) {
+        const char *pat = g_gcal_ignored_events[i];
+        if (!pat[0]) continue;
+        if (strcasecmp(sum, pat) == 0) return true;
+
+        /* If pattern contains regex metacharacters, match with regex */
+        if (strpbrk(pat, "^$*+?[]|()\\")) {
+            char rpat[160];
+            if (pat[0] == '^') snprintf(rpat, sizeof(rpat), "%s", pat);
+            else snprintf(rpat, sizeof(rpat), "^(%s)", pat);
+            regex_t re;
+            if (regcomp(&re, rpat, REG_EXTENDED | REG_ICASE | REG_NOSUB) == 0) {
+                int res = regexec(&re, sum, 0, NULL, 0);
+                regfree(&re);
+                if (res == 0) return true;
+            }
+        } else {
+            /* Prefix match if followed by separator like " - ", ": ", " (", etc. */
+            size_t plen = strlen(pat);
+            if (strncasecmp(sum, pat, plen) == 0) {
+                const char *rem = sum + plen;
+                while (*rem == ' ') rem++;
+                if (*rem == '-' || *rem == ':' || *rem == '(' || *rem == '[' || *rem == '\0') {
+                    return true;
+                }
+                /* If pattern itself is "Commute" (case-insensitive), also match "Commute to/from ..." */
+                if (strcasecmp(pat, "Commute") == 0 && sum[plen] == ' ') {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 static void fetch_gcal_events(void) {
     pthread_mutex_lock(&g_mutex);
     if (g_gcal_fetching) {
@@ -1985,6 +2025,9 @@ static void fetch_gcal_events(void) {
                     is_filtered = true;
                 }
                 if (!gcal_rsvp_accepted(it)) {
+                    is_filtered = true;
+                }
+                if (is_gcal_ignored_event(sum)) {
                     is_filtered = true;
                 }
 
@@ -4188,6 +4231,16 @@ static void add_gcal_calendar(const char *raw_spec) {
     g_gcal_cal_count++;
 }
 
+static void add_ignored_event(const char *raw_spec) {
+    if (g_gcal_ignored_event_count >= MAX_IGNORED_EVENTS) return;
+    char spec[128];
+    snprintf(spec, sizeof(spec), "%s", raw_spec);
+    trim_and_unquote(spec);
+    if (!spec[0]) return;
+    snprintf(g_gcal_ignored_events[g_gcal_ignored_event_count], sizeof(g_gcal_ignored_events[0]), "%s", spec);
+    g_gcal_ignored_event_count++;
+}
+
 static int parse_duration_mins(const char *raw_val) {
     char buf[64];
     snprintf(buf, sizeof(buf), "%s", raw_val);
@@ -4212,6 +4265,7 @@ static bool load_config_file(const char *path) {
     bool reset_tz = false;
     bool reset_loc = false;
     bool reset_cals = false;
+    bool reset_ignored = false;
     while (fgets(line, sizeof(line), f)) {
         char *s = line;
         while (*s && isspace((unsigned char)*s)) s++;
@@ -4289,6 +4343,32 @@ static bool load_config_file(const char *path) {
                 char *tok = strtok(eq, ",");
                 while (tok) {
                     add_gcal_calendar(tok);
+                    tok = strtok(NULL, ",");
+                }
+            }
+        } else if (strncmp(s, "ignored_events", 14) == 0 || strncmp(s, "gcal_ignored_events", 19) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                while (*eq && isspace((unsigned char)*eq)) eq++;
+                size_t elen = strlen(eq);
+                while (elen > 0 && isspace((unsigned char)eq[elen - 1])) eq[--elen] = '\0';
+                int qcnt = 0;
+                for (size_t qi = 0; qi < elen; qi++) {
+                    if (eq[qi] == '"' || eq[qi] == '\'') qcnt++;
+                }
+                if (qcnt == 2 && elen >= 2 &&
+                    ((eq[0] == '"' && eq[elen - 1] == '"') || (eq[0] == '\'' && eq[elen - 1] == '\''))) {
+                    memmove(eq, eq + 1, elen - 2);
+                    eq[elen - 2] = '\0';
+                }
+                if (!reset_ignored) {
+                    g_gcal_ignored_event_count = 0;
+                    reset_ignored = true;
+                }
+                char *tok = strtok(eq, ",");
+                while (tok) {
+                    add_ignored_event(tok);
                     tok = strtok(NULL, ",");
                 }
             }
@@ -4391,6 +4471,7 @@ static void print_usage(const char *prog) {
            "  --gcal-calendar <CAL_ID>                Calendar ID(s) to query (default: primary)\n"
            "  --relevant-locations <REGEX1,REGEX2>    Location regexes/prefixes to prioritize & strip\n"
            "  --ignore-long-event-threshold <DUR>     Ignore events longer than threshold (default: 6h)\n"
+           "  --ignored-events <LIST>                 Comma-separated event titles/patterns to filter (e.g. 'DNS,DND,Commute')\n"
            "  --gcal-notify-mins <MINS>               Urgent notification lead time in minutes (default: 5)\n"
            "  --lat <DEGREES>                         Latitude for offline prayer times\n"
            "  --lon <DEGREES>                         Longitude for offline prayer times\n"
@@ -4441,6 +4522,7 @@ int main(int argc, char *argv[]) {
     bool cli_tz_reset = false;
     bool cli_loc_reset = false;
     bool cli_cal_reset = false;
+    bool cli_ignored_reset = false;
     bool self_test = false;
     bool wayland_test = false;
     for (int i = 1; i < argc; i++) {
@@ -4505,6 +4587,32 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "--ignore-long-event-threshold") == 0 && i + 1 < argc) {
             g_gcal_max_duration_mins = parse_duration_mins(argv[++i]);
+        } else if ((strcmp(argv[i], "--ignored-events") == 0 ||
+                    strcmp(argv[i], "--gcal-ignored-events") == 0) && i + 1 < argc) {
+            if (!cli_ignored_reset) {
+                g_gcal_ignored_event_count = 0;
+                cli_ignored_reset = true;
+            }
+            char tmp_ig[512];
+            snprintf(tmp_ig, sizeof(tmp_ig), "%s", argv[++i]);
+            char *sarg = tmp_ig;
+            while (*sarg && isspace((unsigned char)*sarg)) sarg++;
+            size_t slen = strlen(sarg);
+            while (slen > 0 && isspace((unsigned char)sarg[slen - 1])) sarg[--slen] = '\0';
+            int qcnt = 0;
+            for (size_t qi = 0; qi < slen; qi++) {
+                if (sarg[qi] == '"' || sarg[qi] == '\'') qcnt++;
+            }
+            if (qcnt == 2 && slen >= 2 &&
+                ((sarg[0] == '"' && sarg[slen - 1] == '"') || (sarg[0] == '\'' && sarg[slen - 1] == '\''))) {
+                memmove(sarg, sarg + 1, slen - 2);
+                sarg[slen - 2] = '\0';
+            }
+            char *tok = strtok(sarg, ",");
+            while (tok) {
+                add_ignored_event(tok);
+                tok = strtok(NULL, ",");
+            }
         } else if (strcmp(argv[i], "--gcal-notify-mins") == 0 && i + 1 < argc) {
             g_gcal_notify_mins = atoi(argv[++i]);
         } else if ((strcmp(argv[i], "--lat") == 0 || strcmp(argv[i], "--latitude") == 0) && i + 1 < argc) {

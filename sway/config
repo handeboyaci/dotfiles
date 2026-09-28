@@ -22,8 +22,7 @@ bindsym $mod+Shift+Return exec google-chrome
 bindsym $mod+w kill
 bindsym $mod+Shift+w exec nwg-bar
 
-bindsym $mod+Shift+space exec rofi -show run
-bindsym $mod+space exec rofi -modi drun -show drun -show-icons
+bindsym --release Super_L exec $HOME/.local/bin/launcher
 
 bindsym $mod+b exec rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
 

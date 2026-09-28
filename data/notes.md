@@ -25,6 +25,14 @@ install -m 0755 quiet quietctl $HOME/.local/bin
 cd $HOME
 rm -rf "$quiet_tmp"
 
+launcher_tmp=$(mktemp -d)
+cd "$launcher_tmp"
+curl -fLO https://github.com/sencer/launcher/releases/latest/download/launcher-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf launcher-x86_64-unknown-linux-gnu.tar.gz
+install -m 0755 launcher $HOME/.local/bin
+cd $HOME
+rm -rf "$launcher_tmp"
+
 mkdir -p $HOME/software
 cd $HOME/software
 

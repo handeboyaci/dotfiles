@@ -13,8 +13,9 @@ sudo apt install \
   libwayland-dev libwlroots-0.${VERSION}-dev wayland-protocols \
   libxcb-util-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xrm-dev \
   libxkbcommon-x11-dev meson ninja-build nwg-bar pkg-config playerctl \
-  python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tmux unzip wl-clipboard \
-  wdisplays xdg-desktop-portal-wlr zlib1g-dev papirus-icon-theme rofi
+  python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tree-sitter-cli \
+  tmux unzip wl-clipboard  wdisplays xdg-desktop-portal-wlr zlib1g-dev \
+  papirus-icon-theme rofi
 
 mkdir -p $HOME/.local/bin
 quiet_tmp=$(mktemp -d)

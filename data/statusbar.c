@@ -251,6 +251,7 @@ static void spawn_detached(const char *cmd) {
         if (pid2 < 0) _exit(127);
         if (pid2 > 0) _exit(0); /* Intermediate child exits immediately */
         setsid();
+        unsetenv("WAYLAND_SOCKET");
         int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
@@ -273,6 +274,7 @@ static void notify_urgent(const char *summary, const char *body) {
         if (pid2 < 0) _exit(127);
         if (pid2 > 0) _exit(0);
         setsid();
+        unsetenv("WAYLAND_SOCKET");
         int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
@@ -4662,6 +4664,7 @@ int main(int argc, char *argv[]) {
     if (w_sock && *w_sock) {
         g_wl_fd = atoi(w_sock);
         fcntl(g_wl_fd, F_SETFD, FD_CLOEXEC);
+        unsetenv("WAYLAND_SOCKET");
     } else {
         const char *wd = getenv("WAYLAND_DISPLAY");
         char wl_path[512];

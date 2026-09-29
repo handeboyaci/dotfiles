@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Google Chrome (Personal)
+Icon=google-chrome
+Exec=google-chrome --profile-directory="Profile 1"
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Chrome;Personal;Browser

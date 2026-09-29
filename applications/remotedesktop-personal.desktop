@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Chrome Remote Desktop (Personal)
+Icon=chrome-remote-desktop
+Exec=google-chrome --app=https://remotedesktop.google.com/access --profile-directory="Profile 1"
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Remote;Desktop;Chrome;Personal

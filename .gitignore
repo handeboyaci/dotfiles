@@ -25,3 +25,5 @@ data/.static_libs/
 data/statusbar
 data/pixelbuds-pause
 *.un~
+applications/chrome-*.desktop
+applications/mimeinfo.cache

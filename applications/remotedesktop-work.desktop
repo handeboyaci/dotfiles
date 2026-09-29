@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Chrome Remote Desktop (Work)
+Icon=chrome-remote-desktop
+Exec=google-chrome --app=https://remotedesktop.google.com/access --profile-directory=Default
+Terminal=false
+Type=Application
+StartupNotify=true
+Keywords=Remote;Desktop;Chrome;Work

@@ -1,3 +1,7 @@
+profile "solo-hidpi" {
+    output "AU Optronics 0xC693 *" enable scale 2.0 position 0,0
+}
+
 profile "solo" {
     output eDP-1 enable scale 1.0 position 0,0
 }

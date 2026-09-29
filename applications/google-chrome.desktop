@@ -6,3 +6,4 @@ Terminal=false
 Type=Application
 StartupNotify=true
 Keywords=Google;Chrome;Personal;Browser
+MimeType=x-scheme-handler/unknown;x-scheme-handler/about;x-scheme-handler/https;x-scheme-handler/http;text/html;

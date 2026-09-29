@@ -15,7 +15,7 @@ sudo apt install \
   libxkbcommon-x11-dev meson ninja-build nwg-bar pkg-config playerctl \
   python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tree-sitter-cli \
   tmux unzip wl-clipboard  wdisplays xdg-desktop-portal-wlr zlib1g-dev \
-  papirus-icon-theme rofi
+  papirus-icon-theme rofi fonts-noto-color-emoji
 
 mkdir -p $HOME/.local/bin
 quiet_tmp=$(mktemp -d)

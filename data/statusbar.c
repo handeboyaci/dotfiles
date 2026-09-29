@@ -79,9 +79,13 @@ typedef struct {
     char label[64]; /* Emoji / label per timezone (can be empty) */
 } TzEntry;
 
+static TzEntry g_cfg_tzs[MAX_TZS];
+static int g_cfg_tz_count = 0;
 static TzEntry g_tzs[MAX_TZS];
 static int g_tz_count = 0;
 static int g_tz_idx = 0;
+static char g_detected_tz[64] = "";
+static char g_detected_city[64] = "";
 static bool g_clock_alt = false; /* Toggled by right-click (format-alt-click: 3) */
 static char g_gcal_token_arg[512] = "";
 static char g_config_path[512] = "";
@@ -160,6 +164,8 @@ static bool g_sway_visible_by_modifier = false;
 static bool g_manual_hidden = false;
 static bool g_bar_visible = false;
 static volatile sig_atomic_t g_toggle_requested = 0;
+static volatile sig_atomic_t g_geoloc_update_requested = 0;
+
 
 /* Quiet Notification Daemon */
 static uint32_t g_quiet_count = 0;
@@ -185,6 +191,17 @@ static char g_gcal_token_file[512] = "";
 static time_t g_gcal_token_expiry = 0;
 static char g_gcal_calendars[MAX_GCAL_CALS][128] = {"primary"};
 static int g_gcal_cal_count = 1;
+#define MAX_SCOPED_LOC_RULES 16
+typedef struct {
+    char scope[128];
+    char prefixes[MAX_LOC_PREFIXES][128];
+    int prefix_count;
+} ScopedLocRule;
+
+static ScopedLocRule g_scoped_loc_rules[MAX_SCOPED_LOC_RULES];
+static int g_scoped_loc_rule_count = 0;
+static char g_default_loc_prefixes[MAX_LOC_PREFIXES][128];
+static int g_default_loc_prefix_count = 0;
 static char g_gcal_loc_prefixes[MAX_LOC_PREFIXES][128];
 static int g_gcal_loc_prefix_count = 0;
 #define MAX_IGNORED_EVENTS 32
@@ -204,10 +221,15 @@ static bool g_pulse_muted = false;
 
 /* Namaz (Offline Astronomical Moonsighting Committee) */
 static char g_namaz_city[64] = "";
+static bool g_namaz_city_configured = false;
 static double g_namaz_lat = 0.0;
 static double g_namaz_lon = 0.0;
+static bool g_namaz_auto_loc = false;
+static char g_namaz_tz[64] = "";
+static bool g_namaz_tz_configured = false;
 static char g_namaz_today[6][16]; /* Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha */
 static char g_namaz_tom_fajr[16] = "";
+static int g_namaz_loaded_mday = -1;
 static bool g_namaz_loaded = false;
 static bool g_namaz_show_full = false;
 
@@ -234,6 +256,8 @@ static int g_pointer_x = -1;
 static int g_pointer_y = -1;
 static uint32_t g_last_click_ms = 0;
 static int g_last_click_mod = -1;
+
+static void update_active_loc_prefixes(void);
 
 static void notify_main_loop(void) {
     if (g_wakeup_pipe[1] >= 0) {
@@ -323,6 +347,7 @@ static FT_Face g_face_bold;
 static FT_Face g_face_sym;
 static FT_Face g_face_symbola;
 static FT_Face g_face_emoji;
+static char g_emoji_font_path[512] = "";
 static uint8_t *g_emoji_gsub = NULL;
 static size_t g_emoji_gsub_len = 0;
 
@@ -392,8 +417,55 @@ static void init_fonts(void) {
         FT_New_Face(g_ft, "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", 0, &g_face_bold);
     }
     FT_New_Face(g_ft, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0, &g_face_sym);
-    FT_New_Face(g_ft, "/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf", 0, &g_face_symbola);
-    if (FT_New_Face(g_ft, "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf", 0, &g_face_emoji) == 0) {
+    const char *symb_paths[] = {
+        "/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf",
+        "/usr/share/fonts/truetype/ancient-scripts/Symbola.ttf",
+        "/usr/share/fonts/symbola/Symbola.ttf",
+        "/usr/share/fonts/TTF/Symbola.ttf",
+        NULL
+    };
+    for (int i = 0; symb_paths[i]; i++) {
+        if (FT_New_Face(g_ft, symb_paths[i], 0, &g_face_symbola) == 0) break;
+    }
+    if (!g_face_symbola) {
+        char u_symb[512];
+        snprintf(u_symb, sizeof(u_symb), "%s/.fonts/Symbola.ttf", g_home_dir);
+        if (FT_New_Face(g_ft, u_symb, 0, &g_face_symbola) != 0) {
+            snprintf(u_symb, sizeof(u_symb), "%s/.local/share/fonts/Symbola.ttf", g_home_dir);
+            FT_New_Face(g_ft, u_symb, 0, &g_face_symbola);
+        }
+    }
+
+    const char *noto_paths[] = {
+        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+        "/usr/share/fonts/google-noto-color-emoji-fonts/NotoColorEmoji.ttf",
+        "/usr/share/fonts/noto-color-emoji/NotoColorEmoji.ttf",
+        "/usr/share/fonts/TTF/NotoColorEmoji.ttf",
+        "/usr/share/fonts/NotoColorEmoji.ttf",
+        "/usr/local/share/fonts/NotoColorEmoji.ttf",
+        NULL
+    };
+    for (int i = 0; noto_paths[i]; i++) {
+        if (FT_New_Face(g_ft, noto_paths[i], 0, &g_face_emoji) == 0) {
+            snprintf(g_emoji_font_path, sizeof(g_emoji_font_path), "%s", noto_paths[i]);
+            break;
+        }
+    }
+    if (!g_face_emoji) {
+        char u_noto[512];
+        snprintf(u_noto, sizeof(u_noto), "%s/.fonts/NotoColorEmoji.ttf", g_home_dir);
+        if (FT_New_Face(g_ft, u_noto, 0, &g_face_emoji) == 0) {
+            snprintf(g_emoji_font_path, sizeof(g_emoji_font_path), "%s", u_noto);
+        } else {
+            snprintf(u_noto, sizeof(u_noto), "%s/.local/share/fonts/NotoColorEmoji.ttf", g_home_dir);
+            if (FT_New_Face(g_ft, u_noto, 0, &g_face_emoji) == 0) {
+                snprintf(g_emoji_font_path, sizeof(g_emoji_font_path), "%s", u_noto);
+            }
+        }
+    }
+
+    if (g_face_emoji) {
         if (g_face_emoji->num_fixed_sizes > 0) {
             FT_Select_Size(g_face_emoji, 0);
         }
@@ -405,6 +477,10 @@ static void init_fonts(void) {
                 g_emoji_gsub_len = len;
             }
         }
+    } else {
+        fprintf(stderr, "statusbar: [WARNING] NotoColorEmoji.ttf not found in standard system font paths.\n"
+                        "           Color emojis will fall back to Symbola monochrome.\n"
+                        "           To enable full-color emojis, please install: 'fonts-noto-color-emoji' (Debian/Ubuntu) or 'noto-fonts-emoji' (Arch/Fedora).\n");
     }
 }
 
@@ -557,6 +633,53 @@ static inline bool is_symbola_forced(uint32_t cp) {
     return false;
 }
 
+static inline bool is_flag_or_city_emoji(uint32_t cp) {
+    /* Explicit city & landmark emojis */
+    switch (cp) {
+        case 0x1F5FD: /* 🗽 Statue of Liberty (NYC) */
+        case 0x1F5FC: /* 🗼 Tokyo Tower */
+        case 0x1F5FB: /* 🗻 Mount Fuji */
+        case 0x1F3D9: /* 🏙 Cityscape */
+        case 0x1F306: /* 🌆 Cityscape at dusk */
+        case 0x1F307: /* 🌇 Sunset over buildings */
+        case 0x1F309: /* 🌉 Bridge at night */
+        case 0x1F3DB: /* 🏛 Classical building */
+        case 0x1F3F0: /* 🏰 European castle */
+        case 0x1F3EF: /* 🏯 Japanese castle */
+        case 0x1F3A1: /* 🎡 Ferris wheel */
+        case 0x1F54C: /* 🕌 Mosque */
+        case 0x1F54D: /* 🕍 Synagogue */
+        case 0x1F6D5: /* 🛕 Hindu temple */
+        case 0x26E9:  /* ⛩ Shinto shrine */
+        case 0x1F54B: /* 🕋 Kaaba */
+        case 0x1F5FF: /* 🗿 Moyai */
+        case 0x1F3DD: /* 🏝 Desert island */
+        case 0x1F3D4: /* 🏔 Snow-capped mountain */
+        case 0x1F3D6: /* 🏖 Beach with umbrella */
+        case 0x1F3DC: /* 🏜 Desert */
+        case 0x1F30B: /* 🌋 Volcano */
+            return true;
+        default:
+            break;
+    }
+    /* Any non-ASCII emoji configured as a timezone label in g_cfg_tzs or g_tzs */
+    for (int i = 0; i < g_cfg_tz_count; i++) {
+        const char *s = g_cfg_tzs[i].label;
+        while (*s) {
+            uint32_t c = utf8_next(&s);
+            if (c == cp && c > 127) return true;
+        }
+    }
+    for (int i = 0; i < g_tz_count; i++) {
+        const char *s = g_tzs[i].label;
+        while (*s) {
+            uint32_t c = utf8_next(&s);
+            if (c == cp && c > 127) return true;
+        }
+    }
+    return false;
+}
+
 /* Render or measure a single line of markup text */
 static int render_markup_line(SurfaceBuf *s, const char *text, int start_x, int baseline_y,
                               int px_size, uint32_t default_fg, bool force_bold, bool draw) {
@@ -639,7 +762,7 @@ static int render_markup_line(SurfaceBuf *s, const char *text, int start_x, int 
         if (cp == 0) break;
         if (cp == 0xFE0F || cp == 0xFE0E) continue; /* Variation selectors */
 
-        /* Check for 2-codepoint Regional Indicator flag sequence (U+1F1E6..U+1F1FF) - only flags use Noto */
+        /* Check for flag sequences or city/landmark emojis (rendered in color via Noto Color Emoji) */
         FT_UInt emoji_glyph = 0;
         if (cp >= 0x1F1E6 && cp <= 0x1F1FF && g_face_emoji) {
             const char *peek = p;
@@ -650,6 +773,8 @@ static int render_markup_line(SurfaceBuf *s, const char *text, int start_x, int 
                 FT_UInt g2 = FT_Get_Char_Index(g_face_emoji, cp2);
                 emoji_glyph = emoji_gsub_ligature(g1, g2);
             }
+        } else if (!is_symbola_forced(cp) && is_flag_or_city_emoji(cp) && g_face_emoji) {
+            emoji_glyph = FT_Get_Char_Index(g_face_emoji, cp);
         }
 
         if (emoji_glyph != 0 && g_face_emoji) {
@@ -808,6 +933,134 @@ static void format_tz_time(const char *tz_name, time_t t, struct tm *out_tm) {
 }
 
 
+static void get_system_tz(char *out, size_t sz) {
+    char buf[512];
+    ssize_t len = readlink("/etc/localtime", buf, sizeof(buf) - 1);
+    if (len > 0) {
+        buf[len] = '\0';
+        char *zi = strstr(buf, "/zoneinfo/");
+        if (zi) {
+            snprintf(out, sz, "%s", zi + 10);
+            return;
+        }
+    }
+    char *res = realpath("/etc/localtime", NULL);
+    if (res) {
+        char *zi = strstr(res, "/zoneinfo/");
+        if (zi) {
+            snprintf(out, sz, "%s", zi + 10);
+            free(res);
+            return;
+        }
+        free(res);
+    }
+    const char *tz = getenv("TZ");
+    if (tz && *tz) {
+        snprintf(out, sz, "%s", tz);
+        return;
+    }
+    snprintf(out, sz, "UTC");
+}
+
+static bool is_same_timezone(const char *tz1, const char *tz2) {
+    if (!tz1 || !tz2 || !*tz1 || !*tz2) return false;
+    if (strcmp(tz1, tz2) == 0) return true;
+
+    char p1[512], p2[512];
+    snprintf(p1, sizeof(p1), "/usr/share/zoneinfo/%s", tz1);
+    snprintf(p2, sizeof(p2), "/usr/share/zoneinfo/%s", tz2);
+
+    char *r1 = realpath(p1, NULL);
+    char *r2 = realpath(p2, NULL);
+    bool same = false;
+    if (r1 && r2 && strcmp(r1, r2) == 0) {
+        same = true;
+    }
+    free(r1);
+    free(r2);
+    if (same) return true;
+
+    /* Match city suffix (e.g. Asia/Istanbul vs Europe/Istanbul, or New_York vs America/New_York) */
+    const char *slash1 = strrchr(tz1, '/');
+    const char *s1 = slash1 ? slash1 + 1 : tz1;
+    const char *slash2 = strrchr(tz2, '/');
+    const char *s2 = slash2 ? slash2 + 1 : tz2;
+    if (*s1 && *s2 && strcasecmp(s1, s2) == 0) {
+        return true;
+    }
+    return false;
+}
+
+static void update_active_clocks(void) {
+    pthread_mutex_lock(&g_mutex);
+
+    char det_tz[64] = "";
+    if (g_detected_tz[0]) {
+        snprintf(det_tz, sizeof(det_tz), "%s", g_detected_tz);
+    } else {
+        get_system_tz(det_tz, sizeof(det_tz));
+        snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", det_tz);
+    }
+
+    int match_idx = -1;
+    for (int i = 0; i < g_cfg_tz_count; i++) {
+        if (is_same_timezone(det_tz, g_cfg_tzs[i].tz)) {
+            match_idx = i;
+            break;
+        }
+    }
+
+    g_tz_count = 0;
+
+    if (match_idx >= 0) {
+        /* Current location is one of the configured locations: deduplicate.
+         * Default (index 0) is current location, with emoji stripped in status bar.
+         * All other configured locations follow, keeping their emojis.
+         */
+        snprintf(g_tzs[0].tz, sizeof(g_tzs[0].tz), "%s", g_cfg_tzs[match_idx].tz);
+        g_tzs[0].label[0] = '\0';
+        g_tz_count = 1;
+
+        for (int i = 0; i < g_cfg_tz_count; i++) {
+            if (i == match_idx) continue;
+            if (g_tz_count < MAX_TZS) {
+                snprintf(g_tzs[g_tz_count].tz, sizeof(g_tzs[g_tz_count].tz), "%s", g_cfg_tzs[i].tz);
+                snprintf(g_tzs[g_tz_count].label, sizeof(g_tzs[g_tz_count].label), "%s", g_cfg_tzs[i].label);
+                g_tz_count++;
+            }
+        }
+    } else {
+        /* New location not in configured list: total locations = 1 + configured.
+         * Default (index 0) is current location (w/o emoji).
+         * All configured locations follow, keeping their emojis.
+         */
+        snprintf(g_tzs[0].tz, sizeof(g_tzs[0].tz), "%s", det_tz);
+        g_tzs[0].label[0] = '\0';
+        g_tz_count = 1;
+
+        for (int i = 0; i < g_cfg_tz_count; i++) {
+            if (g_tz_count < MAX_TZS) {
+                snprintf(g_tzs[g_tz_count].tz, sizeof(g_tzs[g_tz_count].tz), "%s", g_cfg_tzs[i].tz);
+                snprintf(g_tzs[g_tz_count].label, sizeof(g_tzs[g_tz_count].label), "%s", g_cfg_tzs[i].label);
+                g_tz_count++;
+            }
+        }
+    }
+
+    if (g_tz_count == 0) {
+        snprintf(g_tzs[0].tz, sizeof(g_tzs[0].tz), "%s", det_tz);
+        g_tzs[0].label[0] = '\0';
+        g_tz_count = 1;
+    }
+
+    if (g_tz_idx >= g_tz_count) {
+        g_tz_idx = 0;
+    }
+
+    pthread_mutex_unlock(&g_mutex);
+    update_active_loc_prefixes();
+}
+
 static int days_in_month(int y, int m) {
     static const int dm[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     if (m == 2 && ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0))) return 29;
@@ -825,17 +1078,22 @@ static void build_clock_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
     char dt_buf[64];
     strftime(dt_buf, sizeof(dt_buf), g_clock_alt ? "%a %d/%b/%Y | %H:%M:%S" : "%a %d/%b/%Y | %H:%M", &tm_cur);
 
-    if (cur_lbl && *cur_lbl) {
+    /* Emoji is shown only for non-default locations (g_tz_idx != 0) */
+    if (g_tz_idx != 0 && cur_lbl && *cur_lbl) {
         snprintf(bar_out, bar_sz, "%s %s", dt_buf, cur_lbl);
     } else {
         snprintf(bar_out, bar_sz, "%s", dt_buf);
     }
 
-    /* Build tooltip: {tz_list}\n\n{calendar} */
+    /* Build tooltip: Hover only shows configured locations. All of them. All with emojis, if provided. */
     size_t off = 0;
-    for (int i = 0; i < g_tz_count; i++) {
+    int tip_cnt = (g_cfg_tz_count > 0) ? g_cfg_tz_count : g_tz_count;
+    for (int i = 0; i < tip_cnt; i++) {
+        const char *tz = (g_cfg_tz_count > 0) ? g_cfg_tzs[i].tz : g_tzs[i].tz;
+        const char *lbl = (g_cfg_tz_count > 0) ? g_cfg_tzs[i].label : g_tzs[i].label;
+
         struct tm tm_z;
-        format_tz_time(g_tzs[i].tz, now, &tm_z);
+        format_tz_time(tz, now, &tm_z);
         char tbuf[16];
         strftime(tbuf, sizeof(tbuf), "%H:%M", &tm_z);
 
@@ -843,8 +1101,8 @@ static void build_clock_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
             off += snprintf(tip_out + off, tip_sz - off, " | ");
         }
 
-        if (g_tzs[i].label[0] != '\0') {
-            off += snprintf(tip_out + off, tip_sz - off, "%s %s", tbuf, g_tzs[i].label);
+        if (lbl && *lbl) {
+            off += snprintf(tip_out + off, tip_sz - off, "%s %s", tbuf, lbl);
         } else {
             off += snprintf(tip_out + off, tip_sz - off, "%s", tbuf);
         }
@@ -1794,6 +2052,8 @@ static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
     }
     if (tok_cnt == 0) return;
 
+    update_active_loc_prefixes();
+
     /* 3. Match against configured relevant location prefixes/regexes in priority order (cap at 3 locations) */
     for (int pr = 0; pr < g_gcal_loc_prefix_count; pr++) {
         const char *pref = g_gcal_loc_prefixes[pr];
@@ -2383,38 +2643,426 @@ static void namaz_format_hm(double hours_ut, double utc_offset, char *out, size_
     snprintf(out, sz, "%02d:%02d", h, m);
 }
 
-static void update_namaz_astronomical(void) {
-    time_t now = time(NULL);
-    struct tm tm_loc;
-    localtime_r(&now, &tm_loc);
-    double utc_offset = (double)tm_loc.tm_gmtoff / 3600.0;
-    int y = tm_loc.tm_year + 1900;
-    int m = tm_loc.tm_mon + 1;
-    int d = tm_loc.tm_mday;
+static double parse_iso6709_part(const char *s, int len) {
+    if (len <= 0) return 0.0;
+    double sign = 1.0;
+    if (*s == '+') { s++; len--; }
+    else if (*s == '-') { sign = -1.0; s++; len--; }
 
-    NamazPrayerTimes pt = namaz_calculate(y, m, d, g_namaz_lat, g_namaz_lon, utc_offset);
+    double deg = 0, min = 0, sec = 0;
+    if (len == 4) { /* DDMM */
+        char b[3] = {s[0], s[1], 0}; deg = atof(b);
+        min = atof(s + 2);
+    } else if (len == 5) { /* DDDMM */
+        char b[4] = {s[0], s[1], s[2], 0}; deg = atof(b);
+        min = atof(s + 3);
+    } else if (len == 6) { /* DDMMSS */
+        char b[3] = {s[0], s[1], 0}; deg = atof(b);
+        char m[3] = {s[2], s[3], 0}; min = atof(m);
+        sec = atof(s + 4);
+    } else if (len >= 7) { /* DDDMMSS */
+        char b[4] = {s[0], s[1], s[2], 0}; deg = atof(b);
+        char m[3] = {s[3], s[4], 0}; min = atof(m);
+        sec = atof(s + 5);
+    } else {
+        deg = atof(s);
+    }
+    return sign * (deg + min / 60.0 + sec / 3600.0);
+}
+
+static bool parse_iso6709(const char *coord, double *lat, double *lon) {
+    if (!coord || !*coord) return false;
+    const char *p = coord + 1;
+    while (*p && *p != '+' && *p != '-') p++;
+    if (!*p) return false;
+    int lat_len = (int)(p - coord);
+    int lon_len = (int)strlen(p);
+    *lat = parse_iso6709_part(coord, lat_len);
+    *lon = parse_iso6709_part(p, lon_len);
+    return true;
+}
+
+static bool lookup_timezone_from_coords(double lat, double lon, char *out_tz, size_t sz) {
+    const char *files[] = {"/usr/share/zoneinfo/zone1970.tab", "/usr/share/zoneinfo/zone.tab", NULL};
+    FILE *f = NULL;
+    for (int i = 0; files[i]; i++) {
+        f = fopen(files[i], "r");
+        if (f) break;
+    }
+    if (!f) {
+        /* Fallback: synthesize POSIX Etc/GMT timezone from longitude */
+        int gmt_offset = (int)round(lon / 15.0);
+        if (gmt_offset == 0) snprintf(out_tz, sz, "Etc/UTC");
+        else if (gmt_offset > 0) snprintf(out_tz, sz, "Etc/GMT-%d", gmt_offset);
+        else snprintf(out_tz, sz, "Etc/GMT+%d", -gmt_offset);
+        return true;
+    }
+
+    char line[512];
+    double best_dist2 = 1e18;
+    char best_tz[128] = "";
+    double cos_lat = cos(lat * M_PI / 180.0);
+
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] == '#' || line[0] == '\n') continue;
+        char *tab1 = strchr(line, '\t');
+        if (!tab1) continue;
+        char *coord = tab1 + 1;
+        char *tab2 = strchr(coord, '\t');
+        if (!tab2) continue;
+        *tab2 = '\0';
+        char *tz = tab2 + 1;
+        char *tab3 = strchr(tz, '\t');
+        if (tab3) *tab3 = '\0';
+        char *nl = strchr(tz, '\n');
+        if (nl) *nl = '\0';
+        char *cr = strchr(tz, '\r');
+        if (cr) *cr = '\0';
+
+        double clat = 0, clon = 0;
+        if (!parse_iso6709(coord, &clat, &clon)) continue;
+
+        double dlat = lat - clat;
+        double dlon = (lon - clon) * cos_lat;
+        double dist2 = dlat * dlat + dlon * dlon;
+        if (dist2 < best_dist2) {
+            best_dist2 = dist2;
+            snprintf(best_tz, sizeof(best_tz), "%s", tz);
+        }
+    }
+    fclose(f);
+
+    if (best_tz[0]) {
+        snprintf(out_tz, sz, "%s", best_tz);
+        return true;
+    }
+    return false;
+}
+
+static bool parse_geoloc_json(const char *resp, double *out_lat, double *out_lon,
+                              char *out_tz, size_t tz_sz, char *out_city, size_t city_sz) {
+    if (!resp || !*resp) return false;
+    struct json_object *root = json_tokener_parse(resp);
+    if (!root) return false;
+
+    bool found = false;
+    struct json_object *obj_lat = NULL, *obj_lon = NULL, *obj_loc = NULL;
+    struct json_object *obj_tz = NULL, *obj_city = NULL;
+
+    if (json_object_object_get_ex(root, "latitude", &obj_lat) &&
+        json_object_object_get_ex(root, "longitude", &obj_lon)) {
+        *out_lat = json_object_get_double(obj_lat);
+        *out_lon = json_object_get_double(obj_lon);
+        found = true;
+    } else if (json_object_object_get_ex(root, "lat", &obj_lat) &&
+               json_object_object_get_ex(root, "lon", &obj_lon)) {
+        *out_lat = json_object_get_double(obj_lat);
+        *out_lon = json_object_get_double(obj_lon);
+        found = true;
+    } else if (json_object_object_get_ex(root, "loc", &obj_loc)) {
+        const char *loc_str = json_object_get_string(obj_loc);
+        if (loc_str && sscanf(loc_str, "%lf,%lf", out_lat, out_lon) == 2) {
+            found = true;
+        }
+    }
+
+    if (found) {
+        if (out_tz && tz_sz > 0 && json_object_object_get_ex(root, "timezone", &obj_tz)) {
+            const char *tz_str = json_object_get_string(obj_tz);
+            if (tz_str && *tz_str) snprintf(out_tz, tz_sz, "%s", tz_str);
+        }
+        if (out_city && city_sz > 0 && json_object_object_get_ex(root, "city", &obj_city)) {
+            const char *city_str = json_object_get_string(obj_city);
+            if (city_str && *city_str) snprintf(out_city, city_sz, "%s", city_str);
+        }
+    }
+
+    json_object_put(root);
+    return found;
+}
+
+static void save_geoloc_cache(double lat, double lon, const char *tz, const char *city) {
+    char cache_dir[512];
+    const char *xdg_cache = getenv("XDG_CACHE_HOME");
+    if (xdg_cache && *xdg_cache) snprintf(cache_dir, sizeof(cache_dir), "%s", xdg_cache);
+    else snprintf(cache_dir, sizeof(cache_dir), "%s/.cache", g_home_dir);
+    mkdir(cache_dir, 0755);
+
+    char cache_file[512];
+    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", cache_dir);
+    FILE *f = fopen(cache_file, "w");
+    if (!f) return;
+    fprintf(f, "{\"latitude\":%.6f,\"longitude\":%.6f,\"timezone\":\"%s\",\"city\":\"%s\"}\n",
+            lat, lon, tz ? tz : "", city ? city : "");
+    fclose(f);
+}
+
+static bool load_geoloc_cache(void) {
+    char cache_dir[512];
+    const char *xdg_cache = getenv("XDG_CACHE_HOME");
+    if (xdg_cache && *xdg_cache) snprintf(cache_dir, sizeof(cache_dir), "%s", xdg_cache);
+    else snprintf(cache_dir, sizeof(cache_dir), "%s/.cache", g_home_dir);
+
+    char cache_file[512];
+    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", cache_dir);
+    FILE *f = fopen(cache_file, "r");
+    if (!f) {
+        f = fopen("/var/cache/statusbar_geoloc.json", "r");
+    }
+    if (!f) return false;
+
+    char buf[2048];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    if (n == 0) return false;
+    buf[n] = '\0';
+
+    double lat = 0.0, lon = 0.0;
+    char tz[64] = "", city[64] = "";
+    if (!parse_geoloc_json(buf, &lat, &lon, tz, sizeof(tz), city, sizeof(city))) {
+        return false;
+    }
+    if (fabs(lat) < 1e-4 && fabs(lon) < 1e-4) return false;
 
     pthread_mutex_lock(&g_mutex);
-    namaz_format_hm(pt.fajr, utc_offset, g_namaz_today[0], sizeof(g_namaz_today[0]));
-    namaz_format_hm(pt.sunrise, utc_offset, g_namaz_today[1], sizeof(g_namaz_today[1]));
-    namaz_format_hm(pt.dhuhr, utc_offset, g_namaz_today[2], sizeof(g_namaz_today[2]));
-    namaz_format_hm(pt.asr, utc_offset, g_namaz_today[3], sizeof(g_namaz_today[3]));
-    namaz_format_hm(pt.maghrib, utc_offset, g_namaz_today[4], sizeof(g_namaz_today[4]));
-    namaz_format_hm(pt.isha, utc_offset, g_namaz_today[5], sizeof(g_namaz_today[5]));
+    if (city[0]) {
+        snprintf(g_detected_city, sizeof(g_detected_city), "%s", city);
+    }
+    if (g_namaz_auto_loc) {
+        g_namaz_lat = lat;
+        g_namaz_lon = lon;
+        if (!g_namaz_tz_configured && tz[0]) {
+            snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", tz);
+        }
+        if (tz[0]) {
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", tz);
+        }
+        if (!g_namaz_city_configured && city[0]) {
+            snprintf(g_namaz_city, sizeof(g_namaz_city), "%s", city);
+        }
+    } else {
+        if (tz[0]) {
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", tz);
+        }
+    }
+    pthread_mutex_unlock(&g_mutex);
+    return true;
+}
 
-    /* Tomorrow Fajr */
+
+static void update_namaz_astronomical(void) {
+    pthread_mutex_lock(&g_mutex);
+    double lat = g_namaz_lat;
+    double lon = g_namaz_lon;
+    char tz[128] = "";
+    if (g_namaz_tz[0]) {
+        snprintf(tz, sizeof(tz), "%s", g_namaz_tz);
+    }
+    pthread_mutex_unlock(&g_mutex);
+
+    if (fabs(lat) < 1e-4 && fabs(lon) < 1e-4) {
+        return;
+    }
+
+    if (!tz[0]) {
+        lookup_timezone_from_coords(lat, lon, tz, sizeof(tz));
+        if (tz[0]) {
+            pthread_mutex_lock(&g_mutex);
+            if (!g_namaz_tz[0]) snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", tz);
+            pthread_mutex_unlock(&g_mutex);
+        }
+    }
+
+    time_t now = time(NULL);
+    struct tm tm_target;
+    pthread_mutex_lock(&g_mutex);
+    format_tz_time(tz[0] ? tz : NULL, now, &tm_target);
+    pthread_mutex_unlock(&g_mutex);
+
+    double utc_offset = (double)tm_target.tm_gmtoff / 3600.0;
+    int y = tm_target.tm_year + 1900;
+    int m = tm_target.tm_mon + 1;
+    int d = tm_target.tm_mday;
+
+    NamazPrayerTimes pt = namaz_calculate(y, m, d, lat, lon, utc_offset);
+
+    char today_prayers[6][16];
+    char tom_fajr[16];
+
+    namaz_format_hm(pt.fajr, utc_offset, today_prayers[0], sizeof(today_prayers[0]));
+    namaz_format_hm(pt.sunrise, utc_offset, today_prayers[1], sizeof(today_prayers[1]));
+    namaz_format_hm(pt.dhuhr, utc_offset, today_prayers[2], sizeof(today_prayers[2]));
+    namaz_format_hm(pt.asr, utc_offset, today_prayers[3], sizeof(today_prayers[3]));
+    namaz_format_hm(pt.maghrib, utc_offset, today_prayers[4], sizeof(today_prayers[4]));
+    namaz_format_hm(pt.isha, utc_offset, today_prayers[5], sizeof(today_prayers[5]));
+
+    /* Tomorrow Fajr in target timezone */
     time_t tom = now + 86400;
     struct tm tm_tom;
-    localtime_r(&tom, &tm_tom);
+    pthread_mutex_lock(&g_mutex);
+    format_tz_time(tz[0] ? tz : NULL, tom, &tm_tom);
+    pthread_mutex_unlock(&g_mutex);
+
     int ty = tm_tom.tm_year + 1900;
     int tm_m = tm_tom.tm_mon + 1;
     int td = tm_tom.tm_mday;
-    NamazPrayerTimes pt_tom = namaz_calculate(ty, tm_m, td, g_namaz_lat, g_namaz_lon, utc_offset);
-    namaz_format_hm(pt_tom.fajr, utc_offset, g_namaz_tom_fajr, sizeof(g_namaz_tom_fajr));
+    double tom_offset = (double)tm_tom.tm_gmtoff / 3600.0;
+    NamazPrayerTimes pt_tom = namaz_calculate(ty, tm_m, td, lat, lon, tom_offset);
+    namaz_format_hm(pt_tom.fajr, tom_offset, tom_fajr, sizeof(tom_fajr));
 
+    pthread_mutex_lock(&g_mutex);
+    for (int i = 0; i < 6; i++) {
+        snprintf(g_namaz_today[i], sizeof(g_namaz_today[i]), "%s", today_prayers[i]);
+    }
+    snprintf(g_namaz_tom_fajr, sizeof(g_namaz_tom_fajr), "%s", tom_fajr);
+    g_namaz_loaded_mday = d;
     g_namaz_loaded = true;
     pthread_mutex_unlock(&g_mutex);
 }
+
+static bool fetch_geolocation_auto(void) {
+    if (load_geoloc_cache()) {
+        update_active_clocks();
+        update_namaz_astronomical();
+        notify_main_loop();
+        return true;
+    }
+
+    const char *endpoints[] = {
+        "curl -s --max-time 5 -H 'User-Agent: statusbar/1.0' https://ipapi.co/json/",
+        "curl -s --max-time 5 -H 'User-Agent: statusbar/1.0' http://ip-api.com/json",
+        "curl -s --max-time 5 -H 'User-Agent: statusbar/1.0' https://ipinfo.io/json",
+        NULL
+    };
+
+    double lat = 0.0, lon = 0.0;
+    char tz[64] = "", city[64] = "";
+    bool ok = false;
+
+    for (int i = 0; endpoints[i]; i++) {
+        char *resp = run_cmd_capture(endpoints[i], 4096);
+        if (resp) {
+            if (parse_geoloc_json(resp, &lat, &lon, tz, sizeof(tz), city, sizeof(city))) {
+                if (fabs(lat) > 1e-4 || fabs(lon) > 1e-4) {
+                    ok = true;
+                    free(resp);
+                    break;
+                }
+            }
+            free(resp);
+        }
+    }
+
+    if (!ok) return false;
+
+    if (!tz[0]) {
+        lookup_timezone_from_coords(lat, lon, tz, sizeof(tz));
+    }
+
+    save_geoloc_cache(lat, lon, tz, city);
+
+    pthread_mutex_lock(&g_mutex);
+    if (city[0]) {
+        snprintf(g_detected_city, sizeof(g_detected_city), "%s", city);
+    }
+    g_namaz_lat = lat;
+    g_namaz_lon = lon;
+    if (!g_namaz_tz_configured && tz[0]) {
+        snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", tz);
+    }
+    if (tz[0]) {
+        snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", tz);
+    }
+    if (!g_namaz_city_configured && city[0]) {
+        snprintf(g_namaz_city, sizeof(g_namaz_city), "%s", city);
+    }
+    pthread_mutex_unlock(&g_mutex);
+
+    update_active_clocks();
+    update_namaz_astronomical();
+    notify_main_loop();
+    return true;
+}
+
+static void *geoloc_fetch_thread(void *arg) {
+    (void)arg;
+    fetch_geolocation_auto();
+    return NULL;
+}
+
+static void trigger_geoloc_fetch_async(void) {
+    pthread_t th;
+    pthread_create(&th, NULL, geoloc_fetch_thread, NULL);
+    pthread_detach(th);
+}
+
+static void check_location_and_timezone(bool force) {
+    static time_t s_last_check = 0;
+    static time_t s_last_cache_mtime = 0;
+    static time_t s_last_localtime_mtime = 0;
+    time_t now = time(NULL);
+
+    if (!force && (now - s_last_check < 30)) {
+        return;
+    }
+    s_last_check = now;
+
+    char cache_dir[512];
+    const char *xdg_cache = getenv("XDG_CACHE_HOME");
+    if (xdg_cache && *xdg_cache) snprintf(cache_dir, sizeof(cache_dir), "%s", xdg_cache);
+    else snprintf(cache_dir, sizeof(cache_dir), "%s/.cache", g_home_dir);
+
+    char cache_file[512];
+    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", cache_dir);
+
+    struct stat st_cache;
+    time_t cur_cache_mtime = 0;
+    if (stat(cache_file, &st_cache) == 0) {
+        cur_cache_mtime = st_cache.st_mtime;
+    } else if (stat("/var/cache/statusbar_geoloc.json", &st_cache) == 0) {
+        cur_cache_mtime = st_cache.st_mtime;
+    }
+
+    struct stat st_lt;
+    time_t cur_lt_mtime = 0;
+    if (lstat("/etc/localtime", &st_lt) == 0) {
+        cur_lt_mtime = st_lt.st_mtime;
+    }
+
+    bool changed = force;
+    bool cache_loaded = false;
+    if (force || cur_cache_mtime != s_last_cache_mtime) {
+        s_last_cache_mtime = cur_cache_mtime;
+        if (load_geoloc_cache()) {
+            cache_loaded = true;
+            changed = true;
+        }
+    }
+
+    if (!cache_loaded) {
+        char sys_tz[64] = "";
+        get_system_tz(sys_tz, sizeof(sys_tz));
+        if (force || cur_lt_mtime != s_last_localtime_mtime) {
+            s_last_localtime_mtime = cur_lt_mtime;
+            pthread_mutex_lock(&g_mutex);
+            if (sys_tz[0] && strcmp(g_detected_tz, sys_tz) != 0) {
+                snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", sys_tz);
+                if (g_namaz_auto_loc && !g_namaz_tz_configured) {
+                    snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", sys_tz);
+                }
+                changed = true;
+            }
+            pthread_mutex_unlock(&g_mutex);
+        }
+    }
+
+    if (changed) {
+        update_active_clocks();
+        update_namaz_astronomical();
+        notify_main_loop();
+    }
+}
+
 
 static void build_namaz_strings(char *bar_out, size_t bar_sz, char *tip_out, size_t tip_sz) {
     if (!g_namaz_loaded) {
@@ -2422,6 +3070,30 @@ static void build_namaz_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
     }
 
     pthread_mutex_lock(&g_mutex);
+    char tz[128] = "";
+    if (g_namaz_tz[0]) snprintf(tz, sizeof(tz), "%s", g_namaz_tz);
+    pthread_mutex_unlock(&g_mutex);
+
+    time_t now = time(NULL);
+    struct tm tm_now;
+    pthread_mutex_lock(&g_mutex);
+    format_tz_time(tz[0] ? tz : NULL, now, &tm_now);
+    pthread_mutex_unlock(&g_mutex);
+
+    pthread_mutex_lock(&g_mutex);
+    if (g_namaz_loaded && tm_now.tm_mday != g_namaz_loaded_mday) {
+        pthread_mutex_unlock(&g_mutex);
+        update_namaz_astronomical();
+        pthread_mutex_lock(&g_mutex);
+    }
+
+    if (!g_namaz_loaded) {
+        snprintf(bar_out, bar_sz, "Calculating...");
+        snprintf(tip_out, tip_sz, "Calculating prayer times...");
+        pthread_mutex_unlock(&g_mutex);
+        return;
+    }
+
     char full_day[256];
     snprintf(full_day, sizeof(full_day), "%s%s[%s | %s | %s | %s | %s | %s]",
              g_namaz_city[0] ? g_namaz_city : "",
@@ -2436,9 +3108,6 @@ static void build_namaz_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
         return;
     }
 
-    time_t now = time(NULL);
-    struct tm tm_now;
-    localtime_r(&now, &tm_now);
     int cur_m = tm_now.tm_hour * 60 + tm_now.tm_min;
     int next_m = -1;
     for (int i = 0; i < 6; i++) {
@@ -2983,11 +3652,19 @@ static void *background_worker_thread(void *arg) {
     (void)arg;
     load_gcal_credentials();
     fetch_gcal_events();
+    if (g_namaz_auto_loc) {
+        fetch_geolocation_auto();
+    }
     notify_main_loop();
 
+    int ticks = 0;
     while (1) {
         sleep(300); /* Refresh remote Google Calendar every 5 minutes */
         fetch_gcal_events();
+        ticks++;
+        if (g_namaz_auto_loc && (ticks % 6 == 0)) {
+            fetch_geolocation_auto();
+        }
         notify_main_loop();
     }
     return NULL;
@@ -3814,6 +4491,17 @@ static void sigusr1_handler(int sig) {
     }
 }
 
+static void sigusr2_handler(int sig) {
+    (void)sig;
+    g_geoloc_update_requested = 1;
+    if (g_wakeup_pipe[1] >= 0) {
+        char c = 1;
+        ssize_t r = write(g_wakeup_pipe[1], &c, 1);
+        (void)r;
+    }
+}
+
+
 static void sigterm_handler(int sig) {
     (void)sig;
     char pid_path[512];
@@ -3970,8 +4658,13 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
                 pthread_mutex_unlock(&g_mutex);
                 redraw_all();
             } else if (btn == 2) {
-                update_namaz_astronomical();
-                redraw_all();
+                check_location_and_timezone(true);
+                if (g_namaz_auto_loc) {
+                    trigger_geoloc_fetch_async();
+                } else {
+                    update_namaz_astronomical();
+                    redraw_all();
+                }
             }
             break;
 
@@ -4187,7 +4880,7 @@ static void expand_tilde_path(const char *in, char *out, size_t out_sz) {
 }
 
 static void add_tz_entry(const char *raw_spec) {
-    if (g_tz_count >= MAX_TZS) return;
+    if (g_cfg_tz_count >= MAX_TZS) return;
     char spec[256];
     snprintf(spec, sizeof(spec), "%s", raw_spec);
     trim_and_unquote(spec);
@@ -4195,33 +4888,147 @@ static void add_tz_entry(const char *raw_spec) {
 
     const char *eq = strchr(spec, '=');
     if (!eq) eq = strchr(spec, ':'); /* Also allow TZ:emoji */
+    if (!eq) eq = strchr(spec, ' '); /* Also allow TZ emoji */
     if (eq) {
         size_t tz_len = (size_t)(eq - spec);
-        if (tz_len >= sizeof(g_tzs[0].tz)) tz_len = sizeof(g_tzs[0].tz) - 1;
-        memcpy(g_tzs[g_tz_count].tz, spec, tz_len);
-        g_tzs[g_tz_count].tz[tz_len] = '\0';
-        trim_and_unquote(g_tzs[g_tz_count].tz);
+        if (tz_len >= sizeof(g_cfg_tzs[0].tz)) tz_len = sizeof(g_cfg_tzs[0].tz) - 1;
+        memcpy(g_cfg_tzs[g_cfg_tz_count].tz, spec, tz_len);
+        g_cfg_tzs[g_cfg_tz_count].tz[tz_len] = '\0';
+        trim_and_unquote(g_cfg_tzs[g_cfg_tz_count].tz);
 
         char lbl[64];
         snprintf(lbl, sizeof(lbl), "%s", eq + 1);
         trim_and_unquote(lbl);
-        snprintf(g_tzs[g_tz_count].label, sizeof(g_tzs[0].label), "%s", lbl);
+        snprintf(g_cfg_tzs[g_cfg_tz_count].label, sizeof(g_cfg_tzs[0].label), "%s", lbl);
     } else {
-        snprintf(g_tzs[g_tz_count].tz, sizeof(g_tzs[0].tz), "%s", spec);
-        g_tzs[g_tz_count].label[0] = '\0';
+        snprintf(g_cfg_tzs[g_cfg_tz_count].tz, sizeof(g_cfg_tzs[0].tz), "%s", spec);
+        g_cfg_tzs[g_cfg_tz_count].label[0] = '\0';
     }
-    g_tz_count++;
+    g_cfg_tz_count++;
 }
 
-static void add_loc_prefix(const char *raw_spec) {
-    if (g_gcal_loc_prefix_count >= MAX_LOC_PREFIXES) return;
+static void add_default_loc_prefix(const char *raw_spec) {
+    if (g_default_loc_prefix_count >= MAX_LOC_PREFIXES) return;
     char spec[128];
     snprintf(spec, sizeof(spec), "%s", raw_spec);
     trim_and_unquote(spec);
     if (!spec[0]) return;
-    snprintf(g_gcal_loc_prefixes[g_gcal_loc_prefix_count], sizeof(g_gcal_loc_prefixes[0]), "%s", spec);
-    g_gcal_loc_prefix_count++;
+    snprintf(g_default_loc_prefixes[g_default_loc_prefix_count], sizeof(g_default_loc_prefixes[0]), "%s", spec);
+    g_default_loc_prefix_count++;
 }
+
+static void add_scoped_loc_prefix(const char *scope, const char *raw_spec) {
+    if (!scope || !*scope) {
+        add_default_loc_prefix(raw_spec);
+        return;
+    }
+    char spec[128];
+    snprintf(spec, sizeof(spec), "%s", raw_spec);
+    trim_and_unquote(spec);
+    if (!spec[0]) return;
+
+    int rule_idx = -1;
+    for (int i = 0; i < g_scoped_loc_rule_count; i++) {
+        if (strcasecmp(g_scoped_loc_rules[i].scope, scope) == 0) {
+            rule_idx = i;
+            break;
+        }
+    }
+    if (rule_idx < 0) {
+        if (g_scoped_loc_rule_count >= MAX_SCOPED_LOC_RULES) return;
+        rule_idx = g_scoped_loc_rule_count++;
+        snprintf(g_scoped_loc_rules[rule_idx].scope, sizeof(g_scoped_loc_rules[0].scope), "%s", scope);
+        g_scoped_loc_rules[rule_idx].prefix_count = 0;
+    }
+    if (g_scoped_loc_rules[rule_idx].prefix_count < MAX_LOC_PREFIXES) {
+        snprintf(g_scoped_loc_rules[rule_idx].prefixes[g_scoped_loc_rules[rule_idx].prefix_count],
+                 sizeof(g_scoped_loc_rules[0].prefixes[0]), "%s", spec);
+        g_scoped_loc_rules[rule_idx].prefix_count++;
+    }
+}
+
+static void add_loc_prefix(const char *raw_spec) {
+    add_default_loc_prefix(raw_spec);
+}
+
+static void update_active_loc_prefixes(void) {
+    pthread_mutex_lock(&g_mutex);
+    char cur_tz[64] = "";
+    char cur_city[64] = "";
+    if (g_detected_tz[0]) snprintf(cur_tz, sizeof(cur_tz), "%s", g_detected_tz);
+    else get_system_tz(cur_tz, sizeof(cur_tz));
+
+    if (g_detected_city[0]) snprintf(cur_city, sizeof(cur_city), "%s", g_detected_city);
+    else if (g_namaz_city[0]) snprintf(cur_city, sizeof(cur_city), "%s", g_namaz_city);
+
+    int matched_rule = -1;
+
+    /* Tier 1: Match by City */
+    if (cur_city[0]) {
+        for (int i = 0; i < g_scoped_loc_rule_count; i++) {
+            char scope_copy[128];
+            snprintf(scope_copy, sizeof(scope_copy), "%s", g_scoped_loc_rules[i].scope);
+            char *saveptr = NULL;
+            char *tok = strtok_r(scope_copy, ",", &saveptr);
+            while (tok) {
+                while (*tok && isspace((unsigned char)*tok)) tok++;
+                size_t tlen = strlen(tok);
+                while (tlen > 0 && isspace((unsigned char)tok[tlen - 1])) tok[--tlen] = '\0';
+                if (tlen > 0) {
+                    if (strcasecmp(tok, cur_city) == 0 ||
+                        strcasestr(cur_city, tok) != NULL ||
+                        strcasestr(tok, cur_city) != NULL) {
+                        matched_rule = i;
+                        break;
+                    }
+                }
+                tok = strtok_r(NULL, ",", &saveptr);
+            }
+            if (matched_rule >= 0) break;
+        }
+    }
+
+    /* Tier 2: Match by Timezone */
+    if (matched_rule < 0 && cur_tz[0]) {
+        for (int i = 0; i < g_scoped_loc_rule_count; i++) {
+            char scope_copy[128];
+            snprintf(scope_copy, sizeof(scope_copy), "%s", g_scoped_loc_rules[i].scope);
+            char *saveptr = NULL;
+            char *tok = strtok_r(scope_copy, ",", &saveptr);
+            while (tok) {
+                while (*tok && isspace((unsigned char)*tok)) tok++;
+                size_t tlen = strlen(tok);
+                while (tlen > 0 && isspace((unsigned char)tok[tlen - 1])) tok[--tlen] = '\0';
+                if (tlen > 0) {
+                    if (is_same_timezone(tok, cur_tz) || strcasecmp(tok, cur_tz) == 0) {
+                        matched_rule = i;
+                        break;
+                    }
+                }
+                tok = strtok_r(NULL, ",", &saveptr);
+            }
+            if (matched_rule >= 0) break;
+        }
+    }
+
+    /* Apply selected rule or default */
+    g_gcal_loc_prefix_count = 0;
+    if (matched_rule >= 0) {
+        for (int p = 0; p < g_scoped_loc_rules[matched_rule].prefix_count; p++) {
+            snprintf(g_gcal_loc_prefixes[p], sizeof(g_gcal_loc_prefixes[0]), "%s",
+                     g_scoped_loc_rules[matched_rule].prefixes[p]);
+        }
+        g_gcal_loc_prefix_count = g_scoped_loc_rules[matched_rule].prefix_count;
+    } else {
+        for (int p = 0; p < g_default_loc_prefix_count; p++) {
+            snprintf(g_gcal_loc_prefixes[p], sizeof(g_gcal_loc_prefixes[0]), "%s",
+                     g_default_loc_prefixes[p]);
+        }
+        g_gcal_loc_prefix_count = g_default_loc_prefix_count;
+    }
+    pthread_mutex_unlock(&g_mutex);
+}
+
 
 static void add_gcal_calendar(const char *raw_spec) {
     if (g_gcal_cal_count >= MAX_GCAL_CALS) return;
@@ -4284,7 +5091,7 @@ static bool load_config_file(const char *path) {
                 eq++;
                 trim_and_unquote(eq);
                 if (!reset_tz) {
-                    g_tz_count = 0;
+                    g_cfg_tz_count = 0;
                     reset_tz = true;
                 }
                 /* Support comma-separated list or single entry */
@@ -4302,17 +5109,28 @@ static bool load_config_file(const char *path) {
                 expand_tilde_path(eq, g_gcal_token_arg, sizeof(g_gcal_token_arg));
             }
         } else if (strncmp(s, "relevant_locations", 18) == 0 || strncmp(s, "location_prefixes", 17) == 0) {
+            char *bopen = strchr(s, '[');
+            char *bclose = strchr(s, ']');
             char *eq = strchr(s, '=');
             if (eq) {
+                char scope[128] = "";
+                if (bopen && bclose && bclose > bopen && bclose < eq) {
+                    *bclose = '\0';
+                    snprintf(scope, sizeof(scope), "%s", bopen + 1);
+                    trim_and_unquote(scope);
+                }
                 eq++;
                 trim_and_unquote(eq);
                 if (!reset_loc) {
+                    g_scoped_loc_rule_count = 0;
+                    g_default_loc_prefix_count = 0;
                     g_gcal_loc_prefix_count = 0;
                     reset_loc = true;
                 }
                 char *tok = strtok(eq, ",");
                 while (tok) {
-                    add_loc_prefix(tok);
+                    if (scope[0]) add_scoped_loc_prefix(scope, tok);
+                    else add_default_loc_prefix(tok);
                     tok = strtok(NULL, ",");
                 }
             }
@@ -4376,16 +5194,62 @@ static bool load_config_file(const char *path) {
             }
         } else if (strncmp(s, "lat", 3) == 0 || strncmp(s, "latitude", 8) == 0) {
             char *eq = strchr(s, '=');
-            if (eq) g_namaz_lat = atof(eq + 1);
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                if (strcasecmp(eq, "auto") == 0) {
+                    g_namaz_auto_loc = true;
+                } else {
+                    g_namaz_lat = atof(eq);
+                    g_namaz_auto_loc = false;
+                }
+            }
         } else if (strncmp(s, "lon", 3) == 0 || strncmp(s, "lng", 3) == 0 || strncmp(s, "longitude", 9) == 0) {
             char *eq = strchr(s, '=');
-            if (eq) g_namaz_lon = atof(eq + 1);
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                if (strcasecmp(eq, "auto") == 0) {
+                    g_namaz_auto_loc = true;
+                } else {
+                    g_namaz_lon = atof(eq);
+                    g_namaz_auto_loc = false;
+                }
+            }
+        } else if (strncmp(s, "auto_location", 13) == 0 || strncmp(s, "auto_loc", 8) == 0 ||
+                   strncmp(s, "location", 8) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                if (strcasecmp(eq, "true") == 0 || strcasecmp(eq, "1") == 0 ||
+                    strcasecmp(eq, "yes") == 0 || strcasecmp(eq, "auto") == 0) {
+                    g_namaz_auto_loc = true;
+                } else {
+                    g_namaz_auto_loc = false;
+                }
+            }
         } else if (strncmp(s, "city", 4) == 0) {
             char *eq = strchr(s, '=');
             if (eq) {
                 eq++;
                 trim_and_unquote(eq);
-                snprintf(g_namaz_city, sizeof(g_namaz_city), "%s", eq);
+                if (strcasecmp(eq, "auto") == 0) {
+                    g_namaz_city[0] = '\0';
+                    g_namaz_city_configured = false;
+                } else {
+                    snprintf(g_namaz_city, sizeof(g_namaz_city), "%s", eq);
+                    g_namaz_city_configured = true;
+                }
+            }
+        } else if (strncmp(s, "namaz_tz", 8) == 0 || strncmp(s, "namaz_timezone", 14) == 0 ||
+                   strncmp(s, "prayer_tz", 9) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", eq);
+                g_namaz_tz_configured = true;
             }
         }
     }
@@ -4475,9 +5339,11 @@ static void print_usage(const char *prog) {
            "  --ignore-long-event-threshold <DUR>     Ignore events longer than threshold (default: 6h)\n"
            "  --ignored-events <LIST>                 Comma-separated event titles/patterns to filter (e.g. 'DNS,DND,Commute')\n"
            "  --gcal-notify-mins <MINS>               Urgent notification lead time in minutes (default: 5)\n"
-           "  --lat <DEGREES>                         Latitude for offline prayer times\n"
-           "  --lon <DEGREES>                         Longitude for offline prayer times\n"
-           "  --city <NAME>                           City label for prayer times\n"
+           "  --lat <DEGREES|auto>                    Latitude for offline prayer times (or 'auto')\n"
+           "  --lon <DEGREES|auto>                    Longitude for offline prayer times (or 'auto')\n"
+           "  --auto-location                         Automatically detect latitude, longitude & timezone\n"
+           "  --city <NAME>                           City label for prayer times (default: auto or none)\n"
+           "  --namaz-tz <TZ>                         Timezone for prayer times (default: auto-detected from lat/lon)\n"
            "  --config <PATH>                         Load configuration from file (default: $XDG_CONFIG_HOME/statusbar.conf)\n"
            "  --self-test                             Render bar & calendar tooltip offscreen and verify all modules\n"
            "  --wayland-test                          Connect to live Wayland display, configure layer surface & present frame\n"
@@ -4490,6 +5356,8 @@ int main(int argc, char *argv[]) {
     signal(SIGCHLD, SIG_DFL);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGUSR1, sigusr1_handler);
+    signal(SIGUSR2, sigusr2_handler);
+
     signal(SIGINT, sigterm_handler);
     signal(SIGTERM, sigterm_handler);
 
@@ -4498,6 +5366,7 @@ int main(int argc, char *argv[]) {
     const char *rdir = getenv("XDG_RUNTIME_DIR");
     if (rdir && *rdir) snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s", rdir);
     else snprintf(g_runtime_dir, sizeof(g_runtime_dir), "/run/user/%u", getuid());
+    get_system_tz(g_detected_tz, sizeof(g_detected_tz));
 
     /* Load configuration from $XDG_CONFIG_HOME/statusbar.conf (or ~/.config/statusbar.conf) */
     const char *xdg_cfg = getenv("XDG_CONFIG_HOME");
@@ -4556,10 +5425,16 @@ int main(int argc, char *argv[]) {
             load_config_file(exp_cfg);
         } else if (strcmp(argv[i], "--tz") == 0 && i + 1 < argc) {
             if (!cli_tz_reset) {
-                g_tz_count = 0;
+                g_cfg_tz_count = 0;
                 cli_tz_reset = true;
             }
-            add_tz_entry(argv[++i]);
+            char tmp_tz[512];
+            snprintf(tmp_tz, sizeof(tmp_tz), "%s", argv[++i]);
+            char *tok = strtok(tmp_tz, ",");
+            while (tok) {
+                add_tz_entry(tok);
+                tok = strtok(NULL, ",");
+            }
         } else if (strcmp(argv[i], "--gcal-token") == 0 && i + 1 < argc) {
             expand_tilde_path(argv[++i], g_gcal_token_arg, sizeof(g_gcal_token_arg));
         } else if (strcmp(argv[i], "--gcal-calendar") == 0 && i + 1 < argc) {
@@ -4618,24 +5493,50 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "--gcal-notify-mins") == 0 && i + 1 < argc) {
             g_gcal_notify_mins = atoi(argv[++i]);
         } else if ((strcmp(argv[i], "--lat") == 0 || strcmp(argv[i], "--latitude") == 0) && i + 1 < argc) {
-            g_namaz_lat = atof(argv[++i]);
+            i++;
+            if (strcasecmp(argv[i], "auto") == 0) {
+                g_namaz_auto_loc = true;
+            } else {
+                g_namaz_lat = atof(argv[i]);
+                g_namaz_auto_loc = false;
+            }
         } else if ((strcmp(argv[i], "--lon") == 0 || strcmp(argv[i], "--lng") == 0 || strcmp(argv[i], "--longitude") == 0) && i + 1 < argc) {
-            g_namaz_lon = atof(argv[++i]);
+            i++;
+            if (strcasecmp(argv[i], "auto") == 0) {
+                g_namaz_auto_loc = true;
+            } else {
+                g_namaz_lon = atof(argv[i]);
+                g_namaz_auto_loc = false;
+            }
+        } else if (strcmp(argv[i], "--auto-location") == 0 || strcmp(argv[i], "--auto-loc") == 0) {
+            g_namaz_auto_loc = true;
+            g_namaz_lat = 0.0;
+            g_namaz_lon = 0.0;
         } else if (strcmp(argv[i], "--city") == 0 && i + 1 < argc) {
-            snprintf(g_namaz_city, sizeof(g_namaz_city), "%s", argv[++i]);
+            i++;
+            if (strcasecmp(argv[i], "auto") == 0) {
+                g_namaz_city[0] = '\0';
+                g_namaz_city_configured = false;
+            } else {
+                snprintf(g_namaz_city, sizeof(g_namaz_city), "%s", argv[i]);
+                g_namaz_city_configured = true;
+            }
+        } else if ((strcmp(argv[i], "--namaz-tz") == 0 || strcmp(argv[i], "--prayer-tz") == 0) && i + 1 < argc) {
+            snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", argv[++i]);
+            g_namaz_tz_configured = true;
         }
     }
 
-    /* If no timezone was specified in $XDG_CONFIG_HOME/statusbar.conf or CLI, default to single local timezone */
-    if (g_tz_count == 0) {
-        g_tzs[0].tz[0] = '\0';
-        g_tzs[0].label[0] = '\0';
-        g_tz_count = 1;
-    }
+    load_geoloc_cache();
+    update_active_clocks();
 
     init_fonts();
 
     if (self_test) {
+        if (g_namaz_auto_loc) {
+            fetch_geolocation_auto();
+        }
+        update_active_clocks();
         load_gcal_credentials();
         update_namaz_astronomical();
         refresh_sway_state();
@@ -4646,9 +5547,113 @@ int main(int argc, char *argv[]) {
         uint32_t *px = calloc(3840 * BAR_HEIGHT, 4);
         SurfaceBuf sb = {.px = px, .w = 3840, .h = BAR_HEIGHT};
         render_bar(&sb);
-        printf("Self-test OK: rendered 3840x%d bar | workspaces=%d | tzs=%d (current='%s' label='%s') | clock_tip='%s' | screensaver=%s | quiet=%u (urg=%u preview='%s') | pulse=%d%%\n",
-               BAR_HEIGHT, g_ws_count, g_tz_count, g_tzs[0].tz, g_tzs[0].label,
+        /* Self-test verification of clock rotation, deduplication, and hover behavior */
+        {
+            char bar_test[128], tip_test[8192];
+            char orig_det_tz[64];
+            snprintf(orig_det_tz, sizeof(orig_det_tz), "%s", g_detected_tz);
+
+            /* Case 1: Detected location = Europe/Zurich (matches configured location) */
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "Europe/Zurich");
+            update_active_clocks();
+            if (g_tz_count != 3 || strcmp(g_tzs[0].tz, "Europe/Zurich") != 0 || g_tzs[0].label[0] != '\0') {
+                fprintf(stderr, "Self-test error: Zurich deduplication failed: count=%d tz0=%s lbl0='%s'\n",
+                        g_tz_count, g_tzs[0].tz, g_tzs[0].label);
+                return 1;
+            }
+            g_tz_idx = 0;
+            build_clock_strings(bar_test, sizeof(bar_test), tip_test, sizeof(tip_test));
+            if (strstr(bar_test, "🇨🇭") != NULL) {
+                fprintf(stderr, "Self-test error: default clock in bar must not have emoji: '%s'\n", bar_test);
+                return 1;
+            }
+            if (strstr(tip_test, "🇨🇭") == NULL || strstr(tip_test, "🗽") == NULL || strstr(tip_test, "🇹🇷") == NULL) {
+                fprintf(stderr, "Self-test error: tooltip must show all configured locations with emojis\n");
+                return 1;
+            }
+            g_tz_idx = 1;
+            build_clock_strings(bar_test, sizeof(bar_test), tip_test, sizeof(tip_test));
+            if (strstr(bar_test, "🗽") == NULL && strstr(bar_test, "🇹🇷") == NULL) {
+                fprintf(stderr, "Self-test error: non-default cycled clock must show emoji: '%s'\n", bar_test);
+                return 1;
+            }
+
+            /* Case 2: Detected location = Asia/Tokyo (new location not in config) */
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "Asia/Tokyo");
+            update_active_clocks();
+            if (g_tz_count != 4 || strcmp(g_tzs[0].tz, "Asia/Tokyo") != 0 || g_tzs[0].label[0] != '\0') {
+                fprintf(stderr, "Self-test error: new location failed: count=%d tz0=%s lbl0='%s'\n",
+                        g_tz_count, g_tzs[0].tz, g_tzs[0].label);
+                return 1;
+            }
+            g_tz_idx = 0;
+            build_clock_strings(bar_test, sizeof(bar_test), tip_test, sizeof(tip_test));
+            if (strstr(tip_test, "Tokyo") != NULL) {
+                fprintf(stderr, "Self-test error: new location must not appear in hover tooltip\n");
+                return 1;
+            }
+            if (strstr(tip_test, "🇨🇭") == NULL || strstr(tip_test, "🗽") == NULL || strstr(tip_test, "🇹🇷") == NULL) {
+                fprintf(stderr, "Self-test error: hover tooltip must still show all configured locations\n");
+                return 1;
+            }
+
+            /* Case 3: Verify flag/city emojis use color emoji, and system icons stay monochrome */
+            if (!is_flag_or_city_emoji(0x1F5FD)) { /* 🗽 Statue of Liberty */
+                fprintf(stderr, "Self-test error: 🗽 must be recognized as city emoji\n");
+                return 1;
+            }
+            if (is_symbola_forced(0x1F5FD)) {
+                fprintf(stderr, "Self-test error: 🗽 must not be forced to Symbola\n");
+                return 1;
+            }
+            if (!is_symbola_forced(0x1F50B) || is_flag_or_city_emoji(0x1F50B)) { /* 🔋 Battery */
+                fprintf(stderr, "Self-test error: battery icon must stay forced to Symbola\n");
+                return 1;
+            }
+            if (!is_symbola_forced(0x1F50A) || is_flag_or_city_emoji(0x1F50A)) { /* 🔊 Speaker */
+                fprintf(stderr, "Self-test error: speaker icon must stay forced to Symbola\n");
+                return 1;
+            }
+
+            /* Case 4: Verify scoped relevant_locations resolution */
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "Europe/Zurich");
+            g_detected_city[0] = '\0';
+            update_active_loc_prefixes();
+            if (g_gcal_loc_prefix_count == 0 || strstr(g_gcal_loc_prefixes[0], "CH-ZRH") == NULL) {
+                fprintf(stderr, "Self-test error: Zurich loc prefix failed: count=%d pref0='%s'\n",
+                        g_gcal_loc_prefix_count, g_gcal_loc_prefix_count ? g_gcal_loc_prefixes[0] : "");
+                return 1;
+            }
+
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "America/Los_Angeles");
+            g_detected_city[0] = '\0';
+            update_active_loc_prefixes();
+            if (g_gcal_loc_prefix_count == 0 || strstr(g_gcal_loc_prefixes[0], "US-MTV") == NULL) {
+                fprintf(stderr, "Self-test error: MTV loc prefix failed: count=%d pref0='%s'\n",
+                        g_gcal_loc_prefix_count, g_gcal_loc_prefix_count ? g_gcal_loc_prefixes[0] : "");
+                return 1;
+            }
+
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "America/New_York");
+            g_detected_city[0] = '\0';
+            update_active_loc_prefixes();
+            if (g_gcal_loc_prefix_count == 0 || strstr(g_gcal_loc_prefixes[0], "US-NYC") == NULL) {
+                fprintf(stderr, "Self-test error: NYC loc prefix failed: count=%d pref0='%s'\n",
+                        g_gcal_loc_prefix_count, g_gcal_loc_prefix_count ? g_gcal_loc_prefixes[0] : "");
+                return 1;
+            }
+
+            /* Restore original detected timezone */
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", orig_det_tz);
+            update_active_clocks();
+            g_tz_idx = 0;
+        }
+
+        printf("Self-test OK: rendered 3840x%d bar | emoji_font='%s' | workspaces=%d | tzs=%d (current='%s' label='%s') | clock_tip='%s' | namaz='%s' (city='%s' tz='%s') | screensaver=%s | quiet=%u (urg=%u preview='%s') | pulse=%d%%\n",
+               BAR_HEIGHT, g_emoji_font_path[0] ? g_emoji_font_path : "NONE (install fonts-noto-color-emoji)",
+               g_ws_count, g_tz_count, g_tzs[0].tz, g_tzs[0].label,
                g_mod_boxes[MOD_CLOCK].tooltip,
+               g_mod_boxes[MOD_NAMAZ].tooltip, g_namaz_city, g_namaz_tz,
                g_screensaver_active ? "active(💤)" : "inhibited(👁)",
                g_quiet_count, g_quiet_urgency, g_quiet_preview, g_pulse_vol);
         free(px);
@@ -4768,6 +5773,10 @@ int main(int argc, char *argv[]) {
                     g_toggle_requested = 0;
                     handle_toggle_request();
                 }
+                if (g_geoloc_update_requested) {
+                    g_geoloc_update_requested = 0;
+                    check_location_and_timezone(true);
+                }
                 update_bar_visibility_state();
                 redraw_all();
             }
@@ -4781,6 +5790,7 @@ int main(int argc, char *argv[]) {
                 s_last_day = tm_cur.tm_mday;
                 update_namaz_astronomical();
             }
+            check_location_and_timezone(false);
             update_bar_visibility_state();
             redraw_all();
         }

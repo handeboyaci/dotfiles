@@ -23,10 +23,12 @@ pixelbuds-pause: pixelbuds-pause.c
 test: statusbar
 	./statusbar --self-test
 
-install: statusbar pixelbuds-pause
+install: statusbar pixelbuds-pause 09-timezone.sh
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 755 statusbar $(DESTDIR)$(PREFIX)/bin/statusbar
 	install -m 755 pixelbuds-pause $(DESTDIR)$(PREFIX)/bin/pixelbuds-pause
+	install -d $(DESTDIR)/etc/NetworkManager/dispatcher.d
+	install -m 755 09-timezone.sh $(DESTDIR)/etc/NetworkManager/dispatcher.d/09-timezone
 
 clean:
 	rm -rf statusbar pixelbuds-pause $(STATIC_LIBDIR)

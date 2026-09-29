@@ -34,6 +34,19 @@ install -m 0755 launcher $HOME/.local/bin
 cd $HOME
 rm -rf "$launcher_tmp"
 
+sudo bash -c '
+file="/etc/xdg/swayosd/backend.toml"
+mkdir -p "$(dirname "$file")"
+if grep -qs "^[# ]*ignore_caps_lock_key" "$file"; then
+    sed -i "s/^[# ]*ignore_caps_lock_key.*/ignore_caps_lock_key = true/" "$file"
+elif grep -qs "^\[input\]" "$file"; then
+    sed -i "/^\[input\]/a ignore_caps_lock_key = true" "$file"
+else
+    printf "\n[input]\nignore_caps_lock_key = true\n" >> "$file"
+fi
+' && sudo systemctl restart swayosd-libinput-backend
+
+
 mkdir -p $HOME/software
 cd $HOME/software
 
@@ -56,7 +69,7 @@ done
 
 
 cd $HOME/.config
-for f in foot jj kanshi nvim nwg-bar pipewire rofi statusbar.conf sunshine sway swayidle swaylock swayosd systemd wireplumber xdg-desktop-portal
+for f in foot jj kanshi nvim nwg-bar pipewire rofi statusbar.conf sunshine sway swayidle swaylock systemd wireplumber xdg-desktop-portal
 do
   rm -rf $f
   ln -s $HOME/.dotfiles/$f

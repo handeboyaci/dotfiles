@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Chat
+Name=[W] Chat
 Icon=chat
-Exec=google-chrome --app=http://chat.google.com/ 
+Exec=google-chrome --app=http://chat.google.com/ --profile-directory="Profile 1"
 Terminal=false
 Type=Application
 StartupNotify=true
-Keywords=Hangouts;Chat
+Keywords=Chat;Google;Work

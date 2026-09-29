@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Gmail
+Name=[W] Gmail
 Icon=gmail
-Exec=google-chrome --app=http://mail.google.com/?authuser=sselcuk@google.com --profile-directory=Default
+Exec=google-chrome --app=http://mail.google.com/?authuser=sselcuk@google.com --profile-directory="Profile 1"
 Terminal=false
 Type=Application
 StartupNotify=true
-Keywords=Email;Gmail
+Keywords=Email;Gmail;Work

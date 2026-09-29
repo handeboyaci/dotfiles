@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Whatsapp
+Name=[P] WhatsApp
 Icon=whatsapp
-Exec=google-chrome --app=http://web.whatsapp.com/ --profile-directory="Profile 1"
+Exec=google-chrome --app=http://web.whatsapp.com/ --profile-directory=Default
 Terminal=false
 Type=Application
 StartupNotify=true
-Keywords=Whatsapp
+Keywords=Whatsapp;Personal

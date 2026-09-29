@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Code Search
+Name=[W] Code Search
 Icon=search-symbolic
-Exec=google-chrome --app=https://source.corp.google.com/ 
+Exec=google-chrome --app=https://source.corp.google.com/ --profile-directory="Profile 1"
 Terminal=false
 Type=Application
 StartupNotify=true
-Keywords=Code Search;Google
+Keywords=Code Search;Google;Work

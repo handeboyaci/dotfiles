@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=Cider
+Name=[W] Cider
 Icon=text-editor-symbolic
-Exec=google-chrome --app=https://cider-v.corp.google.com/ 
+Exec=google-chrome --app=https://cider-v.corp.google.com/ --profile-directory="Profile 1"
 Terminal=false
 Type=Application
 StartupNotify=true
-Keywords=Cider;Editor;Text
+Keywords=Cider;Google;Work

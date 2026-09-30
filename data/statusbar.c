@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <malloc.h>
 #include <math.h>
 #include <poll.h>
 #include <pthread.h>
@@ -207,6 +208,8 @@ static int g_scoped_loc_rule_count = 0;
 static char g_default_loc_prefixes[MAX_LOC_PREFIXES][128];
 static int g_default_loc_prefix_count = 0;
 static char g_gcal_loc_prefixes[MAX_LOC_PREFIXES][128];
+static regex_t g_gcal_loc_re[MAX_LOC_PREFIXES];
+static bool g_gcal_loc_has_re[MAX_LOC_PREFIXES];
 static int g_gcal_loc_prefix_count = 0;
 #define MAX_IGNORED_EVENTS 32
 static char g_gcal_ignored_events[MAX_IGNORED_EVENTS][128];
@@ -1270,7 +1273,7 @@ static char *sway_ipc_recv(int fd, uint32_t *out_type) {
     memcpy(&rtype, rhdr + 10, 4);
     if (out_type) *out_type = rtype;
     if (rlen > 4 * 1024 * 1024) return NULL;
-    char *buf = calloc(1, rlen + 1);
+    char *buf = malloc(rlen + 1);
     if (!buf) return NULL;
     got = 0;
     while (got < rlen) {
@@ -1362,33 +1365,56 @@ static void find_i3_scratch(struct json_object *node, int *cnt, char *tip, size_
     }
 }
 
-static void refresh_sway_state(void) {
+static bool refresh_sway_state_ex(bool check_tree) {
     int fd = sway_ipc_connect();
-    if (fd < 0) return;
+    if (fd < 0) return false;
 
     char *ws_json = sway_ipc_roundtrip(fd, 1 /* GET_WORKSPACES */, "");
-    char *tree_json = sway_ipc_roundtrip(fd, 4 /* GET_TREE */, "");
+    char *tree_json = check_tree ? sway_ipc_roundtrip(fd, 4 /* GET_TREE */, "") : NULL;
     char *mode_json = sway_ipc_roundtrip(fd, 12 /* GET_BINDING_STATE */, "");
     close(fd);
 
+    bool changed = false;
     pthread_mutex_lock(&g_mutex);
     if (ws_json) {
         struct json_object *root = json_tokener_parse(ws_json);
         if (root && json_object_is_type(root, json_type_array)) {
             int len = json_object_array_length(root);
-            g_ws_count = 0;
-            for (int i = 0; i < len && g_ws_count < 32; i++) {
+            WorkspaceItem new_ws[32];
+            int new_cnt = 0;
+            memset(new_ws, 0, sizeof(new_ws));
+            for (int i = 0; i < len && new_cnt < 32; i++) {
                 struct json_object *item = json_object_array_get_idx(root, i);
                 struct json_object *j_name = NULL, *j_foc = NULL, *j_urg = NULL;
                 if (json_object_object_get_ex(item, "name", &j_name)) {
-                    snprintf(g_workspaces[g_ws_count].name, sizeof(g_workspaces[0].name),
+                    snprintf(new_ws[new_cnt].name, sizeof(new_ws[0].name),
                              "%s", json_object_get_string(j_name));
-                    g_workspaces[g_ws_count].focused =
+                    new_ws[new_cnt].focused =
                         json_object_object_get_ex(item, "focused", &j_foc) && json_object_get_boolean(j_foc);
-                    g_workspaces[g_ws_count].urgent =
+                    new_ws[new_cnt].urgent =
                         json_object_object_get_ex(item, "urgent", &j_urg) && json_object_get_boolean(j_urg);
-                    g_ws_count++;
+                    new_cnt++;
                 }
+            }
+            if (new_cnt != g_ws_count) {
+                changed = true;
+            } else {
+                for (int i = 0; i < new_cnt; i++) {
+                    if (strcmp(new_ws[i].name, g_workspaces[i].name) != 0 ||
+                        new_ws[i].focused != g_workspaces[i].focused ||
+                        new_ws[i].urgent != g_workspaces[i].urgent) {
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            if (changed) {
+                for (int i = 0; i < new_cnt; i++) {
+                    snprintf(g_workspaces[i].name, sizeof(g_workspaces[0].name), "%s", new_ws[i].name);
+                    g_workspaces[i].focused = new_ws[i].focused;
+                    g_workspaces[i].urgent = new_ws[i].urgent;
+                }
+                g_ws_count = new_cnt;
             }
             json_object_put(root);
         }
@@ -1400,9 +1426,14 @@ static void refresh_sway_state(void) {
         if (troot) {
             int cnt = 0;
             size_t off = 0;
-            g_scratch_tooltip[0] = '\0';
-            find_i3_scratch(troot, &cnt, g_scratch_tooltip, sizeof(g_scratch_tooltip), &off);
-            g_scratch_count = cnt;
+            char new_tip[2048];
+            new_tip[0] = '\0';
+            find_i3_scratch(troot, &cnt, new_tip, sizeof(new_tip), &off);
+            if (cnt != g_scratch_count || strcmp(new_tip, g_scratch_tooltip) != 0) {
+                g_scratch_count = cnt;
+                snprintf(g_scratch_tooltip, sizeof(g_scratch_tooltip), "%s", new_tip);
+                changed = true;
+            }
             json_object_put(troot);
         }
         free(tree_json);
@@ -1414,20 +1445,28 @@ static void refresh_sway_state(void) {
             struct json_object *j_name = NULL;
             if (json_object_object_get_ex(mroot, "name", &j_name) && json_object_get_string(j_name)) {
                 const char *mname = json_object_get_string(j_name);
-                if (strcmp(mname, "default") == 0) g_sway_mode[0] = '\0';
-                else snprintf(g_sway_mode, sizeof(g_sway_mode), "%s", mname);
+                const char *target = (strcmp(mname, "default") == 0) ? "" : mname;
+                if (strcmp(g_sway_mode, target) != 0) {
+                    snprintf(g_sway_mode, sizeof(g_sway_mode), "%s", target);
+                    changed = true;
+                }
             }
             json_object_put(mroot);
         }
         free(mode_json);
     }
     pthread_mutex_unlock(&g_mutex);
+    return changed;
+}
+
+static void refresh_sway_state(void) {
+    refresh_sway_state_ex(true);
 }
 
 static void *sway_event_thread(void *arg) {
     (void)arg;
     while (1) {
-        refresh_sway_state();
+        refresh_sway_state_ex(true);
         notify_main_loop();
 
         int fd = sway_ipc_connect();
@@ -1481,20 +1520,42 @@ static void *sway_event_thread(void *arg) {
             uint32_t ev_type = 0;
             char *ev = sway_ipc_recv(fd, &ev_type);
             if (!ev) break;
-            if ((ev_type & 0x7FFFFFFF) == 2 /* IPC_EVENT_MODE */) {
+            uint32_t et = (ev_type & 0x7FFFFFFF);
+            bool need_notify = false;
+            bool need_refresh = true;
+            bool need_tree = false;
+
+            if (et == 3 /* IPC_EVENT_WINDOW */) {
+                /* Window focus and non-scratchpad title changes do not affect workspaces or scratchpad */
+                if (strstr(ev, "\"change\":\"focus\"") != NULL ||
+                    strstr(ev, "\"change\": \"focus\"") != NULL) {
+                    free(ev);
+                    continue;
+                }
+                if ((strstr(ev, "\"change\":\"title\"") != NULL ||
+                     strstr(ev, "\"change\": \"title\"") != NULL) && g_scratch_count == 0) {
+                    free(ev);
+                    continue;
+                }
+                need_tree = true;
+            } else if (et == 2 /* IPC_EVENT_MODE */) {
                 struct json_object *eroot = json_tokener_parse(ev);
                 if (eroot) {
                     struct json_object *j_chg = NULL;
                     if (json_object_object_get_ex(eroot, "change", &j_chg) && json_object_get_string(j_chg)) {
                         const char *chg = json_object_get_string(j_chg);
+                        const char *target = (strcmp(chg, "default") == 0) ? "" : chg;
                         pthread_mutex_lock(&g_mutex);
-                        if (strcmp(chg, "default") == 0) g_sway_mode[0] = '\0';
-                        else snprintf(g_sway_mode, sizeof(g_sway_mode), "%s", chg);
+                        if (strcmp(g_sway_mode, target) != 0) {
+                            snprintf(g_sway_mode, sizeof(g_sway_mode), "%s", target);
+                            need_notify = true;
+                        }
                         pthread_mutex_unlock(&g_mutex);
                     }
                     json_object_put(eroot);
                 }
-            } else if ((ev_type & 0x7FFFFFFF) == 4 /* IPC_EVENT_BARCONFIG_UPDATE */) {
+                need_refresh = false;
+            } else if (et == 4 /* IPC_EVENT_BARCONFIG_UPDATE */) {
                 struct json_object *eroot = json_tokener_parse(ev);
                 if (eroot) {
                     struct json_object *j_id = NULL, *j_mode = NULL, *j_hs = NULL;
@@ -1509,10 +1570,12 @@ static void *sway_event_thread(void *arg) {
                             snprintf(g_sway_bar_hidden_state, sizeof(g_sway_bar_hidden_state), "%s", json_object_get_string(j_hs));
                         }
                         pthread_mutex_unlock(&g_mutex);
+                        need_notify = true;
                     }
                     json_object_put(eroot);
                 }
-            } else if ((ev_type & 0x7FFFFFFF) == 20 /* IPC_EVENT_BAR_STATE_UPDATE */) {
+                need_refresh = false;
+            } else if (et == 20 /* IPC_EVENT_BAR_STATE_UPDATE */) {
                 struct json_object *eroot = json_tokener_parse(ev);
                 if (eroot) {
                     struct json_object *j_id = NULL, *j_vis = NULL;
@@ -1523,14 +1586,20 @@ static void *sway_event_thread(void *arg) {
                             pthread_mutex_lock(&g_mutex);
                             g_sway_visible_by_modifier = json_object_get_boolean(j_vis);
                             pthread_mutex_unlock(&g_mutex);
+                            need_notify = true;
                         }
                     }
                     json_object_put(eroot);
                 }
+                need_refresh = false;
             }
             free(ev);
-            refresh_sway_state();
-            notify_main_loop();
+            if (need_refresh && refresh_sway_state_ex(need_tree)) {
+                need_notify = true;
+            }
+            if (need_notify) {
+                notify_main_loop();
+            }
         }
         close(fd);
         sleep(1);
@@ -1964,8 +2033,8 @@ static bool refresh_gcal_token(void) {
 
 static bool parse_iso_datetime(const char *iso, time_t *out_ts, int *out_h, int *out_m) {
     *out_ts = 0;
-    *out_h = 0;
-    *out_m = 0;
+    if (out_h) *out_h = 0;
+    if (out_m) *out_m = 0;
     if (!iso || !*iso) return false;
 
     int Y = 0, M = 0, D = 0, h = 0, m = 0, s = 0;
@@ -1998,15 +2067,17 @@ static bool parse_iso_datetime(const char *iso, time_t *out_ts, int *out_h, int 
     }
     *out_ts = ts;
 
-    char tz_buf[64] = "";
-    pthread_mutex_lock(&g_mutex);
-    snprintf(tz_buf, sizeof(tz_buf), "%s", g_detected_tz);
-    pthread_mutex_unlock(&g_mutex);
+    if (out_h || out_m) {
+        char tz_buf[64] = "";
+        pthread_mutex_lock(&g_mutex);
+        snprintf(tz_buf, sizeof(tz_buf), "%s", g_detected_tz);
+        pthread_mutex_unlock(&g_mutex);
 
-    struct tm tm_local;
-    format_tz_time(tz_buf, ts, &tm_local);
-    *out_h = tm_local.tm_hour;
-    *out_m = tm_local.tm_min;
+        struct tm tm_local;
+        format_tz_time(tz_buf, ts, &tm_local);
+        if (out_h) *out_h = tm_local.tm_hour;
+        if (out_m) *out_m = tm_local.tm_min;
+    }
     return true;
 }
 
@@ -2079,20 +2150,13 @@ static void parse_gcal_location_locked(const char *raw_loc, char *out, size_t ou
         size_t plen = strlen(pref);
         if (plen == 0) continue;
 
-        char pat[160];
-        if (pref[0] == '^') snprintf(pat, sizeof(pat), "%s", pref);
-        else snprintf(pat, sizeof(pat), "^(%s)", pref);
-
-        regex_t re;
-        bool has_re = (regcomp(&re, pat, REG_EXTENDED) == 0);
-
         int matched = 0;
         size_t off = 0;
         for (int t = 0; t < tok_cnt && matched < 3; t++) {
             const char *sub = NULL;
             regmatch_t pm;
-            if (has_re) {
-                if (regexec(&re, tokens[t], 1, &pm, 0) == 0 && pm.rm_so == 0 && pm.rm_eo > 0) {
+            if (g_gcal_loc_has_re[pr]) {
+                if (regexec(&g_gcal_loc_re[pr], tokens[t], 1, &pm, 0) == 0 && pm.rm_so == 0 && pm.rm_eo > 0) {
                     sub = tokens[t] + pm.rm_eo;
                 }
             } else if (strncmp(tokens[t], pref, plen) == 0) {
@@ -2107,7 +2171,6 @@ static void parse_gcal_location_locked(const char *raw_loc, char *out, size_t ou
                 }
             }
         }
-        if (has_re) regfree(&re);
         if (matched > 0) return;
     }
 
@@ -2116,13 +2179,6 @@ static void parse_gcal_location_locked(const char *raw_loc, char *out, size_t ou
     for (int t = 0; t < tok_cnt && t < 3; t++) {
         off += snprintf(out + off, out_sz - off, "%s%s", (t > 0) ? ", " : "", tokens[t]);
     }
-}
-
-static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
-    update_active_loc_prefixes();
-    pthread_mutex_lock(&g_mutex);
-    parse_gcal_location_locked(raw_loc, out, out_sz);
-    pthread_mutex_unlock(&g_mutex);
 }
 
 static bool gcal_rsvp_accepted(struct json_object *it) {
@@ -2327,7 +2383,6 @@ static void fetch_gcal_events(void) {
                 }
 
                 time_t start_ts = 0, end_ts = 0;
-                int sh = 0, sm = 0, eh = 0, em = 0;
                 bool is_all_day = false;
 
                 if (json_object_object_get_ex(j_start, "date", &j_dt) && json_object_get_string(j_dt)) {
@@ -2349,8 +2404,8 @@ static void fetch_gcal_events(void) {
                         continue;
                     }
                     const char *end_iso = json_object_get_string(j_edt);
-                    if (!parse_iso_datetime(start_iso, &start_ts, &sh, &sm) ||
-                        !parse_iso_datetime(end_iso, &end_ts, &eh, &em)) {
+                    if (!parse_iso_datetime(start_iso, &start_ts, NULL, NULL) ||
+                        !parse_iso_datetime(end_iso, &end_ts, NULL, NULL)) {
                         continue;
                     }
                 } else {
@@ -2388,16 +2443,12 @@ static void fetch_gcal_events(void) {
                 if (is_all_day) {
                     snprintf(ev->start_short, sizeof(ev->start_short), "all-day");
                     snprintf(ev->time_range, sizeof(ev->time_range), "     all-day     ");
-                } else {
-                    format_short_12h(sh, sm, ev->start_short, sizeof(ev->start_short));
-                    format_fixed_range_12h(sh, sm, eh, em, ev->time_range, sizeof(ev->time_range));
                 }
 
                 const char *loc = (json_object_object_get_ex(it, "location", &j_loc) && json_object_get_string(j_loc))
                                       ? json_object_get_string(j_loc)
                                       : "";
                 snprintf(ev->raw_location, sizeof(ev->raw_location), "%s", loc);
-                parse_gcal_location(loc, ev->location, sizeof(ev->location));
                 new_cnt++;
             }
         }
@@ -2419,7 +2470,23 @@ static void fetch_gcal_events(void) {
         }
     }
 
+    update_active_loc_prefixes();
     pthread_mutex_lock(&g_mutex);
+    char cur_tz[64] = "";
+    if (g_detected_tz[0]) snprintf(cur_tz, sizeof(cur_tz), "%s", g_detected_tz);
+    else get_system_tz(cur_tz, sizeof(cur_tz));
+    for (int i = 0; i < new_cnt; i++) {
+        GCalEvent *ev = &new_evs[i];
+        parse_gcal_location_locked(ev->raw_location, ev->location, sizeof(ev->location));
+        if (!ev->is_all_day && ev->start_ts > 0 && ev->end_ts > 0) {
+            struct tm tm_s, tm_e;
+            format_tz_time(cur_tz, ev->start_ts, &tm_s);
+            format_tz_time(cur_tz, ev->end_ts, &tm_e);
+            format_short_12h(tm_s.tm_hour, tm_s.tm_min, ev->start_short, sizeof(ev->start_short));
+            format_fixed_range_12h(tm_s.tm_hour, tm_s.tm_min, tm_e.tm_hour, tm_e.tm_min,
+                                   ev->time_range, sizeof(ev->time_range));
+        }
+    }
     memcpy(g_gcal_events, new_evs, sizeof(new_evs));
     g_gcal_count = new_cnt;
     g_gcal_fetching = false;
@@ -2811,20 +2878,14 @@ static bool parse_geoloc_json(const char *resp, double *out_lat, double *out_lon
     return found;
 }
 
-static void save_geoloc_cache(double lat, double lon, const char *tz, const char *city) {
-    if (!g_cache_dir[0]) return;
-    mkdir(g_cache_dir, 0755);
+static int64_t g_last_cache_mtime_ns = 0;
+static int64_t g_last_localtime_mtime_ns = 0;
 
-    char cache_file[512];
-    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", g_cache_dir);
-    FILE *f = fopen(cache_file, "w");
-    if (!f) return;
-    fprintf(f, "{\"latitude\":%.6f,\"longitude\":%.6f,\"timezone\":\"%s\",\"city\":\"%s\"}\n",
-            lat, lon, tz ? tz : "", city ? city : "");
-    fclose(f);
+static int64_t stat_mtime_ns(const struct stat *st) {
+    return (int64_t)st->st_mtim.tv_sec * 1000000000LL + (int64_t)st->st_mtim.tv_nsec;
 }
 
-static bool get_best_geoloc_cache_path(char *out_path, size_t sz, time_t *out_mtime) {
+static bool get_best_geoloc_cache_path(char *out_path, size_t sz, time_t *out_mtime, int64_t *out_mtime_ns) {
     char user_file[512] = "";
     if (g_cache_dir[0]) {
         snprintf(user_file, sizeof(user_file), "%s/statusbar_geoloc.json", g_cache_dir);
@@ -2836,30 +2897,54 @@ static bool get_best_geoloc_cache_path(char *out_path, size_t sz, time_t *out_mt
     bool has_sys = (stat(sys_file, &st_sys) == 0 && st_sys.st_size > 0);
 
     if (has_user && has_sys) {
-        if (st_sys.st_mtime > st_user.st_mtime) {
+        int64_t ns_user = stat_mtime_ns(&st_user);
+        int64_t ns_sys = stat_mtime_ns(&st_sys);
+        if (ns_sys > ns_user) {
             snprintf(out_path, sz, "%s", sys_file);
             if (out_mtime) *out_mtime = st_sys.st_mtime;
+            if (out_mtime_ns) *out_mtime_ns = ns_sys;
         } else {
             snprintf(out_path, sz, "%s", user_file);
             if (out_mtime) *out_mtime = st_user.st_mtime;
+            if (out_mtime_ns) *out_mtime_ns = ns_user;
         }
         return true;
     } else if (has_user) {
         snprintf(out_path, sz, "%s", user_file);
         if (out_mtime) *out_mtime = st_user.st_mtime;
+        if (out_mtime_ns) *out_mtime_ns = stat_mtime_ns(&st_user);
         return true;
     } else if (has_sys) {
         snprintf(out_path, sz, "%s", sys_file);
         if (out_mtime) *out_mtime = st_sys.st_mtime;
+        if (out_mtime_ns) *out_mtime_ns = stat_mtime_ns(&st_sys);
         return true;
     }
     if (out_mtime) *out_mtime = 0;
+    if (out_mtime_ns) *out_mtime_ns = 0;
     return false;
+}
+
+static void save_geoloc_cache(double lat, double lon, const char *tz, const char *city) {
+    if (!g_cache_dir[0]) return;
+    mkdir(g_cache_dir, 0755);
+
+    char cache_file[512];
+    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", g_cache_dir);
+    FILE *f = fopen(cache_file, "w");
+    if (!f) return;
+    fprintf(f, "{\"latitude\":%.6f,\"longitude\":%.6f,\"timezone\":\"%s\",\"city\":\"%s\"}\n",
+            lat, lon, tz ? tz : "", city ? city : "");
+    fclose(f);
+
+    char best_path[512];
+    get_best_geoloc_cache_path(best_path, sizeof(best_path), NULL, &g_last_cache_mtime_ns);
 }
 
 static bool load_geoloc_cache(void) {
     char cache_file[512];
-    if (!get_best_geoloc_cache_path(cache_file, sizeof(cache_file), NULL)) {
+    int64_t cache_ns = 0;
+    if (!get_best_geoloc_cache_path(cache_file, sizeof(cache_file), NULL, &cache_ns)) {
         return false;
     }
     FILE *f = fopen(cache_file, "r");
@@ -2877,6 +2962,14 @@ static bool load_geoloc_cache(void) {
         return false;
     }
     if (fabs(lat) < 1e-4 && fabs(lon) < 1e-4) return false;
+
+    g_last_cache_mtime_ns = cache_ns;
+    if (g_last_localtime_mtime_ns == 0) {
+        struct stat st_lt;
+        if (lstat("/etc/localtime", &st_lt) == 0) {
+            g_last_localtime_mtime_ns = stat_mtime_ns(&st_lt);
+        }
+    }
 
     pthread_mutex_lock(&g_mutex);
     if (city[0]) {
@@ -2974,7 +3067,7 @@ static bool fetch_geolocation_auto(bool force_network) {
     if (!force_network) {
         char cache_file[512];
         time_t cache_mtime = 0;
-        if (get_best_geoloc_cache_path(cache_file, sizeof(cache_file), &cache_mtime) &&
+        if (get_best_geoloc_cache_path(cache_file, sizeof(cache_file), &cache_mtime, NULL) &&
             (time(NULL) - cache_mtime) < 1800 && load_geoloc_cache()) {
             update_active_clocks();
             update_namaz_astronomical();
@@ -3059,56 +3152,52 @@ static void trigger_geoloc_fetch_async(void) {
     pthread_detach(th);
 }
 
-static void check_location_and_timezone(bool force) {
-    static time_t s_last_check = 0;
-    static time_t s_last_cache_mtime = 0;
-    static time_t s_last_localtime_mtime = 0;
-    time_t now = time(NULL);
+static time_t g_last_tz_check_ts = 0;
 
-    if (!force && (now - s_last_check < 30)) {
+static void check_location_and_timezone(bool force) {
+    time_t now = time(NULL);
+    if (!force && g_last_tz_check_ts != 0 && (now - g_last_tz_check_ts) <= 30) {
         return;
     }
-    s_last_check = now;
+    g_last_tz_check_ts = now;
 
     char cache_file[512];
-    time_t cur_cache_mtime = 0;
-    get_best_geoloc_cache_path(cache_file, sizeof(cache_file), &cur_cache_mtime);
+    int64_t cur_cache_ns = 0;
+    get_best_geoloc_cache_path(cache_file, sizeof(cache_file), NULL, &cur_cache_ns);
 
     struct stat st_lt;
-    time_t cur_lt_mtime = 0;
+    int64_t cur_lt_ns = 0;
     if (lstat("/etc/localtime", &st_lt) == 0) {
-        cur_lt_mtime = st_lt.st_mtime;
+        cur_lt_ns = stat_mtime_ns(&st_lt);
     }
 
-    bool changed = force;
-    bool cache_changed = (cur_cache_mtime != s_last_cache_mtime);
-    bool lt_changed = (cur_lt_mtime != s_last_localtime_mtime);
+    bool changed = false;
+    bool cache_changed = (cur_cache_ns > 0 && cur_cache_ns != g_last_cache_mtime_ns);
+    bool lt_changed = (cur_lt_ns > 0 && cur_lt_ns != g_last_localtime_mtime_ns);
 
-    if (force || cache_changed) {
-        s_last_cache_mtime = cur_cache_mtime;
+    if (cache_changed) {
         if (load_geoloc_cache()) {
             changed = true;
         }
-    }
-
-    if (force || lt_changed || cur_cache_mtime == 0) {
-        s_last_localtime_mtime = cur_lt_mtime;
-        if (cur_cache_mtime == 0 || cur_lt_mtime > cur_cache_mtime + 2) {
-            char sys_tz[64] = "";
-            get_system_tz(sys_tz, sizeof(sys_tz));
-            pthread_mutex_lock(&g_mutex);
-            if (sys_tz[0] && strcmp(g_detected_tz, sys_tz) != 0) {
-                if (!is_same_timezone(g_detected_tz, sys_tz)) {
-                    g_detected_city[0] = '\0';
-                }
-                snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", sys_tz);
-                if (g_namaz_auto_loc && !g_namaz_tz_configured) {
-                    snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", sys_tz);
-                }
-                changed = true;
-            }
-            pthread_mutex_unlock(&g_mutex);
+        if (lt_changed) {
+            g_last_localtime_mtime_ns = cur_lt_ns;
         }
+    } else if (lt_changed || cur_cache_ns == 0) {
+        g_last_localtime_mtime_ns = cur_lt_ns;
+        char sys_tz[64] = "";
+        get_system_tz(sys_tz, sizeof(sys_tz));
+        pthread_mutex_lock(&g_mutex);
+        if (sys_tz[0] && strcmp(g_detected_tz, sys_tz) != 0) {
+            if (!is_same_timezone(g_detected_tz, sys_tz)) {
+                g_detected_city[0] = '\0';
+            }
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", sys_tz);
+            if (g_namaz_auto_loc && !g_namaz_tz_configured) {
+                snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", sys_tz);
+            }
+            changed = true;
+        }
+        pthread_mutex_unlock(&g_mutex);
     }
 
     if (changed) {
@@ -3131,9 +3220,7 @@ static void build_namaz_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
 
     time_t now = time(NULL);
     struct tm tm_now;
-    pthread_mutex_lock(&g_mutex);
     format_tz_time(tz[0] ? tz : NULL, now, &tm_now);
-    pthread_mutex_unlock(&g_mutex);
 
     pthread_mutex_lock(&g_mutex);
     if (g_namaz_loaded && tm_now.tm_mday != g_namaz_loaded_mday) {
@@ -3608,7 +3695,7 @@ static int dbus_connect_system_upower(void) {
         close(fd);
         return -1;
     }
-    uint8_t req[1024];
+    uint8_t req[2048];
     static const unsigned char hs[] = "\0AUTH EXTERNAL\r\nDATA\r\nBEGIN\r\n";
     int len = (int)sizeof(hs) - 1;
     memcpy(req, hs, len);
@@ -3617,6 +3704,9 @@ static int dbus_connect_system_upower(void) {
     len += dbus_build_call(req + len, 2, 0, "org.freedesktop.DBus", "/org/freedesktop/DBus",
                            "org.freedesktop.DBus", "AddMatch",
                            "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/freedesktop/UPower'");
+    len += dbus_build_call(req + len, 3, 0, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                           "org.freedesktop.DBus", "AddMatch",
+                           "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='/org/freedesktop/timedate1'");
     if (write(fd, req, len) <= 0) {
         close(fd);
         return -1;
@@ -3688,8 +3778,14 @@ static void *battery_uevent_thread(void *arg) {
                 if (n <= 0) {
                     close(dbus_fd);
                     dbus_fd = -1;
-                } else if (memmem(buf, (size_t)n, "/org/freedesktop/UPower", 23) != NULL) {
-                    updated = true;
+                } else {
+                    if (memmem(buf, (size_t)n, "/org/freedesktop/UPower", 23) != NULL) {
+                        updated = true;
+                    }
+                    if (memmem(buf, (size_t)n, "/org/freedesktop/timedate1", 26) != NULL) {
+                        g_geoloc_update_requested = 1;
+                        notify_main_loop();
+                    }
                 }
             }
             if (updated) {
@@ -3706,20 +3802,20 @@ static void *battery_uevent_thread(void *arg) {
 static void *background_worker_thread(void *arg) {
     (void)arg;
     load_gcal_credentials();
-    fetch_gcal_events();
     if (g_namaz_auto_loc) {
         fetch_geolocation_auto(false);
     }
+    fetch_gcal_events();
     notify_main_loop();
 
     int ticks = 0;
     while (1) {
         sleep(300); /* Refresh remote Google Calendar every 5 minutes */
-        fetch_gcal_events();
         ticks++;
         if (g_namaz_auto_loc && (ticks % 6 == 0)) {
             fetch_geolocation_auto(true);
         }
+        fetch_gcal_events();
         notify_main_loop();
     }
     return NULL;
@@ -4336,24 +4432,21 @@ static void wl_get_layer_surface(uint32_t new_id, uint32_t surface, uint32_t out
     wl_send_msg(g_id_layer_shell, 0, buf, (size_t)idx * 4, -1);
 }
 
-static void wl_attach_rendered_shm(uint32_t surface_id, int w, int h, void (*render_fn)(SurfaceBuf *)) {
-    if (w <= 0 || h <= 0) return;
+static void wl_attach_shm_pixels(uint32_t surface_id, int w, int h, const uint32_t *px) {
+    if (w <= 0 || h <= 0 || !px) return;
     size_t sz = (size_t)w * (size_t)h * 4;
     int mfd = memfd_create("waybar-shm", MFD_CLOEXEC);
     if (mfd < 0) return;
-    if (ftruncate(mfd, (off_t)sz) < 0) {
-        close(mfd);
-        return;
+    size_t off = 0;
+    while (off < sz) {
+        ssize_t n = write(mfd, (const uint8_t *)px + off, sz - off);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            close(mfd);
+            return;
+        }
+        off += (size_t)n;
     }
-    uint32_t *px = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, 0);
-    if (px == MAP_FAILED) {
-        close(mfd);
-        return;
-    }
-
-    SurfaceBuf s = {.px = px, .w = w, .h = h};
-    render_fn(&s);
-    munmap(px, sz);
 
     uint32_t pool_id = g_wl_next_id++;
     uint32_t buf_id = g_wl_next_id++;
@@ -4373,6 +4466,23 @@ static void wl_attach_rendered_shm(uint32_t surface_id, int w, int h, void (*ren
     wl_send_msg(pool_id, 1 /* destroy pool */, NULL, 0, -1);
 }
 
+static void wl_attach_rendered_shm(uint32_t surface_id, int w, int h, void (*render_fn)(SurfaceBuf *)) {
+    if (w <= 0 || h <= 0) return;
+    size_t sz = (size_t)w * (size_t)h * 4;
+    static uint32_t *s_scratch = NULL;
+    static size_t s_scratch_cap = 0;
+    if (sz > s_scratch_cap) {
+        uint32_t *np = realloc(s_scratch, sz);
+        if (!np) return;
+        s_scratch = np;
+        s_scratch_cap = sz;
+    }
+
+    SurfaceBuf s = {.px = s_scratch, .w = w, .h = h};
+    render_fn(&s);
+    wl_attach_shm_pixels(surface_id, w, h, s_scratch);
+}
+
 static void render_tip_cb(SurfaceBuf *s) {
     render_tooltip(s, g_active_tip_text);
 }
@@ -4387,6 +4497,7 @@ static void destroy_tooltip_surface(void) {
         g_id_tip_surface = 0;
     }
     g_tip_configured = false;
+    g_active_tip_text[0] = '\0';
 }
 
 static void update_tooltip_surface(void) {
@@ -4395,6 +4506,7 @@ static void update_tooltip_surface(void) {
         return;
     }
 
+    bool text_changed = (strcmp(g_active_tip_text, g_mod_boxes[g_hovered_mod].tooltip) != 0);
     snprintf(g_active_tip_text, sizeof(g_active_tip_text), "%s", g_mod_boxes[g_hovered_mod].tooltip);
     int tw = 0, th = 0;
     measure_tooltip(g_active_tip_text, &tw, &th);
@@ -4403,8 +4515,13 @@ static void update_tooltip_surface(void) {
     if (tx < 4) tx = 4;
     if (tx + tw > g_bar_w - 4) tx = g_bar_w - tw - 4;
 
+    if (!text_changed && g_id_tip_surface && tw == g_tip_w && th == g_tip_h && tx == g_tip_x) {
+        return;
+    }
+
     if (g_id_tip_surface && (tw != g_tip_w || th != g_tip_h || tx != g_tip_x)) {
         destroy_tooltip_surface();
+        snprintf(g_active_tip_text, sizeof(g_active_tip_text), "%s", g_mod_boxes[g_hovered_mod].tooltip);
     }
 
     g_tip_w = tw;
@@ -4565,9 +4682,37 @@ static void sigterm_handler(int sig) {
     _exit(0);
 }
 
+static uint32_t *g_bar_staging_px = NULL;
+static uint32_t *g_bar_committed_px = NULL;
+static size_t g_bar_px_cap = 0;
+static uint32_t g_bar_committed_surf = 0;
+static int g_bar_committed_w = 0;
+static int g_bar_committed_h = 0;
+
 static void redraw_all(void) {
-    if (!g_bar_visible || !g_bar_configured) return;
-    wl_attach_rendered_shm(g_id_bar_surface, g_bar_w, g_bar_h, render_bar);
+    if (!g_bar_visible || !g_bar_configured || g_bar_w <= 0 || g_bar_h <= 0) return;
+    size_t sz = (size_t)g_bar_w * (size_t)g_bar_h * 4;
+    if (sz > g_bar_px_cap) {
+        uint32_t *ns = realloc(g_bar_staging_px, sz);
+        uint32_t *nc = realloc(g_bar_committed_px, sz);
+        if (!ns || !nc) return;
+        g_bar_staging_px = ns;
+        g_bar_committed_px = nc;
+        g_bar_px_cap = sz;
+        g_bar_committed_surf = 0;
+    }
+    SurfaceBuf s = {.px = g_bar_staging_px, .w = g_bar_w, .h = g_bar_h};
+    render_bar(&s);
+    if (g_id_bar_surface != g_bar_committed_surf ||
+        g_bar_w != g_bar_committed_w ||
+        g_bar_h != g_bar_committed_h ||
+        memcmp(g_bar_staging_px, g_bar_committed_px, sz) != 0) {
+        memcpy(g_bar_committed_px, g_bar_staging_px, sz);
+        g_bar_committed_surf = g_id_bar_surface;
+        g_bar_committed_w = g_bar_w;
+        g_bar_committed_h = g_bar_h;
+        wl_attach_shm_pixels(g_id_bar_surface, g_bar_w, g_bar_h, g_bar_staging_px);
+    }
     if (g_hovered_mod >= 0) {
         update_tooltip_surface();
     }
@@ -4656,6 +4801,7 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
 
         case MOD_CLOCK:
             if (btn == 1) { /* on-click: tz_up */
+                check_location_and_timezone(false);
                 if (g_tz_count > 0) g_tz_idx = (g_tz_idx + 1) % g_tz_count;
                 redraw_all();
             } else if (btn == 2) { /* on-click-middle */
@@ -4866,6 +5012,7 @@ static void process_wayland_events(void) {
             if (h > 0) g_bar_h = (int)h;
             wl_send_u32_1(g_id_bar_layer, 6 /* ack_configure */, serial);
             g_bar_configured = true;
+            g_bar_committed_surf = 0;
             redraw_all();
             sync_idle_inhibitor();
         } else if (obj_id == g_id_tip_layer && opcode == 0 /* configure */) {
@@ -5066,33 +5213,55 @@ static void update_active_loc_prefixes(void) {
         }
     }
 
-    /* Apply selected rule or default */
-    g_gcal_loc_prefix_count = 0;
-    if (matched_rule >= 0) {
-        for (int p = 0; p < g_scoped_loc_rules[matched_rule].prefix_count; p++) {
-            snprintf(g_gcal_loc_prefixes[p], sizeof(g_gcal_loc_prefixes[0]), "%s",
-                     g_scoped_loc_rules[matched_rule].prefixes[p]);
+    /* Apply selected rule or default, and check if active prefixes or timezone changed */
+    int new_count = (matched_rule >= 0) ? g_scoped_loc_rules[matched_rule].prefix_count
+                                        : g_default_loc_prefix_count;
+    const char (*new_list)[128] = (matched_rule >= 0) ? g_scoped_loc_rules[matched_rule].prefixes
+                                                      : g_default_loc_prefixes;
+
+    static char s_last_eval_tz[64] = "";
+    bool tz_changed = (strcmp(s_last_eval_tz, cur_tz) != 0);
+    bool prefixes_changed = (new_count != g_gcal_loc_prefix_count);
+    if (!prefixes_changed) {
+        for (int p = 0; p < new_count; p++) {
+            if (strcmp(g_gcal_loc_prefixes[p], new_list[p]) != 0) {
+                prefixes_changed = true;
+                break;
+            }
         }
-        g_gcal_loc_prefix_count = g_scoped_loc_rules[matched_rule].prefix_count;
-    } else {
-        for (int p = 0; p < g_default_loc_prefix_count; p++) {
-            snprintf(g_gcal_loc_prefixes[p], sizeof(g_gcal_loc_prefixes[0]), "%s",
-                     g_default_loc_prefixes[p]);
-        }
-        g_gcal_loc_prefix_count = g_default_loc_prefix_count;
     }
 
-    /* Re-evaluate location and display times for any already-fetched calendar events */
-    for (int i = 0; i < g_gcal_count; i++) {
-        GCalEvent *ev = &g_gcal_events[i];
-        parse_gcal_location_locked(ev->raw_location, ev->location, sizeof(ev->location));
-        if (!ev->is_all_day && ev->start_ts > 0 && ev->end_ts > 0) {
-            struct tm tm_s, tm_e;
-            format_tz_time(cur_tz, ev->start_ts, &tm_s);
-            format_tz_time(cur_tz, ev->end_ts, &tm_e);
-            snprintf(ev->start_short, sizeof(ev->start_short), "%02d:%02d", tm_s.tm_hour, tm_s.tm_min);
-            snprintf(ev->time_range, sizeof(ev->time_range), "%02d:%02d - %02d:%02d",
-                     tm_s.tm_hour, tm_s.tm_min, tm_e.tm_hour, tm_e.tm_min);
+    if (prefixes_changed) {
+        for (int p = 0; p < MAX_LOC_PREFIXES; p++) {
+            if (g_gcal_loc_has_re[p]) {
+                regfree(&g_gcal_loc_re[p]);
+                g_gcal_loc_has_re[p] = false;
+            }
+        }
+        for (int p = 0; p < new_count; p++) {
+            snprintf(g_gcal_loc_prefixes[p], sizeof(g_gcal_loc_prefixes[0]), "%s", new_list[p]);
+            char pat[160];
+            if (new_list[p][0] == '^') snprintf(pat, sizeof(pat), "%s", new_list[p]);
+            else snprintf(pat, sizeof(pat), "^(%s)", new_list[p]);
+            g_gcal_loc_has_re[p] = (regcomp(&g_gcal_loc_re[p], pat, REG_EXTENDED) == 0);
+        }
+        g_gcal_loc_prefix_count = new_count;
+    }
+
+    if (tz_changed || prefixes_changed) {
+        snprintf(s_last_eval_tz, sizeof(s_last_eval_tz), "%s", cur_tz);
+        /* Re-evaluate location and display times for any already-fetched calendar events */
+        for (int i = 0; i < g_gcal_count; i++) {
+            GCalEvent *ev = &g_gcal_events[i];
+            parse_gcal_location_locked(ev->raw_location, ev->location, sizeof(ev->location));
+            if (!ev->is_all_day && ev->start_ts > 0 && ev->end_ts > 0) {
+                struct tm tm_s, tm_e;
+                format_tz_time(cur_tz, ev->start_ts, &tm_s);
+                format_tz_time(cur_tz, ev->end_ts, &tm_e);
+                format_short_12h(tm_s.tm_hour, tm_s.tm_min, ev->start_short, sizeof(ev->start_short));
+                format_fixed_range_12h(tm_s.tm_hour, tm_s.tm_min, tm_e.tm_hour, tm_e.tm_min,
+                                       ev->time_range, sizeof(ev->time_range));
+            }
         }
     }
     pthread_mutex_unlock(&g_mutex);
@@ -5421,6 +5590,7 @@ static void print_usage(const char *prog) {
 }
 
 int main(int argc, char *argv[]) {
+    mallopt(M_MMAP_THRESHOLD, 2 * 1024 * 1024);
     /* Keep SIGCHLD as SIG_DFL so system() and popen()/pclose() return accurate exit codes */
     signal(SIGCHLD, SIG_DFL);
     signal(SIGPIPE, SIG_IGN);
@@ -5439,6 +5609,12 @@ int main(int argc, char *argv[]) {
     if (rdir && *rdir) snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s", rdir);
     else snprintf(g_runtime_dir, sizeof(g_runtime_dir), "/run/user/%u", getuid());
     get_system_tz(g_detected_tz, sizeof(g_detected_tz));
+    {
+        struct stat st_lt;
+        if (lstat("/etc/localtime", &st_lt) == 0) {
+            g_last_localtime_mtime_ns = stat_mtime_ns(&st_lt);
+        }
+    }
 
     /* Load configuration from $XDG_CONFIG_HOME/statusbar.conf (or ~/.config/statusbar.conf) */
     const char *xdg_cfg = getenv("XDG_CONFIG_HOME");
@@ -5602,6 +5778,7 @@ int main(int argc, char *argv[]) {
     }
 
     load_geoloc_cache();
+    g_last_tz_check_ts = time(NULL);
     update_active_clocks();
 
     init_fonts();
@@ -5875,7 +6052,6 @@ int main(int argc, char *argv[]) {
                 s_last_day = tm_cur.tm_mday;
                 update_namaz_astronomical();
             }
-            check_location_and_timezone(false);
             update_bar_visibility_state();
             redraw_all();
         }

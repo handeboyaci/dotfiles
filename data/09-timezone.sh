@@ -45,7 +45,8 @@ printf "%s\n" "$RESP" > /var/cache/statusbar_geoloc.json.tmp && \
 for udir in /home/*/.cache /usr/local/google/home/*/.cache; do
     if [ -d "$udir" ]; then
         cp -f /var/cache/statusbar_geoloc.json "$udir/statusbar_geoloc.json" 2>/dev/null && \
-            chmod 666 "$udir/statusbar_geoloc.json" 2>/dev/null
+            chown --reference="$udir" "$udir/statusbar_geoloc.json" 2>/dev/null && \
+            chmod 644 "$udir/statusbar_geoloc.json" 2>/dev/null
     fi
 done
 

@@ -42,9 +42,10 @@ printf "%s\n" "$RESP" > /var/cache/statusbar_geoloc.json.tmp && \
     mv -f /var/cache/statusbar_geoloc.json.tmp /var/cache/statusbar_geoloc.json
 
 # Also sync to user cache directories if present
-for udir in /home/*/.cache; do
+for udir in /home/*/.cache /usr/local/google/home/*/.cache; do
     if [ -d "$udir" ]; then
-        cp -f /var/cache/statusbar_geoloc.json "$udir/statusbar_geoloc.json" 2>/dev/null
+        cp -f /var/cache/statusbar_geoloc.json "$udir/statusbar_geoloc.json" 2>/dev/null && \
+            chmod 666 "$udir/statusbar_geoloc.json" 2>/dev/null
     fi
 done
 

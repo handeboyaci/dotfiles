@@ -91,6 +91,7 @@ static char g_gcal_token_arg[512] = "";
 static char g_config_path[512] = "";
 static char g_runtime_dir[256] = "";
 static char g_home_dir[256] = "";
+static char g_cache_dir[512] = "";
 
 /* ============================================================================
  * Module Data Structures
@@ -104,11 +105,13 @@ typedef struct {
 
 typedef struct {
     char summary[128];
+    char raw_location[256];
     char location[128];
     char start_short[16];
     char time_range[24];
     time_t start_ts;
     time_t end_ts;
+    bool is_all_day;
     bool filtered;
 } GCalEvent;
 
@@ -149,6 +152,7 @@ typedef struct {
 } ModuleBox;
 
 static pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_tz_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_wakeup_pipe[2] = {-1, -1};
 
 /* Workspaces, Mode & Scratchpad */
@@ -320,7 +324,9 @@ static void notify_urgent(const char *summary, const char *body) {
 }
 
 static char *run_cmd_capture(const char *cmd, size_t max_len) {
+    pthread_mutex_lock(&g_tz_mutex);
     FILE *fp = popen(cmd, "r");
+    pthread_mutex_unlock(&g_tz_mutex);
     if (!fp) return NULL;
     char *buf = calloc(1, max_len + 1);
     if (!buf) {
@@ -917,19 +923,26 @@ static void draw_separator(SurfaceBuf *s, int x) {
  * Clock & ISO-8601 Year Calendar Generator (matching config.jsonc)
  * ============================================================================ */
 static void format_tz_time(const char *tz_name, time_t t, struct tm *out_tm) {
+    pthread_mutex_lock(&g_tz_mutex);
+    if (!tz_name || !*tz_name) {
+        localtime_r(&t, out_tm);
+        pthread_mutex_unlock(&g_tz_mutex);
+        return;
+    }
+
     const char *old_tz = getenv("TZ");
     char saved_tz[128] = "";
     bool had_tz = (old_tz != NULL);
     if (had_tz) snprintf(saved_tz, sizeof(saved_tz), "%s", old_tz);
 
-    if (tz_name && *tz_name) setenv("TZ", tz_name, 1);
-    else unsetenv("TZ");
+    setenv("TZ", tz_name, 1);
     tzset();
     localtime_r(&t, out_tm);
 
     if (had_tz) setenv("TZ", saved_tz, 1);
     else unsetenv("TZ");
     tzset();
+    pthread_mutex_unlock(&g_tz_mutex);
 }
 
 
@@ -1959,8 +1972,6 @@ static bool parse_iso_datetime(const char *iso, time_t *out_ts, int *out_h, int 
     if (sscanf(iso, "%d-%d-%dT%d:%d:%d", &Y, &M, &D, &h, &m, &s) != 6) {
         return false;
     }
-    *out_h = h;
-    *out_m = m;
 
     struct tm tm_utc;
     memset(&tm_utc, 0, sizeof(tm_utc));
@@ -1986,6 +1997,16 @@ static bool parse_iso_datetime(const char *iso, time_t *out_ts, int *out_h, int 
         }
     }
     *out_ts = ts;
+
+    char tz_buf[64] = "";
+    pthread_mutex_lock(&g_mutex);
+    snprintf(tz_buf, sizeof(tz_buf), "%s", g_detected_tz);
+    pthread_mutex_unlock(&g_mutex);
+
+    struct tm tm_local;
+    format_tz_time(tz_buf, ts, &tm_local);
+    *out_h = tm_local.tm_hour;
+    *out_m = tm_local.tm_min;
     return true;
 }
 
@@ -2010,7 +2031,7 @@ static void format_fixed_range_12h(int sh, int sm, int eh, int em, char *out, si
     snprintf(out, out_sz, "%2d:%02d%s - %2d:%02d%s", sh12, sm, sampm, eh12, em, eampm);
 }
 
-static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
+static void parse_gcal_location_locked(const char *raw_loc, char *out, size_t out_sz) {
     out[0] = '\0';
     if (!raw_loc || !*raw_loc) return;
 
@@ -2051,8 +2072,6 @@ static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
         tok = strtok_r(NULL, ",", &saveptr);
     }
     if (tok_cnt == 0) return;
-
-    update_active_loc_prefixes();
 
     /* 3. Match against configured relevant location prefixes/regexes in priority order (cap at 3 locations) */
     for (int pr = 0; pr < g_gcal_loc_prefix_count; pr++) {
@@ -2097,6 +2116,13 @@ static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
     for (int t = 0; t < tok_cnt && t < 3; t++) {
         off += snprintf(out + off, out_sz - off, "%s%s", (t > 0) ? ", " : "", tokens[t]);
     }
+}
+
+static void parse_gcal_location(const char *raw_loc, char *out, size_t out_sz) {
+    update_active_loc_prefixes();
+    pthread_mutex_lock(&g_mutex);
+    parse_gcal_location_locked(raw_loc, out, out_sz);
+    pthread_mutex_unlock(&g_mutex);
 }
 
 static bool gcal_rsvp_accepted(struct json_object *it) {
@@ -2178,7 +2204,9 @@ static bool parse_iso_date_local(const char *date_str, time_t *out_ts) {
     tm_loc.tm_mon = M - 1;
     tm_loc.tm_mday = D;
     tm_loc.tm_isdst = -1;
+    pthread_mutex_lock(&g_tz_mutex);
     *out_ts = mktime(&tm_loc);
+    pthread_mutex_unlock(&g_tz_mutex);
     return true;
 }
 
@@ -2355,6 +2383,7 @@ static void fetch_gcal_events(void) {
                 snprintf(ev->summary, sizeof(ev->summary), "%s", sum);
                 ev->start_ts = start_ts;
                 ev->end_ts = end_ts;
+                ev->is_all_day = is_all_day;
                 ev->filtered = is_filtered;
                 if (is_all_day) {
                     snprintf(ev->start_short, sizeof(ev->start_short), "all-day");
@@ -2367,6 +2396,7 @@ static void fetch_gcal_events(void) {
                 const char *loc = (json_object_object_get_ex(it, "location", &j_loc) && json_object_get_string(j_loc))
                                       ? json_object_get_string(j_loc)
                                       : "";
+                snprintf(ev->raw_location, sizeof(ev->raw_location), "%s", loc);
                 parse_gcal_location(loc, ev->location, sizeof(ev->location));
                 new_cnt++;
             }
@@ -2782,14 +2812,11 @@ static bool parse_geoloc_json(const char *resp, double *out_lat, double *out_lon
 }
 
 static void save_geoloc_cache(double lat, double lon, const char *tz, const char *city) {
-    char cache_dir[512];
-    const char *xdg_cache = getenv("XDG_CACHE_HOME");
-    if (xdg_cache && *xdg_cache) snprintf(cache_dir, sizeof(cache_dir), "%s", xdg_cache);
-    else snprintf(cache_dir, sizeof(cache_dir), "%s/.cache", g_home_dir);
-    mkdir(cache_dir, 0755);
+    if (!g_cache_dir[0]) return;
+    mkdir(g_cache_dir, 0755);
 
     char cache_file[512];
-    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", cache_dir);
+    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", g_cache_dir);
     FILE *f = fopen(cache_file, "w");
     if (!f) return;
     fprintf(f, "{\"latitude\":%.6f,\"longitude\":%.6f,\"timezone\":\"%s\",\"city\":\"%s\"}\n",
@@ -2797,18 +2824,45 @@ static void save_geoloc_cache(double lat, double lon, const char *tz, const char
     fclose(f);
 }
 
-static bool load_geoloc_cache(void) {
-    char cache_dir[512];
-    const char *xdg_cache = getenv("XDG_CACHE_HOME");
-    if (xdg_cache && *xdg_cache) snprintf(cache_dir, sizeof(cache_dir), "%s", xdg_cache);
-    else snprintf(cache_dir, sizeof(cache_dir), "%s/.cache", g_home_dir);
-
-    char cache_file[512];
-    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", cache_dir);
-    FILE *f = fopen(cache_file, "r");
-    if (!f) {
-        f = fopen("/var/cache/statusbar_geoloc.json", "r");
+static bool get_best_geoloc_cache_path(char *out_path, size_t sz, time_t *out_mtime) {
+    char user_file[512] = "";
+    if (g_cache_dir[0]) {
+        snprintf(user_file, sizeof(user_file), "%s/statusbar_geoloc.json", g_cache_dir);
     }
+    const char *sys_file = "/var/cache/statusbar_geoloc.json";
+
+    struct stat st_user, st_sys;
+    bool has_user = (user_file[0] && stat(user_file, &st_user) == 0 && st_user.st_size > 0);
+    bool has_sys = (stat(sys_file, &st_sys) == 0 && st_sys.st_size > 0);
+
+    if (has_user && has_sys) {
+        if (st_sys.st_mtime > st_user.st_mtime) {
+            snprintf(out_path, sz, "%s", sys_file);
+            if (out_mtime) *out_mtime = st_sys.st_mtime;
+        } else {
+            snprintf(out_path, sz, "%s", user_file);
+            if (out_mtime) *out_mtime = st_user.st_mtime;
+        }
+        return true;
+    } else if (has_user) {
+        snprintf(out_path, sz, "%s", user_file);
+        if (out_mtime) *out_mtime = st_user.st_mtime;
+        return true;
+    } else if (has_sys) {
+        snprintf(out_path, sz, "%s", sys_file);
+        if (out_mtime) *out_mtime = st_sys.st_mtime;
+        return true;
+    }
+    if (out_mtime) *out_mtime = 0;
+    return false;
+}
+
+static bool load_geoloc_cache(void) {
+    char cache_file[512];
+    if (!get_best_geoloc_cache_path(cache_file, sizeof(cache_file), NULL)) {
+        return false;
+    }
+    FILE *f = fopen(cache_file, "r");
     if (!f) return false;
 
     char buf[2048];
@@ -2875,9 +2929,7 @@ static void update_namaz_astronomical(void) {
 
     time_t now = time(NULL);
     struct tm tm_target;
-    pthread_mutex_lock(&g_mutex);
     format_tz_time(tz[0] ? tz : NULL, now, &tm_target);
-    pthread_mutex_unlock(&g_mutex);
 
     double utc_offset = (double)tm_target.tm_gmtoff / 3600.0;
     int y = tm_target.tm_year + 1900;
@@ -2899,9 +2951,7 @@ static void update_namaz_astronomical(void) {
     /* Tomorrow Fajr in target timezone */
     time_t tom = now + 86400;
     struct tm tm_tom;
-    pthread_mutex_lock(&g_mutex);
     format_tz_time(tz[0] ? tz : NULL, tom, &tm_tom);
-    pthread_mutex_unlock(&g_mutex);
 
     int ty = tm_tom.tm_year + 1900;
     int tm_m = tm_tom.tm_mon + 1;
@@ -2920,12 +2970,17 @@ static void update_namaz_astronomical(void) {
     pthread_mutex_unlock(&g_mutex);
 }
 
-static bool fetch_geolocation_auto(void) {
-    if (load_geoloc_cache()) {
-        update_active_clocks();
-        update_namaz_astronomical();
-        notify_main_loop();
-        return true;
+static bool fetch_geolocation_auto(bool force_network) {
+    if (!force_network) {
+        char cache_file[512];
+        time_t cache_mtime = 0;
+        if (get_best_geoloc_cache_path(cache_file, sizeof(cache_file), &cache_mtime) &&
+            (time(NULL) - cache_mtime) < 1800 && load_geoloc_cache()) {
+            update_active_clocks();
+            update_namaz_astronomical();
+            notify_main_loop();
+            return true;
+        }
     }
 
     const char *endpoints[] = {
@@ -2953,7 +3008,15 @@ static bool fetch_geolocation_auto(void) {
         }
     }
 
-    if (!ok) return false;
+    if (!ok) {
+        if (load_geoloc_cache()) {
+            update_active_clocks();
+            update_namaz_astronomical();
+            notify_main_loop();
+            return true;
+        }
+        return false;
+    }
 
     if (!tz[0]) {
         lookup_timezone_from_coords(lat, lon, tz, sizeof(tz));
@@ -2986,7 +3049,7 @@ static bool fetch_geolocation_auto(void) {
 
 static void *geoloc_fetch_thread(void *arg) {
     (void)arg;
-    fetch_geolocation_auto();
+    fetch_geolocation_auto(true);
     return NULL;
 }
 
@@ -3007,21 +3070,9 @@ static void check_location_and_timezone(bool force) {
     }
     s_last_check = now;
 
-    char cache_dir[512];
-    const char *xdg_cache = getenv("XDG_CACHE_HOME");
-    if (xdg_cache && *xdg_cache) snprintf(cache_dir, sizeof(cache_dir), "%s", xdg_cache);
-    else snprintf(cache_dir, sizeof(cache_dir), "%s/.cache", g_home_dir);
-
     char cache_file[512];
-    snprintf(cache_file, sizeof(cache_file), "%s/statusbar_geoloc.json", cache_dir);
-
-    struct stat st_cache;
     time_t cur_cache_mtime = 0;
-    if (stat(cache_file, &st_cache) == 0) {
-        cur_cache_mtime = st_cache.st_mtime;
-    } else if (stat("/var/cache/statusbar_geoloc.json", &st_cache) == 0) {
-        cur_cache_mtime = st_cache.st_mtime;
-    }
+    get_best_geoloc_cache_path(cache_file, sizeof(cache_file), &cur_cache_mtime);
 
     struct stat st_lt;
     time_t cur_lt_mtime = 0;
@@ -3030,22 +3081,26 @@ static void check_location_and_timezone(bool force) {
     }
 
     bool changed = force;
-    bool cache_loaded = false;
-    if (force || cur_cache_mtime != s_last_cache_mtime) {
+    bool cache_changed = (cur_cache_mtime != s_last_cache_mtime);
+    bool lt_changed = (cur_lt_mtime != s_last_localtime_mtime);
+
+    if (force || cache_changed) {
         s_last_cache_mtime = cur_cache_mtime;
         if (load_geoloc_cache()) {
-            cache_loaded = true;
             changed = true;
         }
     }
 
-    if (!cache_loaded) {
-        char sys_tz[64] = "";
-        get_system_tz(sys_tz, sizeof(sys_tz));
-        if (force || cur_lt_mtime != s_last_localtime_mtime) {
-            s_last_localtime_mtime = cur_lt_mtime;
+    if (force || lt_changed || cur_cache_mtime == 0) {
+        s_last_localtime_mtime = cur_lt_mtime;
+        if (cur_cache_mtime == 0 || cur_lt_mtime > cur_cache_mtime + 2) {
+            char sys_tz[64] = "";
+            get_system_tz(sys_tz, sizeof(sys_tz));
             pthread_mutex_lock(&g_mutex);
             if (sys_tz[0] && strcmp(g_detected_tz, sys_tz) != 0) {
+                if (!is_same_timezone(g_detected_tz, sys_tz)) {
+                    g_detected_city[0] = '\0';
+                }
                 snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", sys_tz);
                 if (g_namaz_auto_loc && !g_namaz_tz_configured) {
                     snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", sys_tz);
@@ -3653,7 +3708,7 @@ static void *background_worker_thread(void *arg) {
     load_gcal_credentials();
     fetch_gcal_events();
     if (g_namaz_auto_loc) {
-        fetch_geolocation_auto();
+        fetch_geolocation_auto(false);
     }
     notify_main_loop();
 
@@ -3663,7 +3718,7 @@ static void *background_worker_thread(void *arg) {
         fetch_gcal_events();
         ticks++;
         if (g_namaz_auto_loc && (ticks % 6 == 0)) {
-            fetch_geolocation_auto();
+            fetch_geolocation_auto(true);
         }
         notify_main_loop();
     }
@@ -5026,6 +5081,20 @@ static void update_active_loc_prefixes(void) {
         }
         g_gcal_loc_prefix_count = g_default_loc_prefix_count;
     }
+
+    /* Re-evaluate location and display times for any already-fetched calendar events */
+    for (int i = 0; i < g_gcal_count; i++) {
+        GCalEvent *ev = &g_gcal_events[i];
+        parse_gcal_location_locked(ev->raw_location, ev->location, sizeof(ev->location));
+        if (!ev->is_all_day && ev->start_ts > 0 && ev->end_ts > 0) {
+            struct tm tm_s, tm_e;
+            format_tz_time(cur_tz, ev->start_ts, &tm_s);
+            format_tz_time(cur_tz, ev->end_ts, &tm_e);
+            snprintf(ev->start_short, sizeof(ev->start_short), "%02d:%02d", tm_s.tm_hour, tm_s.tm_min);
+            snprintf(ev->time_range, sizeof(ev->time_range), "%02d:%02d - %02d:%02d",
+                     tm_s.tm_hour, tm_s.tm_min, tm_e.tm_hour, tm_e.tm_min);
+        }
+    }
     pthread_mutex_unlock(&g_mutex);
 }
 
@@ -5363,6 +5432,9 @@ int main(int argc, char *argv[]) {
 
     const char *home = getenv("HOME");
     snprintf(g_home_dir, sizeof(g_home_dir), "%s", home ? home : "/usr/local/google/home/sselcuk");
+    const char *xdg_cache = getenv("XDG_CACHE_HOME");
+    if (xdg_cache && *xdg_cache) snprintf(g_cache_dir, sizeof(g_cache_dir), "%s", xdg_cache);
+    else snprintf(g_cache_dir, sizeof(g_cache_dir), "%s/.cache", g_home_dir);
     const char *rdir = getenv("XDG_RUNTIME_DIR");
     if (rdir && *rdir) snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s", rdir);
     else snprintf(g_runtime_dir, sizeof(g_runtime_dir), "/run/user/%u", getuid());
@@ -5452,6 +5524,8 @@ int main(int argc, char *argv[]) {
         } else if ((strcmp(argv[i], "--relevant-locations") == 0 ||
                     strcmp(argv[i], "--location-prefix") == 0) && i + 1 < argc) {
             if (!cli_loc_reset) {
+                g_scoped_loc_rule_count = 0;
+                g_default_loc_prefix_count = 0;
                 g_gcal_loc_prefix_count = 0;
                 cli_loc_reset = true;
             }
@@ -5533,8 +5607,8 @@ int main(int argc, char *argv[]) {
     init_fonts();
 
     if (self_test) {
-        if (g_namaz_auto_loc) {
-            fetch_geolocation_auto();
+        if (g_namaz_auto_loc && g_namaz_lat == 0.0 && g_namaz_lon == 0.0) {
+            fetch_geolocation_auto(false);
         }
         update_active_clocks();
         load_gcal_credentials();
@@ -5615,13 +5689,24 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
 
-            /* Case 4: Verify scoped relevant_locations resolution */
+            /* Case 4: Verify scoped relevant_locations resolution & GCal timezone/location re-evaluation */
             snprintf(g_detected_tz, sizeof(g_detected_tz), "Europe/Zurich");
             g_detected_city[0] = '\0';
             update_active_loc_prefixes();
             if (g_gcal_loc_prefix_count == 0 || strstr(g_gcal_loc_prefixes[0], "CH-ZRH") == NULL) {
                 fprintf(stderr, "Self-test error: Zurich loc prefix failed: count=%d pref0='%s'\n",
                         g_gcal_loc_prefix_count, g_gcal_loc_prefix_count ? g_gcal_loc_prefixes[0] : "");
+                return 1;
+            }
+
+            /* Test parse_iso_datetime converts calendar event time into g_detected_tz */
+            time_t test_ts = 0;
+            int test_h = -1, test_m = -1;
+            snprintf(g_detected_tz, sizeof(g_detected_tz), "America/New_York");
+            parse_iso_datetime("2026-01-15T16:00:00+01:00", &test_ts, &test_h, &test_m);
+            if (test_h != 10 || test_m != 0) {
+                fprintf(stderr, "Self-test error: parse_iso_datetime NY conversion failed: got %02d:%02d, expected 10:00\n",
+                        test_h, test_m);
                 return 1;
             }
 

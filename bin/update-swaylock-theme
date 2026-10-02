@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+"""
+update-swaylock-theme:
+Inspects sway's wallpaper (or a specified image) using ImageMagick,
+extracts an aesthetically balanced color palette, and updates
+swaylock/config to match the wallpaper theme.
+
+Optionally can also sync colors to statusbar.conf (--statusbar).
+"""
+
+import argparse
+import colorsys
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+DEFAULT_DOTFILES = Path.home() / ".dotfiles"
+DEFAULT_IMAGE = Path.home() / ".config" / "sway" / "bg.jpg"
+DEFAULT_SWAYLOCK_CONFIG = Path.home() / ".config" / "swaylock" / "config"
+DEFAULT_STATUSBAR_CONFIG = Path.home() / ".config" / "statusbar.conf"
+
+
+def find_default_paths():
+    """Find dotfiles paths if ~/.config symlinks are not in place."""
+    img = DEFAULT_IMAGE
+    if not img.exists() and (DEFAULT_DOTFILES / "sway" / "bg.jpg").exists():
+        img = DEFAULT_DOTFILES / "sway" / "bg.jpg"
+
+    cfg = DEFAULT_SWAYLOCK_CONFIG
+    if not cfg.exists() and (DEFAULT_DOTFILES / "swaylock" / "config").exists():
+        cfg = DEFAULT_DOTFILES / "swaylock" / "config"
+
+    bar = DEFAULT_STATUSBAR_CONFIG
+    if not bar.exists() and (DEFAULT_DOTFILES / "statusbar.conf").exists():
+        bar = DEFAULT_DOTFILES / "statusbar.conf"
+
+    return img, cfg, bar
+
+
+def rgb_to_hex(r: float, g: float, b: float) -> str:
+    """Format normalized RGB float (0..1) as a 6-digit hex uppercase string."""
+    ir = max(0, min(255, int(round(r * 255))))
+    ig = max(0, min(255, int(round(g * 255))))
+    ib = max(0, min(255, int(round(b * 255))))
+    return f"{ir:02X}{ig:02X}{ib:02X}"
+
+
+def extract_palette(image_path: Path, max_colors: int = 24):
+    """Run ImageMagick to extract quantized color histogram from image."""
+    magick_cmd = "magick"
+    if not subprocess.run(["which", "magick"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        if subprocess.run(["which", "convert"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            magick_cmd = "convert"
+        else:
+            sys.exit("Error: neither 'magick' nor 'convert' (ImageMagick) found in PATH.")
+
+    cmd = [
+        magick_cmd,
+        str(image_path),
+        "-resize",
+        "150x150",
+        "-colors",
+        str(max_colors),
+        "-format",
+        "%c\n",
+        "histogram:info:",
+    ]
+    try:
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"Error running ImageMagick on {image_path}: {e.stderr.strip()}")
+
+    palette = []
+    for line in proc.stdout.strip().splitlines():
+        line = line.strip()
+        m = re.search(r"(\d+):\s*\([^)]+\)\s*#([0-9A-Fa-f]{6})", line)
+        if m:
+            count = int(m.group(1))
+            hex_col = m.group(2).upper()
+            r = int(hex_col[0:2], 16) / 255.0
+            g = int(hex_col[2:4], 16) / 255.0
+            b = int(hex_col[4:6], 16) / 255.0
+            h, l, s = colorsys.rgb_to_hls(r, g, b)
+            palette.append({
+                "hex": hex_col,
+                "count": count,
+                "r": r,
+                "g": g,
+                "b": b,
+                "h": h,
+                "l": l,
+                "s": s,
+            })
+
+    if not palette:
+        sys.exit(f"Error: Could not extract any colors from {image_path}")
+
+    return palette
+
+
+def compute_theme(palette):
+    """
+    Select harmonious colors for swaylock:
+      - bg: dominant dark tone from image
+      - accent: most vibrant highlight color
+      - fg: clean light tint (off-white tinted with accent)
+      - ver: mid-tone harmonious verification color
+      - wrong: distinctive error red harmonious with theme
+    """
+    # 1. Background color:
+    # Pick a dark color (l <= 0.32) with highest pixel count, or the darkest available
+    dark_cands = [p for p in palette if p["l"] <= 0.32]
+    if dark_cands:
+        bg = max(dark_cands, key=lambda p: p["count"])
+    else:
+        bg = min(palette, key=lambda p: p["l"])
+
+    # 2. Accent color:
+    # Vibrant, saturated, moderate-to-high lightness (0.35 .. 0.85)
+    accent_cands = [p for p in palette if p["s"] >= 0.15 and 0.35 <= p["l"] <= 0.85]
+    if accent_cands:
+        def accent_score(p):
+            l_pref = 1.0 - abs(p["l"] - 0.58) * 1.5
+            return p["s"] * 2.5 + l_pref + (p["count"] ** 0.25) * 0.1
+        accent = max(accent_cands, key=accent_score)
+    else:
+        accent = max(palette, key=lambda p: p["s"])
+
+    # 3. Verification color:
+    # Mid-tone harmonious with accent (l: 0.32 .. 0.60)
+    ver_cands = [
+        p for p in palette
+        if 0.32 <= p["l"] <= 0.60 and p["hex"] != accent["hex"] and p["hex"] != bg["hex"]
+    ]
+    if ver_cands:
+        ver = max(ver_cands, key=lambda p: p["count"])["hex"]
+    else:
+        r, g, b = colorsys.hls_to_rgb(accent["h"], 0.42, max(0.2, accent["s"] * 0.6))
+        ver = rgb_to_hex(r, g, b)
+
+    # 4. Foreground / Text / Ring:
+    # Very light tint (l ~ 0.90) tinted subtly with accent hue
+    r, g, b = colorsys.hls_to_rgb(accent["h"], 0.90, min(0.18, accent["s"] * 0.35))
+    fg = rgb_to_hex(r, g, b)
+
+    # 5. Wrong / Error:
+    # Warm red / crimson harmonious with palette
+    r, g, b = colorsys.hls_to_rgb(0.005, 0.42, 0.55)
+    wrong = rgb_to_hex(r, g, b)
+
+    return {
+        "bg": bg["hex"],
+        "accent": accent["hex"],
+        "fg": fg,
+        "ver": ver,
+        "wrong": wrong,
+    }
+
+
+def update_swaylock_config(config_path: Path, theme: dict, dry_run: bool = False):
+    """Update color definitions in swaylock/config."""
+    if not config_path.exists():
+        sys.exit(f"Error: swaylock config file not found: {config_path}")
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    color_mappings = {
+        "color": theme["bg"],
+        "bs-hl-color": theme["accent"],
+        "caps-lock-bs-hl-color": theme["accent"],
+        "caps-lock-key-hl-color": theme["accent"],
+        "key-hl-color": theme["accent"],
+        "ring-caps-lock-color": theme["accent"],
+        "text-caps-lock-color": theme["accent"],
+        "layout-text-color": theme["fg"],
+        "ring-color": theme["fg"],
+        "ring-clear-color": theme["fg"],
+        "text-color": theme["fg"],
+        "text-clear-color": theme["fg"],
+        "ring-ver-color": theme["ver"],
+        "text-ver-color": theme["ver"],
+        "ring-wrong-color": theme["wrong"],
+        "text-wrong-color": theme["wrong"],
+    }
+
+    new_lines = []
+    updated_keys = set()
+    for line in content.splitlines():
+        trimmed = line.strip()
+        if "=" in trimmed and not trimmed.startswith("#"):
+            k, v = trimmed.split("=", 1)
+            k = k.strip()
+            if k in color_mappings:
+                new_lines.append(f"{k}={color_mappings[k]}")
+                updated_keys.add(k)
+                continue
+        new_lines.append(line)
+
+    # Append any missing keys
+    for k, v in color_mappings.items():
+        if k not in updated_keys:
+            new_lines.append(f"{k}={v}")
+
+    new_content = "\n".join(new_lines) + "\n"
+
+    if dry_run:
+        print(f"--- [DRY RUN] {config_path} ---")
+        print(new_content)
+    else:
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        print(f"Updated swaylock config at {config_path}")
+
+
+def update_statusbar_config(config_path: Path, theme: dict, dry_run: bool = False):
+    """Optionally update statusbar.conf with matching wallpaper colors."""
+    if not config_path.exists():
+        print(f"Notice: statusbar config file not found at {config_path}, skipping.")
+        return
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    status_mappings = {
+        "bar_bg": f"rgba(0, 0, 0, 0.8)",  # clean transparent black
+        "bar_border": "#00000000",
+        "text_color": f"#{theme['fg'].lower()}",
+        "ws_idle": f"#{theme['ver'].lower()}",
+        "ws_focused_bg": f"#{theme['bg'].lower()}",
+        "ws_focused_border": f"#{theme['accent'].lower()}",
+        "urgent_color": f"#{theme['wrong'].lower()}",
+    }
+
+    new_lines = []
+    seen_keys = set()
+    for line in content.splitlines():
+        trimmed = line.strip()
+        if "=" in trimmed and not trimmed.startswith("#"):
+            k, v = trimmed.split("=", 1)
+            k = k.strip()
+            if k in status_mappings:
+                new_lines.append(f"{k} = {status_mappings[k]}")
+                seen_keys.add(k)
+                continue
+        new_lines.append(line)
+
+    for k, v in status_mappings.items():
+        if k not in seen_keys:
+            new_lines.append(f"{k} = {v}")
+
+    new_content = "\n".join(new_lines) + "\n"
+
+    if dry_run:
+        print(f"--- [DRY RUN] {config_path} ---")
+        print(new_content)
+    else:
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        print(f"Updated statusbar config at {config_path}")
+
+
+def color_block(hex_code: str) -> str:
+    """Return ANSI color block for terminal preview."""
+    try:
+        r = int(hex_code[0:2], 16)
+        g = int(hex_code[2:4], 16)
+        b = int(hex_code[4:6], 16)
+        return f"\033[48;2;{r};{g};{b}m  \033[0m #{hex_code}"
+    except Exception:
+        return f"#{hex_code}"
+
+
+def main():
+    def_img, def_cfg, def_bar = find_default_paths()
+
+    parser = argparse.ArgumentParser(description="Update swaylock theme from wallpaper image.")
+    parser.add_argument("image", nargs="?", default=str(def_img), help=f"Path to wallpaper image (default: {def_img})")
+    parser.add_argument("-c", "--config", default=str(def_cfg), help=f"Path to swaylock config (default: {def_cfg})")
+    parser.add_argument("-s", "--statusbar", action="store_true", help=f"Also update statusbar.conf ({def_bar})")
+    parser.add_argument("-n", "--dry-run", action="store_true", help="Print changes without modifying files")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print extracted palette")
+    args = parser.parse_args()
+
+    image_path = Path(args.image).expanduser().resolve()
+    if not image_path.exists():
+        sys.exit(f"Error: image file not found: {image_path}")
+
+    config_path = Path(args.config).expanduser().resolve()
+    statusbar_path = Path(def_bar).expanduser().resolve()
+
+    print(f"Analyzing wallpaper: {image_path}")
+    palette = extract_palette(image_path)
+    if args.verbose:
+        print("Top extracted colors:")
+        for p in sorted(palette, key=lambda x: x["count"], reverse=True)[:8]:
+            print(f"  {color_block(p['hex'])} (count: {p['count']}, l: {p['l']:.2f}, s: {p['s']:.2f})")
+
+    theme = compute_theme(palette)
+    print("\nSelected Theme Colors:")
+    print(f"  Background (color)      : {color_block(theme['bg'])}")
+    print(f"  Accent (key/ring/caps)  : {color_block(theme['accent'])}")
+    print(f"  Foreground (text/ring)  : {color_block(theme['fg'])}")
+    print(f"  Verification (ver)      : {color_block(theme['ver'])}")
+    print(f"  Error / Wrong (wrong)   : {color_block(theme['wrong'])}\n")
+
+    update_swaylock_config(config_path, theme, dry_run=args.dry_run)
+
+    if args.statusbar:
+        update_statusbar_config(statusbar_path, theme, dry_run=args.dry_run)
+
+
+if __name__ == "__main__":
+    main()

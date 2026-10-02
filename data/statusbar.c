@@ -50,22 +50,40 @@ char *dlerror(void) {
 }
 
 /* ============================================================================
- * Constants & Theme Visuals (matching ~/.config/waybar/style.css & config.jsonc)
+ * Constants & Theme Visuals (configurable via $XDG_CONFIG_HOME/statusbar.conf)
+ * Defaults to neutral black with transparency (rgba(0, 0, 0, 0.8))
  * ============================================================================ */
 #define BAR_HEIGHT 26
-#define COL_BAR_BG 0xCC4A3E35U       /* rgba(74, 62, 53, 0.8) */
-#define COL_BAR_BORDER 0xFF7D6B5EU   /* #7d6b5e */
-#define COL_TEXT 0xFFF5E4C6U         /* #f5e4c6 */
-#define COL_WS_IDLE 0xFFB2A090U      /* #b2a090 */
-#define COL_WS_FOC_BG 0xFF6B5A4DU    /* #6b5a4d */
-#define COL_WS_FOC_BDR 0xFFD9A066U   /* #d9a066 */
-#define COL_URGENT 0xFFCC6666U       /* #cc6666 */
-#define COL_WARNING 0xFFE5A454U      /* #e5a454 */
-#define COL_TIP_BG 0xFF4A3E35U       /* #4a3e35 */
-#define COL_TIP_BDR 0xFF7D6B5EU      /* #7d6b5e */
-#define COL_CLD_MONTH 0xFFFFEAD3U    /* #ffead3 */
-#define COL_CLD_WKDAY 0xFF7D6B5EU    /* #7d6b5e */
-#define COL_CLD_TODAY_FG 0xFF4A3E35U /* #4a3e35 */
+
+static uint32_t g_col_bar_bg        = 0xCC000000U; /* rgba(0, 0, 0, 0.8) - black with transparency */
+static uint32_t g_col_bar_border    = 0x00000000U; /* transparent bottom border */
+static uint32_t g_col_text          = 0xFFFFFFFFU; /* #ffffff crisp white text */
+static uint32_t g_col_ws_idle       = 0xFF888888U; /* #888888 muted idle workspace */
+static uint32_t g_col_ws_foc_bg     = 0xFF333333U; /* #333333 dark grey focused box */
+static uint32_t g_col_ws_foc_bdr    = 0xFF3EAEFFU; /* #3eaeff sway blue focused border */
+static uint32_t g_col_urgent        = 0xFFCC6666U; /* #cc6666 red */
+static uint32_t g_col_warning       = 0xFFE5A454U; /* #e5a454 amber */
+static uint32_t g_col_tip_bg        = 0xF0111111U; /* rgba(17, 17, 17, 0.94) */
+static uint32_t g_col_tip_bdr       = 0xFF333333U; /* #333333 */
+static uint32_t g_col_cld_month     = 0xFFFFFFFFU; /* #ffffff */
+static uint32_t g_col_cld_wkday     = 0xFF888888U; /* #888888 */
+static uint32_t g_col_cld_today_bg  = 0xFFFFFFFFU; /* #ffffff */
+static uint32_t g_col_cld_today_fg  = 0xFF000000U; /* #000000 */
+
+#define COL_BAR_BG       g_col_bar_bg
+#define COL_BAR_BORDER   g_col_bar_border
+#define COL_TEXT         g_col_text
+#define COL_WS_IDLE      g_col_ws_idle
+#define COL_WS_FOC_BG    g_col_ws_foc_bg
+#define COL_WS_FOC_BDR   g_col_ws_foc_bdr
+#define COL_URGENT       g_col_urgent
+#define COL_WARNING      g_col_warning
+#define COL_TIP_BG       g_col_tip_bg
+#define COL_TIP_BDR      g_col_tip_bdr
+#define COL_CLD_MONTH    g_col_cld_month
+#define COL_CLD_WKDAY    g_col_cld_wkday
+#define COL_CLD_TODAY_BG g_col_cld_today_bg
+#define COL_CLD_TODAY_FG g_col_cld_today_fg
 
 #define BTN_LEFT_CODE 0x110
 #define BTN_RIGHT_CODE 0x111
@@ -615,17 +633,77 @@ static uint32_t utf8_next(const char **p) {
     return cp;
 }
 
-static uint32_t parse_hex_color(const char *hex, uint32_t fallback) {
-    if (!hex) return fallback;
+static inline int hex_nibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return 0;
+}
+
+static uint32_t parse_color_spec(const char *spec, uint32_t fallback) {
+    if (!spec) return fallback;
+    while (*spec && isspace((unsigned char)*spec)) spec++;
+    if (!*spec) return fallback;
+
+    /* Handle rgba(...) or rgb(...) */
+    if (strncasecmp(spec, "rgba", 4) == 0 || strncasecmp(spec, "rgb", 3) == 0) {
+        const char *p = strchr(spec, '(');
+        if (p) {
+            p++;
+            int r = 0, g = 0, b = 0;
+            double a = 1.0;
+            if (sscanf(p, "%d , %d , %d , %lf", &r, &g, &b, &a) >= 3 ||
+                sscanf(p, "%d %d %d %lf", &r, &g, &b, &a) >= 3 ||
+                sscanf(p, "%d,%d,%d,%lf", &r, &g, &b, &a) >= 3) {
+                if (r < 0) r = 0;
+                else if (r > 255) r = 255;
+                if (g < 0) g = 0;
+                else if (g > 255) g = 255;
+                if (b < 0) b = 0;
+                else if (b > 255) b = 255;
+                uint32_t u_a;
+                if (a <= 1.0 && a >= 0.0) u_a = (uint32_t)(a * 255.0 + 0.5);
+                else if (a > 1.0 && a <= 255.0) u_a = (uint32_t)(a + 0.5);
+                else u_a = 255;
+                return (u_a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+            }
+        }
+    }
+
+    const char *hex = spec;
     if (*hex == '#') hex++;
-    if (strlen(hex) >= 6) {
-        char buf[7];
-        memcpy(buf, hex, 6);
-        buf[6] = '\0';
-        uint32_t rgb = (uint32_t)strtoul(buf, NULL, 16);
-        return 0xFF000000U | rgb;
+    size_t len = 0;
+    while (isxdigit((unsigned char)hex[len])) len++;
+
+    if (len == 6) {
+        uint32_t rgb = (uint32_t)strtoul(hex, NULL, 16);
+        return 0xFF000000U | (rgb & 0xFFFFFFU);
+    } else if (len == 8) {
+        /* Standard #RRGGBBAA */
+        char buf[9];
+        memcpy(buf, hex, 8);
+        buf[8] = '\0';
+        uint32_t val = (uint32_t)strtoul(buf, NULL, 16);
+        uint32_t rgb = (val >> 8) & 0xFFFFFFU;
+        uint32_t a = val & 0xFFU;
+        return (a << 24) | rgb;
+    } else if (len == 3) {
+        int r = hex_nibble(hex[0]);
+        int g = hex_nibble(hex[1]);
+        int b = hex_nibble(hex[2]);
+        return 0xFF000000U | ((uint32_t)(r * 17) << 16) | ((uint32_t)(g * 17) << 8) | (uint32_t)(b * 17);
+    } else if (len == 4) {
+        int r = hex_nibble(hex[0]);
+        int g = hex_nibble(hex[1]);
+        int b = hex_nibble(hex[2]);
+        int a = hex_nibble(hex[3]);
+        return ((uint32_t)(a * 17) << 24) | ((uint32_t)(r * 17) << 16) | ((uint32_t)(g * 17) << 8) | (uint32_t)(b * 17);
     }
     return fallback;
+}
+
+static uint32_t parse_hex_color(const char *hex, uint32_t fallback) {
+    return parse_color_spec(hex, fallback);
 }
 
 static inline bool is_symbola_forced(uint32_t cp) {
@@ -917,6 +995,7 @@ static int measure_markup_line(const char *text, int px_size, bool force_bold) {
 }
 
 static void draw_separator(SurfaceBuf *s, int x) {
+    if ((COL_BAR_BORDER >> 24) == 0) return;
     for (int y = 0; y < BAR_HEIGHT - 1; y++) {
         blend_pixel(s, x, y, COL_BAR_BORDER);
     }
@@ -1143,13 +1222,14 @@ static void build_clock_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
             int len = (int)strlen(mn);
             int pad_l = (23 - len) / 2;
             int pad_r = 23 - len - pad_l;
-            off += snprintf(tip_out + off, tip_sz - off, "%*s<span color='#ffead3'><b>%s</b></span>%*s%s",
-                            pad_l, "", mn, pad_r, "", (col_m < 2) ? "   " : "\n");
+            off += snprintf(tip_out + off, tip_sz - off, "%*s<span color='#%06x'><b>%s</b></span>%*s%s",
+                            pad_l, "", (unsigned)(COL_CLD_MONTH & 0xFFFFFFU), mn, pad_r, "", (col_m < 2) ? "   " : "\n");
         }
         /* Weekday headers */
         for (int col_m = 0; col_m < 3; col_m++) {
             off += snprintf(tip_out + off, tip_sz - off,
-                            "   <span color='#7d6b5e'>Mo Tu We Th Fr Sa Su</span>%s",
+                            "   <span color='#%06x'>Mo Tu We Th Fr Sa Su</span>%s",
+                            (unsigned)(COL_CLD_WKDAY & 0xFFFFFFU),
                             (col_m < 2) ? "   " : "\n");
         }
         /* Up to 6 week rows per month row */
@@ -1181,7 +1261,7 @@ static void build_clock_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
                 mktime(&tm_wk);
                 char wk_str[8];
                 strftime(wk_str, sizeof(wk_str), "%V", &tm_wk);
-                off += snprintf(tip_out + off, tip_sz - off, "<span color='#7d6b5e'>%2s</span> ", wk_str);
+                off += snprintf(tip_out + off, tip_sz - off, "<span color='#%06x'>%2s</span> ", (unsigned)(COL_CLD_WKDAY & 0xFFFFFFU), wk_str);
 
                 for (int dow = 0; dow < 7; dow++) {
                     int d = start_day + dow;
@@ -1189,7 +1269,8 @@ static void build_clock_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
                         off += snprintf(tip_out + off, tip_sz - off, "  %s", (dow < 6) ? " " : "");
                     } else if (m == today_m && d == today_d) {
                         off += snprintf(tip_out + off, tip_sz - off,
-                                        "<span background='#ffead3' color='#4a3e35'><b>%2d</b></span>%s",
+                                        "<span background='#%06x' color='#%06x'><b>%2d</b></span>%s",
+                                        (unsigned)(COL_CLD_TODAY_BG & 0xFFFFFFU), (unsigned)(COL_CLD_TODAY_FG & 0xFFFFFFU),
                                         d, (dow < 6) ? " " : "");
                     } else {
                         off += snprintf(tip_out + off, tip_sz - off, "%2d%s", d, (dow < 6) ? " " : "");
@@ -3853,12 +3934,17 @@ static void truncate_utf8_to_px(char *str, size_t buf_sz, int max_px, int font_p
 }
 
 static void render_bar(SurfaceBuf *s) {
-    /* Clear background to rgba(74, 62, 53, 0.8) and draw 1px bottom border #7d6b5e */
+    /* Clear background to COL_BAR_BG and draw 1px bottom border if configured */
     uint32_t bg_pm = premul_argb(COL_BAR_BG);
     for (int y = 0; y < BAR_HEIGHT - 1; y++) {
         for (int x = 0; x < s->w; x++) s->px[y * s->w + x] = bg_pm;
     }
-    for (int x = 0; x < s->w; x++) s->px[(BAR_HEIGHT - 1) * s->w + x] = COL_BAR_BORDER;
+    if ((COL_BAR_BORDER >> 24) == 0) {
+        for (int x = 0; x < s->w; x++) s->px[(BAR_HEIGHT - 1) * s->w + x] = bg_pm;
+    } else {
+        uint32_t bdr_pm = premul_argb(COL_BAR_BORDER);
+        for (int x = 0; x < s->w; x++) s->px[(BAR_HEIGHT - 1) * s->w + x] = bdr_pm;
+    }
 
     for (int i = 0; i < MOD_COUNT; i++) g_mod_boxes[i].visible = false;
 
@@ -4161,11 +4247,11 @@ static void render_bar(SurfaceBuf *s) {
             const GCalEvent *tev = &g_gcal_events[gcal_all_idxs[i]];
             if (tev->filtered) {
                 if (tev->location[0]) {
-                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s<span color='#8c7a6b'>%s %s, %s</span>",
-                                     (i > 0) ? "\n" : "", tev->time_range, tev->summary, tev->location);
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s<span color='#%06x'>%s %s, %s</span>",
+                                     (i > 0) ? "\n" : "", (unsigned)(COL_WS_IDLE & 0xFFFFFFU), tev->time_range, tev->summary, tev->location);
                 } else {
-                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s<span color='#8c7a6b'>%s %s</span>",
-                                     (i > 0) ? "\n" : "", tev->time_range, tev->summary);
+                    toff += snprintf(gc_tip + toff, sizeof(gc_tip) - toff, "%s<span color='#%06x'>%s %s</span>",
+                                     (i > 0) ? "\n" : "", (unsigned)(COL_WS_IDLE & 0xFFFFFFU), tev->time_range, tev->summary);
                 }
             } else {
                 if (tev->location[0]) {
@@ -5488,6 +5574,121 @@ static bool load_config_file(const char *path) {
                 trim_and_unquote(eq);
                 snprintf(g_namaz_tz, sizeof(g_namaz_tz), "%s", eq);
                 g_namaz_tz_configured = true;
+            }
+        } else if (strncmp(s, "bar_bg", 6) == 0 || strncmp(s, "col_bar_bg", 10) == 0 ||
+                   strncmp(s, "background", 10) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_bar_bg = parse_color_spec(eq, g_col_bar_bg);
+            }
+        } else if (strncmp(s, "bar_border", 10) == 0 || strncmp(s, "col_bar_border", 14) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_bar_border = parse_color_spec(eq, g_col_bar_border);
+            }
+        } else if (strncmp(s, "bar_opacity", 11) == 0 || strncmp(s, "bar_alpha", 9) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                double a = atof(eq);
+                uint32_t u_a = 255;
+                if (strchr(eq, '%')) u_a = (uint32_t)(a * 2.55 + 0.5);
+                else if (a <= 1.0 && a >= 0.0) u_a = (uint32_t)(a * 255.0 + 0.5);
+                else if (a > 1.0 && a <= 255.0) u_a = (uint32_t)(a + 0.5);
+                if (u_a > 255) u_a = 255;
+                g_col_bar_bg = (u_a << 24) | (g_col_bar_bg & 0xFFFFFFU);
+            }
+        } else if (strncmp(s, "text_color", 10) == 0 || strncmp(s, "col_text", 8) == 0 ||
+                   strncmp(s, "foreground", 10) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_text = parse_color_spec(eq, g_col_text);
+            }
+        } else if (strncmp(s, "ws_idle", 7) == 0 || strncmp(s, "col_ws_idle", 11) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_ws_idle = parse_color_spec(eq, g_col_ws_idle);
+            }
+        } else if (strncmp(s, "ws_focused_bg", 13) == 0 || strncmp(s, "col_ws_foc_bg", 13) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_ws_foc_bg = parse_color_spec(eq, g_col_ws_foc_bg);
+            }
+        } else if (strncmp(s, "ws_focused_border", 17) == 0 || strncmp(s, "col_ws_foc_bdr", 14) == 0 ||
+                   strncmp(s, "ws_focused_bdr", 14) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_ws_foc_bdr = parse_color_spec(eq, g_col_ws_foc_bdr);
+            }
+        } else if (strncmp(s, "urgent_color", 12) == 0 || strncmp(s, "col_urgent", 10) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_urgent = parse_color_spec(eq, g_col_urgent);
+            }
+        } else if (strncmp(s, "warning_color", 13) == 0 || strncmp(s, "col_warning", 11) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_warning = parse_color_spec(eq, g_col_warning);
+            }
+        } else if (strncmp(s, "tip_bg", 6) == 0 || strncmp(s, "col_tip_bg", 10) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_tip_bg = parse_color_spec(eq, g_col_tip_bg);
+            }
+        } else if (strncmp(s, "tip_border", 10) == 0 || strncmp(s, "col_tip_bdr", 11) == 0 ||
+                   strncmp(s, "tip_bdr", 7) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_tip_bdr = parse_color_spec(eq, g_col_tip_bdr);
+            }
+        } else if (strncmp(s, "cld_month", 9) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_cld_month = parse_color_spec(eq, g_col_cld_month);
+            }
+        } else if (strncmp(s, "cld_weekday", 11) == 0 || strncmp(s, "cld_wkday", 9) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_cld_wkday = parse_color_spec(eq, g_col_cld_wkday);
+            }
+        } else if (strncmp(s, "cld_today_bg", 12) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_cld_today_bg = parse_color_spec(eq, g_col_cld_today_bg);
+            }
+        } else if (strncmp(s, "cld_today_fg", 12) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_cld_today_fg = parse_color_spec(eq, g_col_cld_today_fg);
             }
         }
     }

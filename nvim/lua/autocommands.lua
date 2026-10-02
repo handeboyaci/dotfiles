@@ -21,11 +21,11 @@ vim.api.nvim_create_autocmd('InsertLeave', {
   end,
 })
 
--- Treesitter folding for supported filetypes
+-- Treesitter highlighting and folding for supported filetypes
 vim.api.nvim_create_autocmd('FileType', {
   group = vimrc_group,
-  callback = function()
-    if vim.treesitter.get_parser(0) then
+  callback = function(args)
+    if pcall(vim.treesitter.start, args.buf) then
       vim.opt_local.foldmethod = 'expr'
       vim.opt_local.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
     end

@@ -54,15 +54,20 @@ vim.keymap.set({ "n", "x", "o" }, "[]", function()
 end, { desc = "Previous class end" })
 
 -- treesitter-context
-require("treesitter-context").setup({
-	patterns = {
-		cpp = {
-			"namespace",
-			"struct",
-			"enum",
-		},
-	},
-})
+require("treesitter-context").setup()
+
+-- Ensure parser has synchronously parsed before computing context in Neovim 0.11+
+local ts_context = require("treesitter-context.context")
+local orig_context_get = ts_context.get
+ts_context.get = function(winid)
+	winid = winid or vim.api.nvim_get_current_win()
+	local bufnr = vim.api.nvim_win_get_buf(winid)
+	local ok, parser = pcall(vim.treesitter.get_parser, bufnr)
+	if ok and parser then
+		pcall(parser.parse, parser)
+	end
+	return orig_context_get(winid)
+end
 
 vim.keymap.set("n", "[t", require("treesitter-context").go_to_context, { silent = true })
 vim.keymap.set("n", "]t", require("treesitter-context").toggle, { silent = true })

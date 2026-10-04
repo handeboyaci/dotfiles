@@ -72,7 +72,7 @@ bindsym $mod+d focus child
 bindsym $mod+s sticky toggle
 
 bindsym Ctrl+$alt+Delete exec $HOME/.dotfiles/bin/lock-screen
-bindswitch --locked lid:on exec systemctl hybrid-sleep
+bindswitch --locked lid:on exec systemctl suspend
 
 # screenshot
 bindsym Print exec grim -g "$(slurp)" - | wl-copy

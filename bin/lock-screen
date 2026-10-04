@@ -32,7 +32,7 @@ fi
 swayidle -w \
   timeout 10 'swaymsg "output * dpms off"' \
   resume 'swaymsg "output * dpms on"' \
-  timeout 1800 'systemctl hybrid-sleep' 9>&- &
+  timeout 1800 'systemctl suspend' 9>&- &
 
 swaylock -c 000000 9>&- &
 wait $!

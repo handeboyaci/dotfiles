@@ -181,7 +181,7 @@ def update_swaylock_config(config_path: Path, theme: dict, dry_run: bool = False
         "text-color": theme["fg"],
         "text-clear-color": theme["fg"],
         "ring-ver-color": theme["ver"],
-        "text-ver-color": theme["ver"],
+        "text-ver-color": theme["fg"],
         "ring-wrong-color": theme["wrong"],
         "text-wrong-color": theme["wrong"],
     }

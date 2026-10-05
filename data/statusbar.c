@@ -2183,6 +2183,20 @@ static void format_fixed_range_12h(int sh, int sm, int eh, int em, char *out, si
     snprintf(out, out_sz, "%2d:%02d%s - %2d:%02d%s", sh12, sm, sampm, eh12, em, eampm);
 }
 
+static void format_gcal_mins(int mins, char *out, size_t out_sz) {
+    const char *sign = (mins < 0) ? "-" : "";
+    long abs_m = (mins < 0) ? -(long)mins : (long)mins;
+    long h = abs_m / 60;
+    long m = abs_m % 60;
+    if (h > 0 && m > 0) {
+        snprintf(out, out_sz, "%s%ldh%ldm", sign, h, m);
+    } else if (h > 0) {
+        snprintf(out, out_sz, "%s%ldh", sign, h);
+    } else {
+        snprintf(out, out_sz, "%s%ldm", sign, m);
+    }
+}
+
 static void parse_gcal_location_locked(const char *raw_loc, char *out, size_t out_sz) {
     out[0] = '\0';
     if (!raw_loc || !*raw_loc) return;
@@ -4205,10 +4219,12 @@ static void render_bar(SurfaceBuf *s) {
                     g_gcal_notified_count++;
 
                     char nbody[256];
+                    char wstr[32];
+                    format_gcal_mins(wmins, wstr, sizeof(wstr));
                     if (wev->location[0]) {
-                        snprintf(nbody, sizeof(nbody), "in %dm @ %s", wmins, wev->location);
+                        snprintf(nbody, sizeof(nbody), "in %s @ %s", wstr, wev->location);
                     } else {
-                        snprintf(nbody, sizeof(nbody), "in %dm", wmins);
+                        snprintf(nbody, sizeof(nbody), "in %s", wstr);
                     }
                     notify_urgent(wev->summary, nbody);
                 }
@@ -4225,12 +4241,14 @@ static void render_bar(SurfaceBuf *s) {
             bool show_cd0 = (mins0 < 30);
             if (g_gcal_show_details) show_cd0 = !show_cd0;
             if (show_cd0) {
+                char cd0[32];
+                format_gcal_mins(mins0, cd0, sizeof(cd0));
                 if (mins0 < 0) {
-                    if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in <span color='#cc6666'>%dm</span> @ %s", mins0, ev0->location);
-                    else snprintf(gc_suf0, sizeof(gc_suf0), " in <span color='#cc6666'>%dm</span>", mins0);
+                    if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in <span color='#cc6666'>%s</span> @ %s", cd0, ev0->location);
+                    else snprintf(gc_suf0, sizeof(gc_suf0), " in <span color='#cc6666'>%s</span>", cd0);
                 } else {
-                    if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in %dm @ %s", mins0, ev0->location);
-                    else snprintf(gc_suf0, sizeof(gc_suf0), " in %dm", mins0);
+                    if (ev0->location[0]) snprintf(gc_suf0, sizeof(gc_suf0), " in %s @ %s", cd0, ev0->location);
+                    else snprintf(gc_suf0, sizeof(gc_suf0), " in %s", cd0);
                 }
             } else {
                 snprintf(gc_suf0, sizeof(gc_suf0), " %s", ev0->start_short);
@@ -4247,12 +4265,14 @@ static void render_bar(SurfaceBuf *s) {
                     bool show_cd1 = (mins1 < 30);
                     if (g_gcal_show_details) show_cd1 = !show_cd1;
                     if (show_cd1) {
+                        char cd1[32];
+                        format_gcal_mins(mins1, cd1, sizeof(cd1));
                         if (mins1 < 0) {
-                            if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in <span color='#cc6666'>%dm</span> @ %s", mins1, ev1->location);
-                            else snprintf(gc_suf1, sizeof(gc_suf1), " in <span color='#cc6666'>%dm</span>", mins1);
+                            if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in <span color='#cc6666'>%s</span> @ %s", cd1, ev1->location);
+                            else snprintf(gc_suf1, sizeof(gc_suf1), " in <span color='#cc6666'>%s</span>", cd1);
                         } else {
-                            if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in %dm @ %s", mins1, ev1->location);
-                            else snprintf(gc_suf1, sizeof(gc_suf1), " in %dm", mins1);
+                            if (ev1->location[0]) snprintf(gc_suf1, sizeof(gc_suf1), " in %s @ %s", cd1, ev1->location);
+                            else snprintf(gc_suf1, sizeof(gc_suf1), " in %s", cd1);
                         }
                     } else {
                         snprintf(gc_suf1, sizeof(gc_suf1), " %s", ev1->start_short);
@@ -5807,7 +5827,9 @@ static void print_usage(const char *prog) {
            "  --city <NAME>                           City label for prayer times (default: auto or none)\n"
            "  --namaz-tz <TZ>                         Timezone for prayer times (default: auto-detected from lat/lon)\n"
            "  --config <PATH>                         Load configuration from file (default: $XDG_CONFIG_HOME/statusbar.conf)\n"
+#if defined(ENABLE_SELF_TEST) || defined(SELF_TEST)
            "  --self-test                             Render bar & calendar tooltip offscreen and verify all modules\n"
+#endif
            "  --wayland-test                          Connect to live Wayland display, configure layer surface & present frame\n"
            "  -h, --help                              Show this help message\n",
            prog);
@@ -5866,7 +5888,9 @@ int main(int argc, char *argv[]) {
     bool cli_loc_reset = false;
     bool cli_cal_reset = false;
     bool cli_ignored_reset = false;
+#if defined(ENABLE_SELF_TEST) || defined(SELF_TEST)
     bool self_test = false;
+#endif
     bool wayland_test = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -5885,8 +5909,14 @@ int main(int argc, char *argv[]) {
                 kill(pid, SIGTERM);
             }
             return 0;
+#if defined(ENABLE_SELF_TEST) || defined(SELF_TEST)
         } else if (strcmp(argv[i], "--self-test") == 0) {
             self_test = true;
+#else
+        } else if (strcmp(argv[i], "--self-test") == 0) {
+            fprintf(stderr, "statusbar: --self-test is disabled in production build (rebuild with -DENABLE_SELF_TEST)\n");
+            return 1;
+#endif
         } else if (strcmp(argv[i], "--wayland-test") == 0) {
             wayland_test = true;
         } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
@@ -6007,6 +6037,7 @@ int main(int argc, char *argv[]) {
 
     init_fonts();
 
+#if defined(ENABLE_SELF_TEST) || defined(SELF_TEST)
     if (self_test) {
         if (g_namaz_auto_loc && g_namaz_lat == 0.0 && g_namaz_lon == 0.0) {
             fetch_geolocation_auto(false);
@@ -6191,6 +6222,54 @@ int main(int argc, char *argv[]) {
             }
             g_gcal_count = 0;
             g_gcal_private = false;
+
+            /* Verify format_gcal_mins duration formatting */
+            char dur_buf[32];
+            format_gcal_mins(125, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "2h5m") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(125) expected '2h5m', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(120, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "2h") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(120) expected '2h', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(60, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "1h") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(60) expected '1h', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(65, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "1h5m") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(65) expected '1h5m', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(25, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "25m") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(25) expected '25m', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(0, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "0m") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(0) expected '0m', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(-5, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "-5m") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(-5) expected '-5m', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(-60, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "-1h") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(-60) expected '-1h', got '%s'\n", dur_buf);
+                return 1;
+            }
+            format_gcal_mins(-125, dur_buf, sizeof(dur_buf));
+            if (strcmp(dur_buf, "-2h5m") != 0) {
+                fprintf(stderr, "Self-test error: format_gcal_mins(-125) expected '-2h5m', got '%s'\n", dur_buf);
+                return 1;
+            }
         }
 
         printf("Self-test OK: rendered 3840x%d bar | emoji_font='%s' | workspaces=%d | tzs=%d (current='%s' label='%s') | clock_tip='%s' | namaz='%s' (city='%s' tz='%s') | screensaver=%s | quiet=%u (urg=%u preview='%s') | pulse=%d%%\n",
@@ -6203,6 +6282,7 @@ int main(int argc, char *argv[]) {
         free(px);
         return 0;
     }
+#endif
 
     if (!wayland_test) {
         ensure_single_instance();

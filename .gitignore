@@ -23,6 +23,7 @@ scratch/
 /bin/pixelbuds-pause
 data/.static_libs/
 data/statusbar
+data/statusbar-test
 data/pixelbuds-pause
 *.un~
 applications/chrome-*.desktop

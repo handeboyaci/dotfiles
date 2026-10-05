@@ -17,11 +17,14 @@ $(STATIC_LIBDIR):
 statusbar: statusbar.c $(STATIC_LIBDIR)
 	$(CC) $(CFLAGS) $(LDFLAGS) statusbar.c -L$(STATIC_LIBDIR) -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -ljson-c -lz -lm -lpthread -o statusbar
 
+statusbar-test: statusbar.c $(STATIC_LIBDIR)
+	$(CC) $(CFLAGS) -DENABLE_SELF_TEST $(LDFLAGS) statusbar.c -L$(STATIC_LIBDIR) -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -ljson-c -lz -lm -lpthread -o statusbar-test
+
 pixelbuds-pause: pixelbuds-pause.c
 	$(CC) -O2 -Wall -Wextra pixelbuds-pause.c $$(pkg-config --cflags --libs libsystemd) -o pixelbuds-pause
 
-test: statusbar
-	./statusbar --self-test
+test: statusbar-test
+	./statusbar-test --self-test
 
 install: statusbar pixelbuds-pause 09-timezone.sh
 	install -d $(DESTDIR)$(PREFIX)/bin
@@ -31,4 +34,4 @@ install: statusbar pixelbuds-pause 09-timezone.sh
 	install -m 755 09-timezone.sh $(DESTDIR)/etc/NetworkManager/dispatcher.d/09-timezone
 
 clean:
-	rm -rf statusbar pixelbuds-pause $(STATIC_LIBDIR)
+	rm -rf statusbar statusbar-test pixelbuds-pause $(STATIC_LIBDIR)

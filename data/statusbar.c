@@ -205,6 +205,7 @@ static int g_gcal_count = 0;
 static GCalNotified g_gcal_notified[MAX_GCAL_EVENTS];
 static int g_gcal_notified_count = 0;
 static bool g_gcal_show_details = false;
+static bool g_gcal_private = false;
 static bool g_gcal_fetching = false;
 static char g_gcal_access_token[1024] = "";
 static char g_gcal_client_id[256] = "";
@@ -279,8 +280,6 @@ static int g_hovered_mod = -1;
 static int g_hovered_tray_idx = -1;
 static int g_pointer_x = -1;
 static int g_pointer_y = -1;
-static uint32_t g_last_click_ms = 0;
-static int g_last_click_mod = -1;
 
 static void update_active_loc_prefixes(void);
 
@@ -1916,6 +1915,7 @@ static void poll_quiet(void) {
 
 static void poll_mpris(void);
 static void poll_screensaver(void);
+static void poll_gcal_private(void);
 
 static void *quiet_dbus_thread(void *arg) {
     (void)arg;
@@ -3441,6 +3441,32 @@ static void toggle_screensaver(void) {
     sync_idle_inhibitor();
 }
 
+static void poll_gcal_private(void) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/statusbar.gcal_private", g_runtime_dir);
+    bool is_priv = (access(path, F_OK) == 0);
+    pthread_mutex_lock(&g_mutex);
+    g_gcal_private = is_priv;
+    pthread_mutex_unlock(&g_mutex);
+}
+
+static void toggle_gcal_private(void) {
+    bool priv;
+    pthread_mutex_lock(&g_mutex);
+    g_gcal_private = !g_gcal_private;
+    priv = g_gcal_private;
+    pthread_mutex_unlock(&g_mutex);
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/statusbar.gcal_private", g_runtime_dir);
+    if (!priv) {
+        unlink(path);
+    } else {
+        int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (fd >= 0) close(fd);
+    }
+}
+
 static long read_sysfs_long(const char *dir, const char *file) {
     char path[512];
     snprintf(path, sizeof(path), "%s/%s", dir, file);
@@ -4195,7 +4221,7 @@ static void render_bar(SurfaceBuf *s) {
             ev0 = &g_gcal_events[gcal_vis_idxs[0]];
             int mins0 = (ev0->start_ts > now) ? (int)((ev0->start_ts - now + 59) / 60)
                                               : -(int)((now - ev0->start_ts) / 60);
-            snprintf(gc_sum0, sizeof(gc_sum0), "%s", ev0->summary);
+            snprintf(gc_sum0, sizeof(gc_sum0), "%s", g_gcal_private ? "[private]" : ev0->summary);
             bool show_cd0 = (mins0 < 30);
             if (g_gcal_show_details) show_cd0 = !show_cd0;
             if (show_cd0) {
@@ -4217,7 +4243,7 @@ static void render_bar(SurfaceBuf *s) {
                 if (mins1 < 30) {
                     gcal_two = true;
                     ev1 = cand1;
-                    snprintf(gc_sum1, sizeof(gc_sum1), "%s", ev1->summary);
+                    snprintf(gc_sum1, sizeof(gc_sum1), "%s", g_gcal_private ? "[private]" : ev1->summary);
                     bool show_cd1 = (mins1 < 30);
                     if (g_gcal_show_details) show_cd1 = !show_cd1;
                     if (show_cd1) {
@@ -4838,12 +4864,6 @@ static void handle_pointer_motion(int x, int y) {
     }
 }
 
-static void *async_gcal_refresh(void *a) {
-    (void)a;
-    fetch_gcal_events();
-    return NULL;
-}
-
 static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
     if (!g_bar_visible) return;
     int btn = 0;
@@ -4855,11 +4875,8 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
     if (g_pointer_x >= 0) {
         handle_pointer_motion(g_pointer_x, g_pointer_y);
     }
+    (void)time_ms;
     if (g_hovered_mod < 0) return;
-
-    bool is_double = (g_hovered_mod == g_last_click_mod && (time_ms - g_last_click_ms) < 350);
-    g_last_click_mod = g_hovered_mod;
-    g_last_click_ms = time_ms;
 
     switch (g_hovered_mod) {
         case MOD_WORKSPACES:
@@ -4910,7 +4927,7 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
             break;
 
         case MOD_GCAL:
-            if (btn == 3 || (btn == 1 && is_double)) {
+            if (btn == 3) {
                 spawn_detached(g_gcal_open_cmd);
             } else if (btn == 1) {
                 pthread_mutex_lock(&g_mutex);
@@ -4918,9 +4935,8 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
                 pthread_mutex_unlock(&g_mutex);
                 redraw_all();
             } else if (btn == 2) {
-                pthread_t th;
-                pthread_create(&th, NULL, async_gcal_refresh, NULL);
-                pthread_detach(th);
+                toggle_gcal_private();
+                redraw_all();
             }
             break;
 
@@ -5475,6 +5491,13 @@ static bool load_config_file(const char *path) {
                 trim_and_unquote(eq);
                 if (eq[0]) snprintf(g_gcal_open_cmd, sizeof(g_gcal_open_cmd), "%s", eq);
             }
+        } else if (strncmp(s, "gcal_private", 12) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_gcal_private = (strcasecmp(eq, "true") == 0 || strcmp(eq, "1") == 0 || strcasecmp(eq, "yes") == 0);
+            }
         } else if (strncmp(s, "gcal_calendars", 14) == 0 || strncmp(s, "calendars", 9) == 0) {
             char *eq = strchr(s, '=');
             if (eq) {
@@ -5994,6 +6017,7 @@ int main(int argc, char *argv[]) {
         refresh_sway_state();
         poll_pulseaudio();
         poll_screensaver();
+        poll_gcal_private();
         poll_battery();
         poll_quiet();
         uint32_t *px = calloc(3840 * BAR_HEIGHT, 4);
@@ -6110,6 +6134,63 @@ int main(int argc, char *argv[]) {
             snprintf(g_detected_tz, sizeof(g_detected_tz), "%s", orig_det_tz);
             update_active_clocks();
             g_tz_idx = 0;
+
+            /* Case 5: Verify Google Calendar private mode toggle, persistence & rendering */
+            char priv_path[512];
+            snprintf(priv_path, sizeof(priv_path), "%s/statusbar.gcal_private", g_runtime_dir);
+            unlink(priv_path);
+            poll_gcal_private();
+            if (g_gcal_private) {
+                fprintf(stderr, "Self-test error: g_gcal_private should initially be false\n");
+                return 1;
+            }
+            toggle_gcal_private();
+            if (!g_gcal_private || access(priv_path, F_OK) != 0) {
+                fprintf(stderr, "Self-test error: toggle_gcal_private failed to enable or create file\n");
+                return 1;
+            }
+            g_gcal_private = false;
+            poll_gcal_private();
+            if (!g_gcal_private) {
+                fprintf(stderr, "Self-test error: poll_gcal_private failed to reload persistence\n");
+                return 1;
+            }
+            toggle_gcal_private();
+            if (g_gcal_private || access(priv_path, F_OK) == 0) {
+                fprintf(stderr, "Self-test error: toggle_gcal_private failed to disable or remove file\n");
+                return 1;
+            }
+
+            /* Verify event rendering under normal and private modes */
+            g_gcal_count = 1;
+            snprintf(g_gcal_events[0].summary, sizeof(g_gcal_events[0].summary), "Secret Strategy Meeting");
+            snprintf(g_gcal_events[0].location, sizeof(g_gcal_events[0].location), "4W-Conf");
+            snprintf(g_gcal_events[0].start_short, sizeof(g_gcal_events[0].start_short), "14:00");
+            g_gcal_events[0].start_ts = time(NULL) + 600; /* in 10 mins */
+            g_gcal_events[0].end_ts = g_gcal_events[0].start_ts + 1800;
+            g_gcal_events[0].filtered = false;
+
+            g_gcal_private = false;
+            render_bar(&sb);
+            if (strstr(g_mod_boxes[MOD_GCAL].tooltip, "Secret Strategy Meeting") == NULL ||
+                strstr(g_mod_boxes[MOD_GCAL].tooltip, "4W-Conf") == NULL) {
+                fprintf(stderr, "Self-test error: non-private gcal tooltip missing summary or room\n");
+                return 1;
+            }
+
+            g_gcal_private = true;
+            render_bar(&sb);
+            if (strstr(g_mod_boxes[MOD_GCAL].tooltip, "Secret Strategy Meeting") == NULL ||
+                strstr(g_mod_boxes[MOD_GCAL].tooltip, "4W-Conf") == NULL) {
+                fprintf(stderr, "Self-test error: private mode must NOT hide summary or room in hover tooltip\n");
+                return 1;
+            }
+            if (strstr(g_mod_boxes[MOD_GCAL].tooltip, "[private]") != NULL) {
+                fprintf(stderr, "Self-test error: [private] must not appear in hover tooltip\n");
+                return 1;
+            }
+            g_gcal_count = 0;
+            g_gcal_private = false;
         }
 
         printf("Self-test OK: rendered 3840x%d bar | emoji_font='%s' | workspaces=%d | tzs=%d (current='%s' label='%s') | clock_tip='%s' | namaz='%s' (city='%s' tz='%s') | screensaver=%s | quiet=%u (urg=%u preview='%s') | pulse=%d%%\n",
@@ -6168,6 +6249,7 @@ int main(int argc, char *argv[]) {
 
     /* Create top bar layer surface (load screensaver state first so inhibitor attaches if needed) */
     poll_screensaver();
+    poll_gcal_private();
     show_bar_surface();
 
     if (wayland_test) {
@@ -6175,6 +6257,7 @@ int main(int argc, char *argv[]) {
         refresh_sway_state();
         poll_pulseaudio();
         poll_screensaver();
+        poll_gcal_private();
         for (int i = 0; i < 10 && !g_bar_configured; i++) {
             if (poll(&pfd, 1, 200) > 0) process_wayland_events();
         }
@@ -6191,6 +6274,7 @@ int main(int argc, char *argv[]) {
 
     poll_battery();
     poll_screensaver();
+    poll_gcal_private();
 
     pthread_t th_sway, th_quiet, th_audio, th_bat, th_bg;
     pthread_create(&th_sway, NULL, sway_event_thread, NULL);

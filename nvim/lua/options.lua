@@ -137,6 +137,8 @@ vim.opt.dictionary = '/usr/share/dict/words'
 vim.opt.switchbuf = 'useopen,usetab'
 
 -- Folds
+vim.opt.foldmethod = 'expr'
+vim.opt.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
 vim.opt.fillchars = { vert = '│', fold = '·', diff = '-' }
 vim.opt.foldtext = require('fold_text').foldtext
 vim.opt.foldlevel = 100

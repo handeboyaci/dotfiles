@@ -21,13 +21,27 @@ vim.api.nvim_create_autocmd('InsertLeave', {
   end,
 })
 
--- Treesitter highlighting and folding for supported filetypes
+-- Treesitter highlighting for supported filetypes
 vim.api.nvim_create_autocmd('FileType', {
   group = vimrc_group,
   callback = function(args)
-    if pcall(vim.treesitter.start, args.buf) then
-      vim.opt_local.foldmethod = 'expr'
-      vim.opt_local.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
+    local bufnr = args.buf
+    -- Skip large files to prevent UI latency
+    local max_size = 1.5 * 1024 * 1024 -- 1.5 MB
+    local name = vim.api.nvim_buf_get_name(bufnr)
+    if name ~= '' then
+      local ok, stats = pcall(vim.uv.fs_stat, name)
+      if ok and stats and stats.size > max_size then
+        return
+      end
+    end
+    if vim.api.nvim_buf_line_count(bufnr) > 50000 then
+      return
+    end
+
+    local lang = vim.treesitter.language.get_lang(args.match) or args.match
+    if vim.treesitter.query.get(lang, 'highlights') then
+      pcall(vim.treesitter.start, bufnr, lang)
     end
   end,
 })

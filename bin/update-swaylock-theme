@@ -3,7 +3,8 @@
 update-swaylock-theme:
 Inspects sway's wallpaper (or a specified image) using ImageMagick,
 extracts an aesthetically balanced color palette, and updates
-swaylock/config to match the wallpaper theme.
+swaylock/config and nwg-bar/style.css to match the wallpaper theme
+with guaranteed readable text and harmonious colors.
 
 Optionally can also sync colors to statusbar.conf (--statusbar).
 """
@@ -20,6 +21,7 @@ DEFAULT_DOTFILES = Path.home() / ".dotfiles"
 DEFAULT_IMAGE = Path.home() / ".config" / "sway" / "bg.jpg"
 DEFAULT_SWAYLOCK_CONFIG = Path.home() / ".config" / "swaylock" / "config"
 DEFAULT_STATUSBAR_CONFIG = Path.home() / ".config" / "statusbar.conf"
+DEFAULT_NWGBAR_STYLE = Path.home() / ".config" / "nwg-bar" / "style.css"
 
 
 def find_default_paths():
@@ -36,7 +38,11 @@ def find_default_paths():
     if not bar.exists() and (DEFAULT_DOTFILES / "statusbar.conf").exists():
         bar = DEFAULT_DOTFILES / "statusbar.conf"
 
-    return img, cfg, bar
+    nwg = DEFAULT_NWGBAR_STYLE
+    if not nwg.exists() and (DEFAULT_DOTFILES / "nwg-bar" / "style.css").exists():
+        nwg = DEFAULT_DOTFILES / "nwg-bar" / "style.css"
+
+    return img, cfg, bar, nwg
 
 
 def rgb_to_hex(r: float, g: float, b: float) -> str:
@@ -45,6 +51,29 @@ def rgb_to_hex(r: float, g: float, b: float) -> str:
     ig = max(0, min(255, int(round(g * 255))))
     ib = max(0, min(255, int(round(b * 255))))
     return f"{ir:02X}{ig:02X}{ib:02X}"
+
+
+def hex_to_rgb(hex_col: str):
+    """Convert a 6-character hex string to RGB tuple in range 0..255."""
+    h = hex_col.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def relative_luminance(r: float, g: float, b: float) -> float:
+    """Calculate WCAG 2.1 relative luminance for normalized RGB (0..1)."""
+    def channel_lum(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * channel_lum(r) + 0.7152 * channel_lum(g) + 0.0722 * channel_lum(b)
+
+
+def contrast_ratio(rgb1, rgb2) -> float:
+    """Calculate WCAG contrast ratio between two normalized RGB tuples (0..1)."""
+    l1 = relative_luminance(*rgb1)
+    l2 = relative_luminance(*rgb2)
+    lighter = max(l1, l2)
+    darker = min(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
 
 
 def extract_palette(image_path: Path, max_colors: int = 24):
@@ -102,10 +131,10 @@ def extract_palette(image_path: Path, max_colors: int = 24):
 
 def compute_theme(palette):
     """
-    Select harmonious colors for swaylock:
-      - bg: dominant dark tone from image
+    Select harmonious colors for swaylock and nwg-bar:
+      - bg: dominant dark tone from image (guaranteed deep enough for contrast)
       - accent: most vibrant highlight color
-      - fg: clean light tint (off-white tinted with accent)
+      - fg: clean light tint (off-white tinted with accent, WCAG AAA contrast >= 7:1)
       - ver: mid-tone harmonious verification color
       - wrong: distinctive error red harmonious with theme
     """
@@ -113,9 +142,19 @@ def compute_theme(palette):
     # Pick a dark color (l <= 0.32) with highest pixel count, or the darkest available
     dark_cands = [p for p in palette if p["l"] <= 0.32]
     if dark_cands:
-        bg = max(dark_cands, key=lambda p: p["count"])
+        bg_cand = max(dark_cands, key=lambda p: p["count"])
+        bg_hex = bg_cand["hex"]
+        bg_h = bg_cand["h"]
+        bg_l = bg_cand["l"]
+        bg_s = bg_cand["s"]
     else:
-        bg = min(palette, key=lambda p: p["l"])
+        bg_cand = min(palette, key=lambda p: p["l"])
+        bg_h = bg_cand["h"]
+        bg_s = bg_cand["s"]
+        # If no dark color is present in the image, derive a dark shade preserving wallpaper hue
+        bg_l = min(bg_cand["l"], 0.20)
+        r, g, b = colorsys.hls_to_rgb(bg_h, bg_l, min(bg_s, 0.40))
+        bg_hex = rgb_to_hex(r, g, b)
 
     # 2. Accent color:
     # Vibrant, saturated, moderate-to-high lightness (0.35 .. 0.85)
@@ -132,7 +171,7 @@ def compute_theme(palette):
     # Mid-tone harmonious with accent (l: 0.32 .. 0.60)
     ver_cands = [
         p for p in palette
-        if 0.32 <= p["l"] <= 0.60 and p["hex"] != accent["hex"] and p["hex"] != bg["hex"]
+        if 0.32 <= p["l"] <= 0.60 and p["hex"] != accent["hex"] and p["hex"] != bg_hex
     ]
     if ver_cands:
         ver = max(ver_cands, key=lambda p: p["count"])["hex"]
@@ -141,9 +180,33 @@ def compute_theme(palette):
         ver = rgb_to_hex(r, g, b)
 
     # 4. Foreground / Text / Ring:
-    # Very light tint (l ~ 0.90) tinted subtly with accent hue
-    r, g, b = colorsys.hls_to_rgb(accent["h"], 0.90, min(0.18, accent["s"] * 0.35))
-    fg = rgb_to_hex(r, g, b)
+    # High-lightness tint (l ~ 0.90) tinted subtly with accent hue.
+    # We mathematically verify and enforce WCAG AAA contrast (>= 7.0:1) against bg.
+    fg_l = 0.90
+    r, g, b = colorsys.hls_to_rgb(accent["h"], fg_l, min(0.18, accent["s"] * 0.35))
+    fg_rgb = (r, g, b)
+    bg_rgb = (
+        int(bg_hex[0:2], 16) / 255.0,
+        int(bg_hex[2:4], 16) / 255.0,
+        int(bg_hex[4:6], 16) / 255.0,
+    )
+
+    cr = contrast_ratio(fg_rgb, bg_rgb)
+    while cr < 7.0 and fg_l < 0.98:
+        fg_l = min(0.98, fg_l + 0.02)
+        r, g, b = colorsys.hls_to_rgb(accent["h"], fg_l, min(0.08, accent["s"] * 0.15))
+        fg_rgb = (r, g, b)
+        cr = contrast_ratio(fg_rgb, bg_rgb)
+
+    if cr < 7.0:
+        # Darken bg to ensure high contrast
+        bg_l = 0.15
+        r_b, g_b, b_b = colorsys.hls_to_rgb(bg_h, bg_l, min(bg_s, 0.30))
+        bg_hex = rgb_to_hex(r_b, g_b, b_b)
+        bg_rgb = (r_b, g_b, b_b)
+        cr = contrast_ratio(fg_rgb, bg_rgb)
+
+    fg = rgb_to_hex(*fg_rgb)
 
     # 5. Wrong / Error:
     # Warm red / crimson harmonious with palette
@@ -151,11 +214,12 @@ def compute_theme(palette):
     wrong = rgb_to_hex(r, g, b)
 
     return {
-        "bg": bg["hex"],
+        "bg": bg_hex,
         "accent": accent["hex"],
         "fg": fg,
         "ver": ver,
         "wrong": wrong,
+        "contrast": cr,
     }
 
 
@@ -262,6 +326,95 @@ def update_statusbar_config(config_path: Path, theme: dict, dry_run: bool = Fals
         print(f"Updated statusbar config at {config_path}")
 
 
+def generate_nwgbar_css(theme: dict) -> str:
+    """Generate modern, high-contrast GTK3 CSS stylesheet for nwg-bar."""
+    bg_r, bg_g, bg_b = hex_to_rgb(theme["bg"])
+    accent_r, accent_g, accent_b = hex_to_rgb(theme["accent"])
+    fg = theme["fg"]
+    accent = theme["accent"]
+
+    return f"""/* Generated by update-swaylock-theme */
+
+window {{
+    background-color: rgba(0, 0, 0, 0.75);
+}}
+
+/* Outer bar container, takes all the window width/height */
+#outer-box {{
+    margin: 0px;
+}}
+
+/* Inner bar container, surrounds buttons */
+#inner-box {{
+    background-color: rgba({bg_r}, {bg_g}, {bg_b}, 0.92);
+    border-radius: 12px;
+    border-style: solid;
+    border-width: 2px;
+    border-color: #{accent};
+    padding: 10px;
+    margin: 5px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}}
+
+button, image {{
+    background: none;
+    box-shadow: none;
+}}
+
+button {{
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    margin: 5px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    transition: background-color 150ms ease-in-out, border-color 150ms ease-in-out;
+}}
+
+/* Readable button labels with guaranteed high contrast (WCAG AAA) */
+button, label, button label {{
+    color: #{fg};
+    font-size: 13px;
+    font-weight: 500;
+}}
+
+button:hover, button:focus {{
+    background-color: rgba({accent_r}, {accent_g}, {accent_b}, 0.30);
+    border-color: #{accent};
+}}
+
+button:hover label, button:focus label {{
+    color: #ffffff;
+}}
+
+button:active {{
+    background-color: rgba({accent_r}, {accent_g}, {accent_b}, 0.50);
+    border-color: #{accent};
+}}
+"""
+
+
+def update_nwgbar_config(config_path: Path, theme: dict, dry_run: bool = False):
+    """Update color definitions in nwg-bar style.css."""
+    target_path = config_path
+    if target_path.is_dir():
+        target_path = target_path / "style.css"
+    elif target_path.name == "config" and (target_path.parent / "style.css").exists():
+        target_path = target_path.parent / "style.css"
+
+    css_content = generate_nwgbar_css(theme)
+
+    if dry_run:
+        print(f"--- [DRY RUN] {target_path} ---")
+        print(css_content)
+    else:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write(css_content)
+        print(f"Updated nwg-bar config at {target_path}")
+
+
 def color_block(hex_code: str) -> str:
     """Return ANSI color block for terminal preview."""
     try:
@@ -274,11 +427,13 @@ def color_block(hex_code: str) -> str:
 
 
 def main():
-    def_img, def_cfg, def_bar = find_default_paths()
+    def_img, def_cfg, def_bar, def_nwg = find_default_paths()
 
-    parser = argparse.ArgumentParser(description="Update swaylock theme from wallpaper image.")
+    parser = argparse.ArgumentParser(description="Update swaylock and nwg-bar theme from wallpaper image.")
     parser.add_argument("image", nargs="?", default=str(def_img), help=f"Path to wallpaper image (default: {def_img})")
     parser.add_argument("-c", "--config", default=str(def_cfg), help=f"Path to swaylock config (default: {def_cfg})")
+    parser.add_argument("-b", "--nwg-bar", default=str(def_nwg), help=f"Path to nwg-bar config/style (default: {def_nwg})")
+    parser.add_argument("--no-nwg-bar", action="store_true", help="Skip updating nwg-bar style.css")
     parser.add_argument("-s", "--statusbar", action="store_true", help=f"Also update statusbar.conf ({def_bar})")
     parser.add_argument("-n", "--dry-run", action="store_true", help="Print changes without modifying files")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print extracted palette")
@@ -290,6 +445,7 @@ def main():
 
     config_path = Path(args.config).expanduser().resolve()
     statusbar_path = Path(def_bar).expanduser().resolve()
+    nwg_path = Path(args.nwg_bar).expanduser().resolve()
 
     print(f"Analyzing wallpaper: {image_path}")
     palette = extract_palette(image_path)
@@ -299,14 +455,18 @@ def main():
             print(f"  {color_block(p['hex'])} (count: {p['count']}, l: {p['l']:.2f}, s: {p['s']:.2f})")
 
     theme = compute_theme(palette)
+    cr_label = "WCAG AAA" if theme["contrast"] >= 7.0 else ("WCAG AA" if theme["contrast"] >= 4.5 else "LOW")
     print("\nSelected Theme Colors:")
     print(f"  Background (color)      : {color_block(theme['bg'])}")
     print(f"  Accent (key/ring/caps)  : {color_block(theme['accent'])}")
-    print(f"  Foreground (text/ring)  : {color_block(theme['fg'])}")
+    print(f"  Foreground (text/ring)  : {color_block(theme['fg'])}  (contrast: {theme['contrast']:.1f}:1 [{cr_label}])")
     print(f"  Verification (ver)      : {color_block(theme['ver'])}")
     print(f"  Error / Wrong (wrong)   : {color_block(theme['wrong'])}\n")
 
     update_swaylock_config(config_path, theme, dry_run=args.dry_run)
+
+    if not args.no_nwg_bar:
+        update_nwgbar_config(nwg_path, theme, dry_run=args.dry_run)
 
     if args.statusbar:
         update_statusbar_config(statusbar_path, theme, dry_run=args.dry_run)

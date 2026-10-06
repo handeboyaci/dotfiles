@@ -67,7 +67,7 @@
 	url = https://github.com/williamboman/mason.nvim.git
 [submodule "nvim/pack/plugins/opt/nvim-colorizer.lua"]
 	path = nvim/pack/plugins/opt/nvim-colorizer.lua
-	url = https://github.com/norcalli/nvim-colorizer.lua
+	url = https://github.com/catgoose/nvim-colorizer.lua
 [submodule "nvim/pack/sencer/start/async.nvim"]
 	path = nvim/pack/sencer/start/async.nvim
 	url = git@github.com:sencer/async.nvim.git

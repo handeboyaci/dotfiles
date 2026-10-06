@@ -92,7 +92,18 @@ lazy.lazy_load("nvim-colorizer.lua", {
 		"ColorizerReloadAllBuffers",
 		"ColorizerToggle",
 	},
+	on_load = function()
+		require("colorizer").setup({
+			options = {
+				parsers = {
+					css = true,
+				},
+			},
+		})
+		vim.api.nvim_clear_autocmds({ group = "ColorizerSetup", event = { "FileType", "BufEnter", "BufWinEnter" } })
+	end,
 })
+
 
 -- Conform (formatting)
 local conform = require("conform")

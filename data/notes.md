@@ -117,3 +117,8 @@ sudo make install
 cd $HOME
 
 systemctl --user enable --now mpris-proxy.service notification.service pixelbuds-pause.service swayidle.service
+
+# Sunshine headless streaming setup
+sudo usermod -aG input $USER
+$HOME/software/sunshine.AppImage --install
+systemctl --user enable --now sunshine-headless.socket

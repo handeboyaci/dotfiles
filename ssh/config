@@ -29,6 +29,8 @@ Host *
   ControlMaster auto
   ControlPath /tmp/%u/%C
   ControlPersist yes
+  ServerAliveInterval 5
+  ServerAliveCountMax 2
   IdentityFile ~/.ssh/id_github
   IdentityFile ~/.ssh/id_rsa
 

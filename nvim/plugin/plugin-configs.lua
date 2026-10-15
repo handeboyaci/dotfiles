@@ -116,7 +116,7 @@ conform.setup({
 	},
 	formatters = {
 		pyink = {
-			prepend_args = { "--pyink-indentation", "2" },
+			prepend_args = { "--pyink-indentation", "2", "--line-length", "80", },
 			range_args = function(self, ctx)
 				return {
 					"--line-ranges",

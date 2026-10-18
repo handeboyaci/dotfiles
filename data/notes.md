@@ -131,3 +131,9 @@ EOF'
 sudo bash -c 'echo "v4l2loopback" > /etc/modules-load.d/v4l2loopback.conf'
 sudo modprobe v4l2loopback
 systemctl --user enable --now moonlight-cam.service
+
+# Moonlight Meet webcam & microphone forwarding setup (Client)
+sudo apt install -y gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+sudo usermod -aG video $USER
+# Toggle streaming from client with $mod+Shift+c
+

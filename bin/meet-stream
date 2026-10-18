@@ -47,7 +47,9 @@ echo $! >> "$PID_FILE"
 # 2. Start Video Stream (Webcam /dev/video0 -> H.264 RTP)
 CAM_DEV="/dev/video0"
 if [ -e "$CAM_DEV" ]; then
-    if gst-inspect-1.0 vaapih264enc >/dev/null 2>&1; then
+    if gst-inspect-1.0 vah264enc >/dev/null 2>&1; then
+        ENC="vah264enc ! h264parse"
+    elif gst-inspect-1.0 vaapih264enc >/dev/null 2>&1; then
         ENC="vaapih264enc ! h264parse"
     else
         ENC="x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bframes=0 byte-stream=true bitrate=2000 ! h264parse"

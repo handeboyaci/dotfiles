@@ -1,0 +1,10 @@
+[Unit]
+Description=Moonlight Remote Camera & Microphone Encrypted Socket
+ConditionPathExists=%h/software/sunshine.AppImage
+
+[Socket]
+ListenDatagram=46002
+Service=moonlight-cam.service
+
+[Install]
+WantedBy=sockets.target

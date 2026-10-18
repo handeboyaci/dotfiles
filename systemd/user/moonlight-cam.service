@@ -1,15 +1,12 @@
 [Unit]
-Description=Moonlight Virtual Camera Receiver
+Description=Moonlight Virtual Camera & Microphone On-Demand Receiver
 ConditionPathExists=%h/software/sunshine.AppImage
-ConditionPathExists=/dev/video10
-PartOf=sunshine-headless.service
-After=sunshine-headless.service
+Requires=moonlight-cam.socket
+After=moonlight-cam.socket
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/gst-launch-1.0 -q udpsrc port=46002 caps="application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96" ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=/dev/video10 sync=false
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=sway-headless-session.target
+ExecStart=%h/.dotfiles/bin/meet-stream --serve
+Restart=no
+KillMode=control-group
+TimeoutStopSec=3s

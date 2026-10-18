@@ -69,7 +69,7 @@ done
 
 
 cd $HOME/.config
-for f in foot jj kanshi nvim nwg-bar pipewire rofi statusbar.conf sunshine sway swayidle swaylock systemd wireplumber xdg-desktop-portal
+for f in foot jj kanshi meet-stream.conf nvim nwg-bar pipewire rofi statusbar.conf sunshine sway swayidle swaylock systemd wireplumber xdg-desktop-portal
 do
   rm -rf $f
   ln -s $HOME/.dotfiles/$f
@@ -124,17 +124,20 @@ $HOME/software/sunshine.AppImage --install
 systemctl --user enable --now sunshine-headless.socket
 
 # Moonlight Meet webcam & microphone forwarding setup (Host)
-sudo apt install -y linux-main-modules-v4l2loopback-$(uname -r) v4l2loopback-utils
+sudo apt install -y linux-main-modules-v4l2loopback-$(uname -r) v4l2loopback-utils \
+  gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 sudo bash -c 'cat <<EOF > /etc/modprobe.d/v4l2loopback.conf
 options v4l2loopback video_nr=10 card_label="Moonlight Virtual Camera" exclusive_caps=1
 EOF'
 sudo bash -c 'echo "v4l2loopback" > /etc/modules-load.d/v4l2loopback.conf'
 sudo modprobe v4l2loopback
-systemctl --user enable --now moonlight-cam.service
+systemctl --user disable --now moonlight-cam.service 2>/dev/null || true
+systemctl --user enable --now moonlight-cam.socket
 
 # Moonlight Meet webcam & microphone forwarding setup (Client)
 sudo apt install -y gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 sudo usermod -aG video $USER
-# Toggle streaming from client with $mod+Shift+c
-# Select/switch webcam (internal vs external) with $mod+Alt+c (or meet-stream --select)
+# Copy ~/.dotfiles/tmp/meet-stream.key (mode 0600) between client and host
+# Toggle streaming from client with $mod+s
+# Select/switch webcam & microphone with $mod+Shift+s (or meet-stream --select)
 

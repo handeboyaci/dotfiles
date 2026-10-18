@@ -52,8 +52,8 @@ bindsym $mod+minus split v
 
 # enter fullscreen mode for the focused container
 bindsym $mod+f fullscreen toggle
-bindsym $mod+Shift+c exec [ -z "$SWAY_HEADLESS" ] && $HOME/.dotfiles/bin/meet-stream
-bindsym $mod+$alt+c exec [ -z "$SWAY_HEADLESS" ] && $HOME/.dotfiles/bin/meet-stream --select
+bindsym $mod+s exec [ -z "$SWAY_HEADLESS" ] && $HOME/.dotfiles/bin/meet-stream
+bindsym $mod+Shift+s exec [ -z "$SWAY_HEADLESS" ] && $HOME/.dotfiles/bin/meet-stream --select
 
 # change container layout (stacked, tabbed, toggle split)
 bindsym $mod+bracketright layout toggle split tabbed
@@ -69,9 +69,6 @@ bindsym $mod+a focus parent
 
 # focus the child container
 bindsym $mod+d focus child
-
-# make window sticky
-bindsym $mod+s sticky toggle
 
 bindsym Ctrl+$alt+Delete exec $HOME/.dotfiles/bin/lock-screen
 bindswitch --locked lid:on exec systemctl suspend

@@ -1,0 +1,67 @@
+#!/bin/sh
+set -eu
+
+# Guard: Do not run on headless host session
+[ -n "${SWAY_HEADLESS:-}" ] && exit 0
+
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/meet-stream"
+PID_FILE="$STATE_DIR/pids"
+
+stop_stream() {
+    if [ -f "$PID_FILE" ]; then
+        while read -r pid; do
+            [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+        done < "$PID_FILE"
+        rm -f "$PID_FILE"
+    fi
+    pkill -f "gst-launch-1.0.*(46000|46002)" 2>/dev/null || true
+    notify-send -u low -a "Meet Stream" "Streaming Stopped" "Webcam and microphone forwarding disabled."
+}
+
+if [ -f "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+    stop_stream
+    exit 0
+fi
+
+# Determine target host IP (local LAN vs dynamic DNS WAN)
+if nmcli -t -f active,ssid 2>/dev/null | grep -q 'connected to ev' || ping -c 1 -W 1 192.168.1.12 >/dev/null 2>&1; then
+    TARGET_IP="192.168.1.12"
+else
+    TARGET_IP="sncr.duckdns.org"
+fi
+
+mkdir -p "$STATE_DIR"
+: > "$PID_FILE"
+
+# 1. Start Audio Stream (Microphone -> Opus RTP)
+gst-launch-1.0 -q \
+    pipewiresrc ! \
+    audioconvert ! \
+    audioresample ! \
+    "audio/x-raw,rate=48000,channels=1" ! \
+    opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
+    rtpopuspay pt=96 ! \
+    udpsink host="$TARGET_IP" port=46000 sync=false >/dev/null 2>&1 &
+echo $! >> "$PID_FILE"
+
+# 2. Start Video Stream (Webcam /dev/video0 -> H.264 RTP)
+CAM_DEV="/dev/video0"
+if [ -e "$CAM_DEV" ]; then
+    if gst-inspect-1.0 vaapih264enc >/dev/null 2>&1; then
+        ENC="vaapih264enc ! h264parse"
+    else
+        ENC="x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bframes=0 byte-stream=true bitrate=2000 ! h264parse"
+    fi
+
+    gst-launch-1.0 -q \
+        v4l2src device="$CAM_DEV" ! \
+        videoconvert ! \
+        "video/x-raw,format=I420" ! \
+        $ENC ! \
+        rtph264pay config-interval=1 pt=96 ! \
+        udpsink host="$TARGET_IP" port=46002 sync=false >/dev/null 2>&1 &
+    echo $! >> "$PID_FILE"
+    notify-send -u normal -a "Meet Stream" "Streaming Active" "Forwarding mic and camera to $TARGET_IP"
+else
+    notify-send -u normal -a "Meet Stream" "Audio Only Active" "Forwarding mic to $TARGET_IP ($CAM_DEV not found)"
+fi

@@ -122,3 +122,12 @@ systemctl --user enable --now mpris-proxy.service notification.service pixelbuds
 sudo usermod -aG input $USER
 $HOME/software/sunshine.AppImage --install
 systemctl --user enable --now sunshine-headless.socket
+
+# Moonlight Meet webcam & microphone forwarding setup (Host)
+sudo apt install -y linux-main-modules-v4l2loopback-$(uname -r) v4l2loopback-utils
+sudo bash -c 'cat <<EOF > /etc/modprobe.d/v4l2loopback.conf
+options v4l2loopback video_nr=10 card_label="Moonlight Virtual Camera" exclusive_caps=1
+EOF'
+sudo bash -c 'echo "v4l2loopback" > /etc/modules-load.d/v4l2loopback.conf'
+sudo modprobe v4l2loopback
+systemctl --user enable --now moonlight-cam.service

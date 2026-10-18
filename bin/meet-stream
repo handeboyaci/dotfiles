@@ -35,13 +35,13 @@ mkdir -p "$STATE_DIR"
 
 # 1. Start Audio Stream (Microphone -> Opus RTP)
 gst-launch-1.0 -q \
-    pipewiresrc ! \
+    pulsesrc ! \
     audioconvert ! \
     audioresample ! \
     "audio/x-raw,rate=48000,channels=1" ! \
     opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
-    rtpopuspay pt=96 ! \
-    udpsink host="$TARGET_IP" port=46000 sync=false >/dev/null 2>&1 &
+    rtpopuspay pt=127 ! \
+    udpsink host="$TARGET_IP" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
 echo $! >> "$PID_FILE"
 
 # 2. Start Video Stream (Webcam /dev/video0 -> H.264 RTP)
@@ -61,7 +61,7 @@ if [ -e "$CAM_DEV" ]; then
         "video/x-raw,format=I420" ! \
         $ENC ! \
         rtph264pay config-interval=1 pt=96 ! \
-        udpsink host="$TARGET_IP" port=46002 sync=false >/dev/null 2>&1 &
+        udpsink host="$TARGET_IP" port=46002 sync=false >"$STATE_DIR/video.log" 2>&1 &
     echo $! >> "$PID_FILE"
     notify-send -u normal -a "Meet Stream" "Streaming Active" "Forwarding mic and camera to $TARGET_IP"
 else

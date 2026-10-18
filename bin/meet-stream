@@ -6,6 +6,33 @@ set -eu
 
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/meet-stream"
 PID_FILE="$STATE_DIR/pids"
+CAM_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/meet-stream-cam"
+
+list_cameras() {
+    for dev in /sys/class/video4linux/video*; do
+        [ -d "$dev" ] || continue
+        # Ignore metadata streams (index != 0)
+        [ "$(cat "$dev/index" 2>/dev/null || echo 0)" = "0" ] || continue
+
+        devname=$(basename "$dev")
+        name=$(cat "$dev/name" 2>/dev/null || echo "Webcam")
+        devpath="/dev/$devname"
+
+        # Check for stable persistent by-id link
+        by_id=""
+        if [ -d /dev/v4l/by-id ]; then
+            for link in /dev/v4l/by-id/*; do
+                if [ -e "$link" ] && [ "$(realpath "$link" 2>/dev/null)" = "$devpath" ]; then
+                    case "$link" in
+                        *-video-index0) by_id="$link"; break ;;
+                    esac
+                fi
+            done
+        fi
+        target="${by_id:-$devpath}"
+        echo "$name ($devpath)|$target"
+    done
+}
 
 stop_stream() {
     if [ -f "$PID_FILE" ]; then
@@ -18,52 +45,125 @@ stop_stream() {
     notify-send -u low -a "Meet Stream" "Streaming Stopped" "Webcam and microphone forwarding disabled."
 }
 
-if [ -f "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
-    stop_stream
-    exit 0
-fi
-
-# Determine target host IP (local LAN vs dynamic DNS WAN)
-if nmcli -t -f active,ssid 2>/dev/null | grep -q 'connected to ev' || ping -c 1 -W 1 192.168.1.12 >/dev/null 2>&1; then
-    TARGET_IP="192.168.1.12"
-else
-    TARGET_IP="sncr.duckdns.org"
-fi
-
-mkdir -p "$STATE_DIR"
-: > "$PID_FILE"
-
-# 1. Start Audio Stream (Microphone -> Opus RTP)
-gst-launch-1.0 -q \
-    pulsesrc ! \
-    audioconvert ! \
-    audioresample ! \
-    "audio/x-raw,rate=48000,channels=1" ! \
-    opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
-    rtpopuspay pt=127 ! \
-    udpsink host="$TARGET_IP" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
-echo $! >> "$PID_FILE"
-
-# 2. Start Video Stream (Webcam /dev/video0 -> H.264 RTP)
-CAM_DEV="/dev/video0"
-if [ -e "$CAM_DEV" ]; then
-    if gst-inspect-1.0 vah264enc >/dev/null 2>&1; then
-        ENC="vah264enc ! h264parse"
-    elif gst-inspect-1.0 vaapih264enc >/dev/null 2>&1; then
-        ENC="vaapih264enc ! h264parse"
-    else
-        ENC="x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bframes=0 byte-stream=true bitrate=2000 ! h264parse"
+select_camera() {
+    cams=$(list_cameras)
+    if [ -z "$cams" ]; then
+        notify-send -u critical -a "Meet Stream" "No Webcams Found" "No video capture devices detected."
+        return 1
     fi
 
+    count=$(echo "$cams" | wc -l)
+    if [ "$count" -eq 1 ]; then
+        choice=$(echo "$cams" | head -n 1)
+    else
+        labels=$(echo "$cams" | cut -d'|' -f1)
+        if command -v rofi >/dev/null 2>&1; then
+            selected_label=$(echo "$labels" | rofi -dmenu -p "Select Webcam" -matching fuzzy -no-levenshtein-sort)
+        else
+            echo "Select webcam:"
+            echo "$labels"
+            read -r selected_label
+        fi
+        [ -z "$selected_label" ] && return 0
+        choice=$(echo "$cams" | grep -F "$selected_label|" | head -n 1)
+    fi
+
+    dev_target=$(echo "$choice" | cut -d'|' -f2)
+    dev_label=$(echo "$choice" | cut -d'|' -f1)
+    echo "$dev_target" > "$CAM_CONFIG"
+    notify-send -u normal -a "Meet Stream" "Webcam Selected" "$dev_label"
+
+    # If stream is already running, restart it with the new camera
+    if [ -f "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+        stop_stream
+        start_stream
+    fi
+}
+
+start_stream() {
+    # Determine target host IP (local LAN vs dynamic DNS WAN)
+    if nmcli -t -f active,ssid 2>/dev/null | grep -q 'connected to ev' || ping -c 1 -W 1 192.168.1.12 >/dev/null 2>&1; then
+        TARGET_IP="192.168.1.12"
+    else
+        TARGET_IP="sncr.duckdns.org"
+    fi
+
+    mkdir -p "$STATE_DIR"
+    : > "$PID_FILE"
+
+    # 1. Start Audio Stream (Microphone -> Opus RTP)
     gst-launch-1.0 -q \
-        v4l2src device="$CAM_DEV" ! \
-        videoconvert ! \
-        "video/x-raw,format=I420" ! \
-        $ENC ! \
-        rtph264pay config-interval=1 pt=96 ! \
-        udpsink host="$TARGET_IP" port=46002 sync=false >"$STATE_DIR/video.log" 2>&1 &
+        pulsesrc ! \
+        audioconvert ! \
+        audioresample ! \
+        "audio/x-raw,rate=48000,channels=1" ! \
+        opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
+        rtpopuspay pt=127 ! \
+        udpsink host="$TARGET_IP" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
     echo $! >> "$PID_FILE"
-    notify-send -u normal -a "Meet Stream" "Streaming Active" "Forwarding mic and camera to $TARGET_IP"
+
+    # 2. Determine Video Device
+    CAM_DEV=""
+    if [ -f "$CAM_CONFIG" ]; then
+        saved_dev=$(cat "$CAM_CONFIG" 2>/dev/null || true)
+        if [ -n "$saved_dev" ] && [ -e "$saved_dev" ]; then
+            CAM_DEV="$saved_dev"
+        fi
+    fi
+
+    if [ -z "$CAM_DEV" ]; then
+        cams=$(list_cameras)
+        count=$(echo "$cams" | grep -c '|' || true)
+        if [ "$count" -gt 1 ]; then
+            select_camera
+            CAM_DEV=$(cat "$CAM_CONFIG" 2>/dev/null || true)
+        elif [ "$count" -eq 1 ]; then
+            CAM_DEV=$(echo "$cams" | cut -d'|' -f2)
+        fi
+    fi
+
+    if [ -n "$CAM_DEV" ] && [ -e "$CAM_DEV" ]; then
+        if gst-inspect-1.0 vah264enc >/dev/null 2>&1; then
+            ENC="vah264enc ! h264parse"
+        elif gst-inspect-1.0 vaapih264enc >/dev/null 2>&1; then
+            ENC="vaapih264enc ! h264parse"
+        else
+            ENC="x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bframes=0 byte-stream=true bitrate=2000 ! h264parse"
+        fi
+
+        cam_name=$(cat "/sys/class/video4linux/$(basename "$(realpath "$CAM_DEV")")/name" 2>/dev/null || echo "$CAM_DEV")
+
+        gst-launch-1.0 -q \
+            v4l2src device="$CAM_DEV" ! \
+            videoconvert ! \
+            "video/x-raw,format=I420" ! \
+            $ENC ! \
+            rtph264pay config-interval=1 pt=96 ! \
+            udpsink host="$TARGET_IP" port=46002 sync=false >"$STATE_DIR/video.log" 2>&1 &
+        echo $! >> "$PID_FILE"
+        notify-send -u normal -a "Meet Stream" "Streaming Active" "Mic & Cam ($cam_name) -> $TARGET_IP"
+    else
+        notify-send -u normal -a "Meet Stream" "Audio Only Active" "Forwarding mic to $TARGET_IP (no webcam found)"
+    fi
+}
+
+# Handle command line flags
+case "${1:-}" in
+    --select|select)
+        select_camera
+        exit 0
+        ;;
+    --help|-h)
+        echo "Usage: meet-stream [--select]"
+        echo "  (no args)  Toggle microphone and webcam streaming"
+        echo "  --select   Select webcam from connected devices (internal/external)"
+        exit 0
+        ;;
+esac
+
+# Toggle logic
+if [ -f "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+    stop_stream
 else
-    notify-send -u normal -a "Meet Stream" "Audio Only Active" "Forwarding mic to $TARGET_IP ($CAM_DEV not found)"
+    start_stream
 fi

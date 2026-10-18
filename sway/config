@@ -53,6 +53,7 @@ bindsym $mod+minus split v
 # enter fullscreen mode for the focused container
 bindsym $mod+f fullscreen toggle
 bindsym $mod+Shift+c exec [ -z "$SWAY_HEADLESS" ] && $HOME/.dotfiles/bin/meet-stream
+bindsym $mod+$alt+c exec [ -z "$SWAY_HEADLESS" ] && $HOME/.dotfiles/bin/meet-stream --select
 
 # change container layout (stacked, tabbed, toggle split)
 bindsym $mod+bracketright layout toggle split tabbed

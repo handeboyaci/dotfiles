@@ -136,4 +136,5 @@ systemctl --user enable --now moonlight-cam.service
 sudo apt install -y gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 sudo usermod -aG video $USER
 # Toggle streaming from client with $mod+Shift+c
+# Select/switch webcam (internal vs external) with $mod+Alt+c (or meet-stream --select)
 

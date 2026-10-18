@@ -7,9 +7,18 @@ set -eu
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/meet-stream"
 PID_FILE="$STATE_DIR/pids"
 CAM_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/meet-stream-cam"
+MIC_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/meet-stream-mic"
 
 is_streaming() {
     [ -f "$PID_FILE" ] && [ -s "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null
+}
+
+get_target_ip() {
+    if nmcli -t -f active,ssid 2>/dev/null | grep -q 'connected to ev' || ping -c 1 -W 1 192.168.1.12 >/dev/null 2>&1; then
+        echo "192.168.1.12"
+    else
+        echo "sncr.duckdns.org"
+    fi
 }
 
 list_cameras() {
@@ -38,12 +47,48 @@ list_cameras() {
     done
 }
 
-get_target_ip() {
-    if nmcli -t -f active,ssid 2>/dev/null | grep -q 'connected to ev' || ping -c 1 -W 1 192.168.1.12 >/dev/null 2>&1; then
-        echo "192.168.1.12"
+list_microphones() {
+    echo "Default Microphone (System Default)|default"
+    pactl list sources 2>/dev/null | awk '
+        /^Source #[0-9]+/ { name=""; desc="" }
+        /^[[:space:]]*Name: / { name=$2 }
+        /^[[:space:]]*Description: / {
+            sub(/^[[:space:]]*Description: /, "")
+            desc=$0
+        }
+        name != "" && desc != "" {
+            if (name !~ /\.monitor$/) {
+                print desc "|" name
+            }
+            name=""; desc=""
+        }
+    ' || true
+}
+
+start_audio_pipeline() {
+    target_ip="$1"
+    mic_dev="${2:-}"
+
+    if [ -n "$mic_dev" ] && [ "$mic_dev" != "default" ]; then
+        gst-launch-1.0 -q \
+            pulsesrc device="$mic_dev" ! \
+            audioconvert ! \
+            audioresample ! \
+            "audio/x-raw,rate=48000,channels=1" ! \
+            opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
+            rtpopuspay pt=127 ! \
+            udpsink host="$target_ip" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
     else
-        echo "sncr.duckdns.org"
+        gst-launch-1.0 -q \
+            pulsesrc ! \
+            audioconvert ! \
+            audioresample ! \
+            "audio/x-raw,rate=48000,channels=1" ! \
+            opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
+            rtpopuspay pt=127 ! \
+            udpsink host="$target_ip" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
     fi
+    echo $!
 }
 
 start_video_pipeline() {
@@ -61,7 +106,6 @@ start_video_pipeline() {
     gst-launch-1.0 -q \
         v4l2src device="$cam_dev" ! \
         videoconvert ! \
-        "video/x-raw,format=I420" ! \
         $ENC ! \
         rtph264pay config-interval=1 pt=96 ! \
         udpsink host="$target_ip" port=46002 sync=false >"$STATE_DIR/video.log" 2>&1 &
@@ -86,33 +130,26 @@ select_camera() {
         return 1
     fi
 
-    count=$(echo "$cams" | wc -l)
-    if [ "$count" -eq 1 ]; then
-        choice=$(echo "$cams" | head -n 1)
+    labels=$(echo "$cams" | cut -d'|' -f1)
+    if command -v rofi >/dev/null 2>&1; then
+        selected_label=$(echo "$labels" | rofi -dmenu -p "Select Webcam" -matching fuzzy -no-levenshtein-sort)
     else
-        labels=$(echo "$cams" | cut -d'|' -f1)
-        if command -v rofi >/dev/null 2>&1; then
-            selected_label=$(echo "$labels" | rofi -dmenu -p "Select Webcam" -matching fuzzy -no-levenshtein-sort)
-        else
-            echo "Select webcam:"
-            echo "$labels"
-            read -r selected_label
-        fi
-        [ -z "$selected_label" ] && return 0
-        choice=$(echo "$cams" | grep -F "$selected_label|" | head -n 1)
+        echo "Select webcam:"
+        echo "$labels"
+        read -r selected_label
     fi
+    [ -z "$selected_label" ] && return 0
+    choice=$(echo "$cams" | grep -F "$selected_label|" | head -n 1)
 
     dev_target=$(echo "$choice" | cut -d'|' -f2)
     dev_label=$(echo "$choice" | cut -d'|' -f1)
     echo "$dev_target" > "$CAM_CONFIG"
 
-    # If stream is already running, hot-swap only the video pipeline
+    # If streaming is already running, hot-swap only the video pipeline
     if is_streaming; then
         target_ip=$(get_target_ip)
-        # Kill only the video pipeline
         pkill -f "gst-launch-1.0.*46002" 2>/dev/null || true
         new_vpid=$(start_video_pipeline "$target_ip" "$dev_target")
-        # Update PID file with current audio PID + new video PID
         audio_pid=$(head -n 1 "$PID_FILE" 2>/dev/null || echo "")
         echo "$audio_pid" > "$PID_FILE"
         echo "$new_vpid" >> "$PID_FILE"
@@ -122,11 +159,60 @@ select_camera() {
     fi
 }
 
+select_microphone() {
+    mics=$(list_microphones)
+    labels=$(echo "$mics" | cut -d'|' -f1)
+    if command -v rofi >/dev/null 2>&1; then
+        selected_label=$(echo "$labels" | rofi -dmenu -p "Select Microphone" -matching fuzzy -no-levenshtein-sort)
+    else
+        echo "Select microphone:"
+        echo "$labels"
+        read -r selected_label
+    fi
+    [ -z "$selected_label" ] && return 0
+    choice=$(echo "$mics" | grep -F "$selected_label|" | head -n 1)
+
+    dev_target=$(echo "$choice" | cut -d'|' -f2)
+    dev_label=$(echo "$choice" | cut -d'|' -f1)
+    echo "$dev_target" > "$MIC_CONFIG"
+
+    # If streaming is already running, hot-swap only the audio pipeline
+    if is_streaming; then
+        target_ip=$(get_target_ip)
+        pkill -f "gst-launch-1.0.*46000" 2>/dev/null || true
+        new_apid=$(start_audio_pipeline "$target_ip" "$dev_target")
+        video_pid=$(sed -n '2p' "$PID_FILE" 2>/dev/null || echo "")
+        echo "$new_apid" > "$PID_FILE"
+        if [ -n "$video_pid" ]; then
+            echo "$video_pid" >> "$PID_FILE"
+        fi
+        notify-send -u normal -a "Meet Stream" "Microphone Switched" "$dev_label"
+    else
+        notify-send -u normal -a "Meet Stream" "Microphone Selected" "$dev_label"
+    fi
+}
+
+select_menu() {
+    menu="📷 Select Webcam\n🎤 Select Microphone"
+    if command -v rofi >/dev/null 2>&1; then
+        chosen=$(printf "%b" "$menu" | rofi -dmenu -p "Meet Stream Devices" -matching fuzzy -no-levenshtein-sort)
+    else
+        echo "Meet Stream Devices:"
+        printf "%b\n" "$menu"
+        read -r chosen
+    fi
+
+    case "$chosen" in
+        *"Webcam"*) select_camera ;;
+        *"Microphone"*) select_microphone ;;
+    esac
+}
+
 start_stream() {
     mkdir -p "$STATE_DIR"
     TARGET_IP=$(get_target_ip)
 
-    # 1. Determine Camera Device FIRST (before starting any pipelines)
+    # 1. Determine Camera Device
     CAM_DEV=""
     if [ -f "$CAM_CONFIG" ]; then
         saved_dev=$(cat "$CAM_CONFIG" 2>/dev/null || true)
@@ -139,7 +225,6 @@ start_stream() {
         cams=$(list_cameras)
         count=$(echo "$cams" | grep -c '|' || true)
         if [ "$count" -gt 1 ]; then
-            # Prompt user once to choose between multiple webcams
             select_camera
             CAM_DEV=$(cat "$CAM_CONFIG" 2>/dev/null || true)
         elif [ "$count" -eq 1 ]; then
@@ -148,18 +233,19 @@ start_stream() {
         fi
     fi
 
-    # 2. Start Audio Stream (Microphone -> Opus RTP)
-    gst-launch-1.0 -q \
-        pulsesrc ! \
-        audioconvert ! \
-        audioresample ! \
-        "audio/x-raw,rate=48000,channels=1" ! \
-        opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
-        rtpopuspay pt=127 ! \
-        udpsink host="$TARGET_IP" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
-    AUDIO_PID=$!
+    # 2. Determine Microphone Device
+    MIC_DEV="default"
+    if [ -f "$MIC_CONFIG" ]; then
+        saved_mic=$(cat "$MIC_CONFIG" 2>/dev/null || true)
+        if [ -n "$saved_mic" ]; then
+            MIC_DEV="$saved_mic"
+        fi
+    fi
 
-    # 3. Start Video Stream if camera available
+    # 3. Start Audio Stream
+    AUDIO_PID=$(start_audio_pipeline "$TARGET_IP" "$MIC_DEV")
+
+    # 4. Start Video Stream if camera available
     VIDEO_PID=""
     if [ -n "$CAM_DEV" ] && [ -e "$CAM_DEV" ]; then
         VIDEO_PID=$(start_video_pipeline "$TARGET_IP" "$CAM_DEV")
@@ -169,7 +255,7 @@ start_stream() {
         notify-send -u normal -a "Meet Stream" "Audio Only Active" "Forwarding mic to $TARGET_IP (no camera)"
     fi
 
-    # 4. Save PIDs
+    # 5. Save PIDs
     echo "$AUDIO_PID" > "$PID_FILE"
     if [ -n "$VIDEO_PID" ]; then
         echo "$VIDEO_PID" >> "$PID_FILE"
@@ -179,13 +265,23 @@ start_stream() {
 # Command Line Dispatch
 case "${1:-}" in
     --select|select)
+        select_menu
+        exit 0
+        ;;
+    --select-cam|select-cam)
         select_camera
         exit 0
         ;;
+    --select-mic|select-mic)
+        select_microphone
+        exit 0
+        ;;
     --help|-h)
-        echo "Usage: meet-stream [--select]"
-        echo "  (no args)  Toggle microphone and webcam streaming"
-        echo "  --select   Select webcam from connected devices (internal/external)"
+        echo "Usage: meet-stream [options]"
+        echo "  (no args)       Toggle microphone and webcam streaming"
+        echo "  --select        Show menu to select webcam or microphone"
+        echo "  --select-cam    Directly select webcam via rofi"
+        echo "  --select-mic    Directly select microphone via rofi"
         exit 0
         ;;
 esac

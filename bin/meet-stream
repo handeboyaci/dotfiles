@@ -1,9 +1,0 @@
-#!/bin/sh
-if [ -x "$HOME/.dotfiles/data/meet-stream" ]; then
-    exec "$HOME/.dotfiles/data/meet-stream" "$@"
-elif [ -x /usr/bin/meet-stream ]; then
-    exec /usr/bin/meet-stream "$@"
-else
-    make -s -C "$HOME/.dotfiles/data" meet-stream >&2
-    exec "$HOME/.dotfiles/data/meet-stream" "$@"
-fi

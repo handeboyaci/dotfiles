@@ -6,7 +6,7 @@ After=moonlight-cam.socket
 
 [Service]
 Type=simple
-ExecStart=%h/.dotfiles/bin/meet-stream --serve
+ExecStart=%h/.dotfiles/data/meet-stream --serve
 Restart=no
 KillMode=control-group
 TimeoutStopSec=3s

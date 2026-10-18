@@ -30,11 +30,10 @@ test: statusbar-test meet-stream
 	./statusbar-test --self-test
 	./meet-stream --self-test
 
-install: statusbar pixelbuds-pause meet-stream 09-timezone.sh
+install: statusbar pixelbuds-pause 09-timezone.sh
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 755 statusbar $(DESTDIR)$(PREFIX)/bin/statusbar
 	install -m 755 pixelbuds-pause $(DESTDIR)$(PREFIX)/bin/pixelbuds-pause
-	install -m 755 meet-stream $(DESTDIR)$(PREFIX)/bin/meet-stream
 	install -d $(DESTDIR)/etc/NetworkManager/dispatcher.d
 	install -m 755 09-timezone.sh $(DESTDIR)/etc/NetworkManager/dispatcher.d/09-timezone
 

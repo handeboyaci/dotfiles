@@ -139,5 +139,5 @@ sudo apt install -y gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugin
 sudo usermod -aG video $USER
 # Copy ~/.dotfiles/tmp/meet-stream.key (mode 0600) between client and host
 # Toggle streaming from client with $mod+s
-# Select/switch webcam & microphone with $mod+Shift+s (or meet-stream --select)
+# Select/switch webcam & microphone with $mod+Shift+s
 

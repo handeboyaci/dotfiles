@@ -8,6 +8,10 @@ STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/meet-stream"
 PID_FILE="$STATE_DIR/pids"
 CAM_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/meet-stream-cam"
 
+is_streaming() {
+    [ -f "$PID_FILE" ] && [ -s "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null
+}
+
 list_cameras() {
     for dev in /sys/class/video4linux/video*; do
         [ -d "$dev" ] || continue
@@ -32,6 +36,36 @@ list_cameras() {
         target="${by_id:-$devpath}"
         echo "$name ($devpath)|$target"
     done
+}
+
+get_target_ip() {
+    if nmcli -t -f active,ssid 2>/dev/null | grep -q 'connected to ev' || ping -c 1 -W 1 192.168.1.12 >/dev/null 2>&1; then
+        echo "192.168.1.12"
+    else
+        echo "sncr.duckdns.org"
+    fi
+}
+
+start_video_pipeline() {
+    target_ip="$1"
+    cam_dev="$2"
+
+    if gst-inspect-1.0 vah264enc >/dev/null 2>&1; then
+        ENC="vah264enc ! h264parse"
+    elif gst-inspect-1.0 vaapih264enc >/dev/null 2>&1; then
+        ENC="vaapih264enc ! h264parse"
+    else
+        ENC="x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bframes=0 byte-stream=true bitrate=2000 ! h264parse"
+    fi
+
+    gst-launch-1.0 -q \
+        v4l2src device="$cam_dev" ! \
+        videoconvert ! \
+        "video/x-raw,format=I420" ! \
+        $ENC ! \
+        rtph264pay config-interval=1 pt=96 ! \
+        udpsink host="$target_ip" port=46002 sync=false >"$STATE_DIR/video.log" 2>&1 &
+    echo $!
 }
 
 stop_stream() {
@@ -71,38 +105,28 @@ select_camera() {
     dev_target=$(echo "$choice" | cut -d'|' -f2)
     dev_label=$(echo "$choice" | cut -d'|' -f1)
     echo "$dev_target" > "$CAM_CONFIG"
-    notify-send -u normal -a "Meet Stream" "Webcam Selected" "$dev_label"
 
-    # If stream is already running, restart it with the new camera
-    if [ -f "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
-        stop_stream
-        start_stream
+    # If stream is already running, hot-swap only the video pipeline
+    if is_streaming; then
+        target_ip=$(get_target_ip)
+        # Kill only the video pipeline
+        pkill -f "gst-launch-1.0.*46002" 2>/dev/null || true
+        new_vpid=$(start_video_pipeline "$target_ip" "$dev_target")
+        # Update PID file with current audio PID + new video PID
+        audio_pid=$(head -n 1 "$PID_FILE" 2>/dev/null || echo "")
+        echo "$audio_pid" > "$PID_FILE"
+        echo "$new_vpid" >> "$PID_FILE"
+        notify-send -u normal -a "Meet Stream" "Webcam Switched" "$dev_label"
+    else
+        notify-send -u normal -a "Meet Stream" "Webcam Selected" "$dev_label"
     fi
 }
 
 start_stream() {
-    # Determine target host IP (local LAN vs dynamic DNS WAN)
-    if nmcli -t -f active,ssid 2>/dev/null | grep -q 'connected to ev' || ping -c 1 -W 1 192.168.1.12 >/dev/null 2>&1; then
-        TARGET_IP="192.168.1.12"
-    else
-        TARGET_IP="sncr.duckdns.org"
-    fi
-
     mkdir -p "$STATE_DIR"
-    : > "$PID_FILE"
+    TARGET_IP=$(get_target_ip)
 
-    # 1. Start Audio Stream (Microphone -> Opus RTP)
-    gst-launch-1.0 -q \
-        pulsesrc ! \
-        audioconvert ! \
-        audioresample ! \
-        "audio/x-raw,rate=48000,channels=1" ! \
-        opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
-        rtpopuspay pt=127 ! \
-        udpsink host="$TARGET_IP" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
-    echo $! >> "$PID_FILE"
-
-    # 2. Determine Video Device
+    # 1. Determine Camera Device FIRST (before starting any pipelines)
     CAM_DEV=""
     if [ -f "$CAM_CONFIG" ]; then
         saved_dev=$(cat "$CAM_CONFIG" 2>/dev/null || true)
@@ -115,39 +139,44 @@ start_stream() {
         cams=$(list_cameras)
         count=$(echo "$cams" | grep -c '|' || true)
         if [ "$count" -gt 1 ]; then
+            # Prompt user once to choose between multiple webcams
             select_camera
             CAM_DEV=$(cat "$CAM_CONFIG" 2>/dev/null || true)
         elif [ "$count" -eq 1 ]; then
             CAM_DEV=$(echo "$cams" | cut -d'|' -f2)
+            echo "$CAM_DEV" > "$CAM_CONFIG"
         fi
     fi
 
+    # 2. Start Audio Stream (Microphone -> Opus RTP)
+    gst-launch-1.0 -q \
+        pulsesrc ! \
+        audioconvert ! \
+        audioresample ! \
+        "audio/x-raw,rate=48000,channels=1" ! \
+        opusenc bitrate=64000 frame-size=20 audio-type=voice ! \
+        rtpopuspay pt=127 ! \
+        udpsink host="$TARGET_IP" port=46000 sync=false >"$STATE_DIR/audio.log" 2>&1 &
+    AUDIO_PID=$!
+
+    # 3. Start Video Stream if camera available
+    VIDEO_PID=""
     if [ -n "$CAM_DEV" ] && [ -e "$CAM_DEV" ]; then
-        if gst-inspect-1.0 vah264enc >/dev/null 2>&1; then
-            ENC="vah264enc ! h264parse"
-        elif gst-inspect-1.0 vaapih264enc >/dev/null 2>&1; then
-            ENC="vaapih264enc ! h264parse"
-        else
-            ENC="x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 bframes=0 byte-stream=true bitrate=2000 ! h264parse"
-        fi
-
+        VIDEO_PID=$(start_video_pipeline "$TARGET_IP" "$CAM_DEV")
         cam_name=$(cat "/sys/class/video4linux/$(basename "$(realpath "$CAM_DEV")")/name" 2>/dev/null || echo "$CAM_DEV")
-
-        gst-launch-1.0 -q \
-            v4l2src device="$CAM_DEV" ! \
-            videoconvert ! \
-            "video/x-raw,format=I420" ! \
-            $ENC ! \
-            rtph264pay config-interval=1 pt=96 ! \
-            udpsink host="$TARGET_IP" port=46002 sync=false >"$STATE_DIR/video.log" 2>&1 &
-        echo $! >> "$PID_FILE"
         notify-send -u normal -a "Meet Stream" "Streaming Active" "Mic & Cam ($cam_name) -> $TARGET_IP"
     else
-        notify-send -u normal -a "Meet Stream" "Audio Only Active" "Forwarding mic to $TARGET_IP (no webcam found)"
+        notify-send -u normal -a "Meet Stream" "Audio Only Active" "Forwarding mic to $TARGET_IP (no camera)"
+    fi
+
+    # 4. Save PIDs
+    echo "$AUDIO_PID" > "$PID_FILE"
+    if [ -n "$VIDEO_PID" ]; then
+        echo "$VIDEO_PID" >> "$PID_FILE"
     fi
 }
 
-# Handle command line flags
+# Command Line Dispatch
 case "${1:-}" in
     --select|select)
         select_camera
@@ -162,7 +191,7 @@ case "${1:-}" in
 esac
 
 # Toggle logic
-if [ -f "$PID_FILE" ] && kill -0 "$(head -n 1 "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+if is_streaming; then
     stop_stream
 else
     start_stream

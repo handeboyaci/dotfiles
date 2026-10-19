@@ -73,11 +73,11 @@ require("mini.surround").setup({
 	mappings = {
 		add = "ys",
 		delete = "ds",
-		find = "ysf",
-		find_left = "ysF",
+		find = "",
+		find_left = "",
 		highlight = "ysh",
 		replace = "cs",
-		update_n_lines = "ysn",
+		update_n_lines = "",
 	},
 	search_method = "cover_or_next",
 })

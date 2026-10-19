@@ -1708,15 +1708,52 @@ static int run_client_daemon(bool foreground) {
 
     time_t last_hb = time(NULL);
 
-    struct pollfd pfds[2];
+    /* Watchdog: attach to Sway/Wayland socket so daemon dies automatically if Sway exits */
+    int wl_watch_fd = -1;
+    const char *sway_sock = getenv("SWAYSOCK");
+    const char *wd = getenv("WAYLAND_DISPLAY");
+    char wl_path[512] = "";
+    if (sway_sock && *sway_sock) {
+        snprintf(wl_path, sizeof(wl_path), "%s", sway_sock);
+    } else if (wd && *wd) {
+        snprintf(wl_path, sizeof(wl_path), "%s/%s", g_runtime_dir, wd);
+    } else {
+        snprintf(wl_path, sizeof(wl_path), "%s/wayland-1", g_runtime_dir);
+    }
+    if (wl_path[0]) {
+        wl_watch_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        if (wl_watch_fd >= 0) {
+            struct sockaddr_un waddr;
+            memset(&waddr, 0, sizeof(waddr));
+            waddr.sun_family = AF_UNIX;
+            snprintf(waddr.sun_path, sizeof(waddr.sun_path), "%s", wl_path);
+            if (connect(wl_watch_fd, (struct sockaddr *)&waddr, sizeof(waddr)) < 0) {
+                close(wl_watch_fd);
+                wl_watch_fd = -1;
+            }
+        }
+    }
+
+    struct pollfd pfds[3];
     pfds[0].fd = audio_fd;
     pfds[0].events = POLLIN;
     pfds[1].fd = video_fd;
     pfds[1].events = POLLIN;
+    int pfd_cnt = 2;
+    if (wl_watch_fd >= 0) {
+        pfds[2].fd = wl_watch_fd;
+        pfds[2].events = POLLHUP | POLLERR;
+        pfd_cnt = 3;
+    }
 
     while (!g_daemon_stop) {
-        int r = poll(pfds, 2, 500);
+        int r = poll(pfds, pfd_cnt, 500);
         if (r > 0) {
+            if (wl_watch_fd >= 0 && (pfds[2].revents & (POLLHUP | POLLERR))) {
+                /* Sway / Wayland session exited: shutdown streaming immediately */
+                g_daemon_stop = 1;
+                break;
+            }
             if (pfds[0].revents & POLLIN) {
                 for (int k = 0; k < 32; k++) {
                     ssize_t n = recv(audio_fd, rtp_buf, sizeof(rtp_buf), MSG_DONTWAIT);
@@ -1793,6 +1830,7 @@ static int run_client_daemon(bool foreground) {
     close(audio_fd);
     close(video_fd);
     close(net_fd);
+    if (wl_watch_fd >= 0) close(wl_watch_fd);
     unlink(g_pid_file);
     unlink(g_status_file);
     return 0;

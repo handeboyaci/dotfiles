@@ -1103,19 +1103,41 @@ static int resolve_active_microphone(const DeviceItem mics[], int mic_count, boo
  * ============================================================================ */
 static bool check_ssid_match(const char *wanted_ssid) {
     if (!wanted_ssid || !wanted_ssid[0]) return false;
-    FILE *fp = popen("nmcli -t -f active,ssid dev wifi 2>/dev/null", "r");
-    if (!fp) return false;
-    char line[256];
-    bool matched = false;
-    while (fgets(line, sizeof(line), fp)) {
-        trim_and_unquote(line);
-        if (strncmp(line, "yes:", 4) == 0 && strcasecmp(line + 4, wanted_ssid) == 0) {
-            matched = true;
-            break;
+
+    /* 1. Fast D-Bus lookup of active connections (0.005s, zero radio scanning) */
+    FILE *fp = popen("nmcli -t -f TYPE,NAME connection show --active 2>/dev/null", "r");
+    if (fp) {
+        char line[256];
+        bool matched = false;
+        while (fgets(line, sizeof(line), fp)) {
+            trim_and_unquote(line);
+            if (strncmp(line, "802-11-wireless:", 16) == 0 &&
+                strcasecmp(line + 16, wanted_ssid) == 0) {
+                matched = true;
+                break;
+            }
         }
+        pclose(fp);
+        if (matched) return true;
     }
-    pclose(fp);
-    return matched;
+
+    /* 2. Fast cached Wi-Fi list without triggering channel scan (--rescan no) */
+    fp = popen("nmcli -t -f active,ssid dev wifi --rescan no 2>/dev/null", "r");
+    if (fp) {
+        char line[256];
+        bool matched = false;
+        while (fgets(line, sizeof(line), fp)) {
+            trim_and_unquote(line);
+            if (strncmp(line, "yes:", 4) == 0 && strcasecmp(line + 4, wanted_ssid) == 0) {
+                matched = true;
+                break;
+            }
+        }
+        pclose(fp);
+        if (matched) return true;
+    }
+
+    return false;
 }
 
 static bool resolve_ipv4_sockaddr(const char *host, int port, struct sockaddr_in *out_sin) {

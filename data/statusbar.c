@@ -3376,6 +3376,15 @@ static void build_namaz_strings(char *bar_out, size_t bar_sz, char *tip_out, siz
 /* ============================================================================
  * Audio (wpctl / pactl), MPRIS, Battery (/sys/class/power_supply), Screensaver
  * ============================================================================ */
+static void sync_mute_led(const char *path, bool muted) {
+    int fd = open(path, O_WRONLY);
+    if (fd >= 0) {
+        char buf[2] = { (char)('0' + (muted ? 1 : 0)), '\n' };
+        (void)write(fd, buf, 2);
+        close(fd);
+    }
+}
+
 static void poll_pulseaudio(void) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "XDG_RUNTIME_DIR=%s wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null", g_runtime_dir);
@@ -3388,8 +3397,29 @@ static void poll_pulseaudio(void) {
         g_pulse_vol = vol;
         g_pulse_muted = muted;
         pthread_mutex_unlock(&g_mutex);
+
+        static int last_sink_muted = -1;
+        if ((int)muted != last_sink_muted) {
+            sync_mute_led("/sys/class/leds/platform::mute/brightness", muted);
+            last_sink_muted = (int)muted;
+        }
     }
     free(out);
+
+    if (access("/sys/class/leds/platform::micmute/brightness", W_OK) == 0) {
+        char mic_cmd[256];
+        snprintf(mic_cmd, sizeof(mic_cmd), "XDG_RUNTIME_DIR=%s wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null", g_runtime_dir);
+        char *mic_out = run_cmd_capture(mic_cmd, 256);
+        if (mic_out && strncmp(mic_out, "Volume:", 7) == 0) {
+            bool mic_muted = (strstr(mic_out, "[MUTED]") != NULL);
+            static int last_mic_muted = -1;
+            if ((int)mic_muted != last_mic_muted) {
+                sync_mute_led("/sys/class/leds/platform::micmute/brightness", mic_muted);
+                last_mic_muted = (int)mic_muted;
+            }
+        }
+        free(mic_out);
+    }
 }
 
 static void pulse_adjust_volume(int delta_pct) {

@@ -30,12 +30,14 @@ test: statusbar-test meet-stream
 	./statusbar-test --self-test
 	./meet-stream --self-test
 
-install: statusbar pixelbuds-pause 09-timezone.sh
+install: statusbar pixelbuds-pause 09-timezone.sh 99-audio-leds.rules
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 755 statusbar $(DESTDIR)$(PREFIX)/bin/statusbar
 	install -m 755 pixelbuds-pause $(DESTDIR)$(PREFIX)/bin/pixelbuds-pause
 	install -d $(DESTDIR)/etc/NetworkManager/dispatcher.d
 	install -m 755 09-timezone.sh $(DESTDIR)/etc/NetworkManager/dispatcher.d/09-timezone
+	install -d $(DESTDIR)/etc/udev/rules.d
+	install -m 644 99-audio-leds.rules $(DESTDIR)/etc/udev/rules.d/99-audio-leds.rules
 
 clean:
 	rm -rf statusbar statusbar-test pixelbuds-pause meet-stream $(STATIC_LIBDIR)

@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+update_led() {
+    led="$1"
+    val="$2"
+    if [ -w "$led" ]; then
+        echo "$val" > "$led"
+    fi
+}
+
+case "${1:-}" in
+    output)
+        swayosd-client --output-volume mute-toggle
+        vol_out=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null || true)
+        if echo "$vol_out" | grep -q '\[MUTED\]'; then
+            update_led "/sys/class/leds/platform::mute/brightness" 1
+        else
+            update_led "/sys/class/leds/platform::mute/brightness" 0
+        fi
+        ;;
+    input)
+        wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+        vol_out=$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null || true)
+        if echo "$vol_out" | grep -q '\[MUTED\]'; then
+            update_led "/sys/class/leds/platform::micmute/brightness" 1
+            swayosd-client --custom-message "Microphone Muted" --custom-icon "microphone-sensitivity-muted" 2>/dev/null || true
+        else
+            update_led "/sys/class/leds/platform::micmute/brightness" 0
+            swayosd-client --custom-message "Microphone Unmuted" --custom-icon "audio-input-microphone" 2>/dev/null || true
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {output|input}" >&2
+        exit 1
+        ;;
+esac

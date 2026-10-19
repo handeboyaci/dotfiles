@@ -1273,7 +1273,6 @@ static void send_notification(const char *urgency, const char *summary, const ch
         }
         execlp("notify-send", "notify-send",
                "-u", urgency ? urgency : "normal",
-               "-a", "Meet Stream",
                summary ? summary : "Meet Stream",
                body ? body : "",
                (char *)NULL);

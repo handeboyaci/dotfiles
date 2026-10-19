@@ -42,6 +42,7 @@
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -1280,7 +1281,8 @@ static void terminate_child_pid(pid_t *pid_ptr) {
     pid_t p = *pid_ptr;
     if (p <= 1) return;
     kill(p, SIGTERM);
-    for (int i = 0; i < 25; i++) {
+    kill(-p, SIGTERM);
+    for (int i = 0; i < 15; i++) {
         int st = 0;
         pid_t r = waitpid(p, &st, WNOHANG);
         if (r == p || (r < 0 && errno == ECHILD)) {
@@ -1290,9 +1292,42 @@ static void terminate_child_pid(pid_t *pid_ptr) {
         usleep(10000);
     }
     kill(p, SIGKILL);
+    kill(-p, SIGKILL);
     int st = 0;
     waitpid(p, &st, 0);
     *pid_ptr = 0;
+}
+
+static void kill_stray_camera_gst(void) {
+    DIR *d = opendir("/proc");
+    if (!d) return;
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        if (de->d_name[0] < '0' || de->d_name[0] > '9') continue;
+        pid_t pid = (pid_t)atoi(de->d_name);
+        if (pid <= 1 || pid == getpid()) continue;
+        char cpath[128];
+        snprintf(cpath, sizeof(cpath), "/proc/%d/cmdline", (int)pid);
+        int fd = open(cpath, O_RDONLY);
+        if (fd < 0) continue;
+        char cmd[512];
+        ssize_t n = read(fd, cmd, sizeof(cmd) - 1);
+        close(fd);
+        if (n <= 0) continue;
+        cmd[n] = '\0';
+        for (ssize_t i = 0; i < n; i++) {
+            if (cmd[i] == '\0') cmd[i] = ' ';
+        }
+        if (strstr(cmd, "gst-launch-1.0") &&
+            (strstr(cmd, "v4l2src") || strstr(cmd, "pulsesrc") || strstr(cmd, "46002"))) {
+            kill(pid, SIGTERM);
+            kill(-pid, SIGTERM);
+            usleep(5000);
+            kill(pid, SIGKILL);
+            kill(-pid, SIGKILL);
+        }
+    }
+    closedir(d);
 }
 
 static bool gst_has_element(const char *elem_name) {
@@ -1348,9 +1383,12 @@ static pid_t spawn_client_audio_gst(const char *mic_target, uint16_t local_port)
     char log_path[512];
     snprintf(log_path, sizeof(log_path), "%s/audio.log", g_state_dir);
 
+    pid_t parent_pid = getpid();
     pid_t pid = fork();
     if (pid < 0) return 0;
     if (pid == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        if (getppid() != parent_pid) _exit(0);
         setsid();
         int logfd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
         int devnull = open("/dev/null", O_RDONLY);
@@ -1421,9 +1459,12 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
     char log_path[512];
     snprintf(log_path, sizeof(log_path), "%s/video.log", g_state_dir);
 
+    pid_t parent_pid = getpid();
     pid_t pid = fork();
     if (pid < 0) return 0;
     if (pid == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        if (getppid() != parent_pid) _exit(0);
         setsid();
         int logfd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
         int devnull = open("/dev/null", O_RDONLY);
@@ -1483,9 +1524,12 @@ static pid_t spawn_server_video_gst(uint16_t local_port) {
     char dev_arg[160];
     snprintf(dev_arg, sizeof(dev_arg), "device=%s", g_cfg.loopback_device);
 
+    pid_t parent_pid = getpid();
     pid_t pid = fork();
     if (pid < 0) return 0;
     if (pid == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        if (getppid() != parent_pid) _exit(0);
         setsid();
         int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
@@ -1651,6 +1695,7 @@ static int run_client_daemon(bool foreground) {
     if (session_id == 0) session_id = (uint64_t)time(NULL) ^ (uint64_t)getpid();
     uint64_t seq = 1;
 
+    kill_stray_camera_gst();
     pid_t audio_pid = spawn_client_audio_gst(cur_mic_target, audio_port);
     pid_t video_pid = spawn_client_video_gst(cur_cam_target, video_port);
 
@@ -1743,6 +1788,7 @@ static int run_client_daemon(bool foreground) {
 
     terminate_child_pid(&audio_pid);
     terminate_child_pid(&video_pid);
+    kill_stray_camera_gst();
 
     close(audio_fd);
     close(video_fd);
@@ -1754,12 +1800,19 @@ static int run_client_daemon(bool foreground) {
 
 static bool stop_client_stream(bool notify) {
     pid_t pid = get_running_daemon_pid();
-    if (pid <= 0) return false;
-    kill(pid, SIGTERM);
-    for (int i = 0; i < 40; i++) {
-        if (kill(pid, 0) != 0) break;
-        usleep(10000);
+    if (pid > 0) {
+        kill(pid, SIGTERM);
+        kill(-pid, SIGTERM);
+        for (int i = 0; i < 40; i++) {
+            if (kill(pid, 0) != 0) break;
+            usleep(10000);
+        }
+        if (kill(pid, 0) == 0) {
+            kill(pid, SIGKILL);
+            kill(-pid, SIGKILL);
+        }
     }
+    kill_stray_camera_gst();
     unlink(g_pid_file);
     unlink(g_status_file);
     if (notify) {

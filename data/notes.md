@@ -137,7 +137,7 @@ systemctl --user enable --now moonlight-cam.socket
 # Moonlight Meet webcam & microphone forwarding setup (Client)
 sudo apt install -y gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 sudo usermod -aG video $USER
-# Copy ~/.dotfiles/tmp/meet-stream.key (mode 0600) between client and host
+# Sync secret key to host: $HOME/.dotfiles/data/meet-stream --sync-key (or scp -p ~/.dotfiles/tmp/meet-stream.key ev:~/.dotfiles/tmp/)
 # Toggle streaming from client with $mod+s
 # Select/switch webcam & microphone with $mod+Shift+s
 

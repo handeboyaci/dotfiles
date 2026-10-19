@@ -3050,6 +3050,46 @@ static int run_self_test(void) {
     return 0;
 }
 
+static int run_sync_key(const char *target_ssh_host) {
+    if (!ensure_master_key()) {
+        fprintf(stderr, "meet-stream: failed to create or load secret key at %s\n", g_cfg.secret_key_file);
+        return 1;
+    }
+    const char *remote = (target_ssh_host && target_ssh_host[0]) ? target_ssh_host : g_cfg.ssh_host;
+    if (!remote || !remote[0]) {
+        fprintf(stderr, "meet-stream: no ssh_host configured in meet-stream.conf (e.g. ssh_host = ev)\n");
+        return 1;
+    }
+    printf("Syncing key %s to %s:%s ...\n", g_cfg.secret_key_file, remote, g_cfg.secret_key_file);
+    char remote_dst[600];
+    snprintf(remote_dst, sizeof(remote_dst), "%s:%s", remote, g_cfg.secret_key_file);
+
+    pid_t pid = fork();
+    if (pid < 0) return 1;
+    if (pid == 0) {
+        execlp("ssh", "ssh", remote, "mkdir -p ~/.dotfiles/tmp", (char *)NULL);
+        _exit(127);
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+
+    pid_t pid2 = fork();
+    if (pid2 < 0) return 1;
+    if (pid2 == 0) {
+        execlp("scp", "scp", "-p", g_cfg.secret_key_file, remote_dst, (char *)NULL);
+        _exit(127);
+    }
+    int st2 = 0;
+    waitpid(pid2, &st2, 0);
+    if (WIFEXITED(st2) && WEXITSTATUS(st2) == 0) {
+        printf("Successfully synced secret key to %s\n", remote);
+        return 0;
+    } else {
+        fprintf(stderr, "meet-stream: scp failed with exit code %d\n", WEXITSTATUS(st2));
+        return 1;
+    }
+}
+
 static void print_usage(const char *prog) {
     printf("Usage: %s [OPTIONS]\n\n"
            "Secure, configurable webcam & microphone streaming client, on-demand remote\n"
@@ -3061,6 +3101,7 @@ static void print_usage(const char *prog) {
            "  --select                 Open Wayland Layer-Shell device selector ($mod+Shift+s)\n"
            "  --select-cam             Open Wayland Layer-Shell webcam selector\n"
            "  --select-mic             Open Wayland Layer-Shell microphone selector\n"
+           "  --sync-key [HOST]        Copy secret key to remote host via SSH (defaults to ssh_host)\n"
            "  --serve                  Run on-demand remote receiver (systemd socket activated)\n"
            "  --status                 Print current streaming status and selected devices\n"
            "  --config <PATH>          Load configuration from custom file\n"
@@ -3112,11 +3153,13 @@ int main(int argc, char *argv[]) {
         ACT_SELECT_MIC,
         ACT_SERVE,
         ACT_STATUS,
+        ACT_SYNC_KEY,
         ACT_SELF_TEST,
         ACT_RENDER_TEST
     } action = ACT_TOGGLE;
 
     const char *render_out = NULL;
+    const char *sync_target_host = NULL;
     bool force_headless = false;
 
     for (int i = 1; i < argc; i++) {
@@ -3139,6 +3182,11 @@ int main(int argc, char *argv[]) {
             action = ACT_SELECT_CAM;
         } else if (strcmp(argv[i], "--select-mic") == 0 || strcmp(argv[i], "select-mic") == 0) {
             action = ACT_SELECT_MIC;
+        } else if (strcmp(argv[i], "--sync-key") == 0 || strcmp(argv[i], "sync-key") == 0) {
+            action = ACT_SYNC_KEY;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                sync_target_host = argv[++i];
+            }
         } else if (strcmp(argv[i], "--serve") == 0 || strcmp(argv[i], "serve") == 0) {
             action = ACT_SERVE;
         } else if (strcmp(argv[i], "--status") == 0 || strcmp(argv[i], "status") == 0) {
@@ -3156,6 +3204,7 @@ int main(int argc, char *argv[]) {
     if (action == ACT_SELF_TEST) return run_self_test();
     if (action == ACT_RENDER_TEST) return run_render_test(render_out);
     if (action == ACT_SERVE) return run_server_receiver();
+    if (action == ACT_SYNC_KEY) return run_sync_key(sync_target_host);
 
     if (action == ACT_STATUS) {
         load_persistent_state();

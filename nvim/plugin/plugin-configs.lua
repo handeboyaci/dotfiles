@@ -68,8 +68,22 @@ vim.keymap.set("t", "<C-l>", "<C-\\><C-n>:TmuxNavigateRight<CR>", { silent = tru
 vim.keymap.set("t", "<C-w>", "<C-\\><C-n><C-w>", { silent = true })
 vim.keymap.set("t", "<C-x>", "<C-\\><C-n><C-w>c", { silent = true })
 
--- Surround
-vim.g.surround_no_insert_mappings = 1
+-- Surround (mini.surround with vim-surround keymaps)
+require("mini.surround").setup({
+	mappings = {
+		add = "ys",
+		delete = "ds",
+		find = "ysf",
+		find_left = "ysF",
+		highlight = "ysh",
+		replace = "cs",
+		update_n_lines = "ysn",
+	},
+	search_method = "cover_or_next",
+})
+vim.keymap.del("x", "ys")
+vim.keymap.set("x", "S", [[:<C-u>lua MiniSurround.add('visual')<CR>]], { silent = true })
+vim.keymap.set("n", "yss", "ys_", { remap = true })
 
 -- Undotree (built-in, lazy-loaded)
 lazy.lazy_load("nvim.undotree", {

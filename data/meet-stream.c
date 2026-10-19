@@ -153,7 +153,10 @@ typedef struct {
 
 static StreamConfig g_cfg;
 static PersistentState g_pref;
-static uint8_t g_master_key[KEY_LEN];
+#define MAX_KEYS 16
+static uint8_t g_keys[MAX_KEYS][KEY_LEN];
+static int g_key_count = 0;
+#define g_master_key (g_keys[0])
 static bool g_key_loaded = false;
 
 static char g_home_dir[256] = "";
@@ -582,15 +585,19 @@ static bool parse_hex_key(const char *hex_str, uint8_t out[KEY_LEN]) {
         if (hi < 0 || lo < 0) return false;
         out[i] = (uint8_t)((hi << 4) | lo);
     }
+    char trail = hex_str[KEY_LEN * 2];
+    if (trail != '\0' && !isspace((unsigned char)trail) && trail != '#') {
+        return false;
+    }
     return true;
 }
 
 static bool ensure_master_key(void) {
     if (g_key_loaded) return true;
+    g_key_count = 0;
 
-    if (g_cfg.secret_key_hex[0] && parse_hex_key(g_cfg.secret_key_hex, g_master_key)) {
-        g_key_loaded = true;
-        return true;
+    if (g_cfg.secret_key_hex[0] && parse_hex_key(g_cfg.secret_key_hex, g_keys[0])) {
+        g_key_count = 1;
     }
 
     char path[512];
@@ -598,20 +605,41 @@ static bool ensure_master_key(void) {
 
     FILE *fp = fopen(path, "r");
     if (fp) {
-        char line[256] = "";
-        if (fgets(line, sizeof(line), fp)) {
-            if (parse_hex_key(line, g_master_key)) {
-                fclose(fp);
-                chmod(path, 0600);
-                g_key_loaded = true;
-                return true;
+        char line[256];
+        while (fgets(line, sizeof(line), fp)) {
+            char *s = line;
+            while (*s && isspace((unsigned char)*s)) s++;
+            if (*s == '#' || *s == '\0') continue;
+            if (g_key_count < MAX_KEYS) {
+                uint8_t k[KEY_LEN];
+                if (parse_hex_key(s, k)) {
+                    /* Avoid duplicate keys */
+                    bool dup = false;
+                    for (int i = 0; i < g_key_count; i++) {
+                        if (memcmp(g_keys[i], k, KEY_LEN) == 0) {
+                            dup = true;
+                            break;
+                        }
+                    }
+                    if (!dup) {
+                        memcpy(g_keys[g_key_count], k, KEY_LEN);
+                        g_key_count++;
+                    }
+                }
             }
         }
         fclose(fp);
+        chmod(path, 0600);
+    }
+
+    if (g_key_count > 0) {
+        g_key_loaded = true;
+        return true;
     }
 
     /* Generate new 256-bit key with 0600 permissions */
-    if (!fill_random_bytes(g_master_key, KEY_LEN)) return false;
+    if (!fill_random_bytes(g_keys[0], KEY_LEN)) return false;
+    g_key_count = 1;
 
     char dir_buf[512];
     snprintf(dir_buf, sizeof(dir_buf), "%s", path);
@@ -626,8 +654,8 @@ static bool ensure_master_key(void) {
         char hex[KEY_LEN * 2 + 2];
         static const char hexchars[] = "0123456789abcdef";
         for (int i = 0; i < KEY_LEN; i++) {
-            hex[i * 2]     = hexchars[(g_master_key[i] >> 4) & 0xF];
-            hex[i * 2 + 1] = hexchars[g_master_key[i] & 0xF];
+            hex[i * 2]     = hexchars[(g_keys[0][i] >> 4) & 0xF];
+            hex[i * 2 + 1] = hexchars[g_keys[0][i] & 0xF];
         }
         hex[KEY_LEN * 2] = '\n';
         hex[KEY_LEN * 2 + 1] = '\0';
@@ -1747,7 +1775,7 @@ static int run_client_daemon(bool foreground) {
     }
 
     while (!g_daemon_stop) {
-        int r = poll(pfds, pfd_cnt, 500);
+        int r = poll(pfds, pfd_cnt, 1000);
         if (r > 0) {
             if (wl_watch_fd >= 0 && (pfds[2].revents & (POLLHUP | POLLERR))) {
                 /* Sway / Wayland session exited: shutdown streaming immediately */
@@ -1940,6 +1968,7 @@ static int run_server_receiver(void) {
     ReplayWindow rw;
     memset(&rw, 0, sizeof(rw));
 
+    int active_key_idx = -1;
     pid_t video_gst_pid = 0;
     int idle_ms = (g_cfg.idle_timeout_sec > 0 ? g_cfg.idle_timeout_sec : 5) * 1000;
     bool got_valid_stream_pkt = false;
@@ -1970,8 +1999,27 @@ static int run_server_receiver(void) {
             uint8_t pkt_type = 0;
             uint64_t sess = 0, seq = 0;
             uint16_t plen = 0;
-            if (!mstr_open_packet(g_master_key, wire_buf, (size_t)n,
-                                  &pkt_type, &sess, &seq, plain_buf, &plen)) {
+            bool authed = false;
+
+            /* Fast path: check previously authenticated key first */
+            if (active_key_idx >= 0 && active_key_idx < g_key_count) {
+                if (mstr_open_packet(g_keys[active_key_idx], wire_buf, (size_t)n,
+                                      &pkt_type, &sess, &seq, plain_buf, &plen)) {
+                    authed = true;
+                }
+            }
+            if (!authed) {
+                for (int ki = 0; ki < g_key_count; ki++) {
+                    if (ki == active_key_idx) continue;
+                    if (mstr_open_packet(g_keys[ki], wire_buf, (size_t)n,
+                                          &pkt_type, &sess, &seq, plain_buf, &plen)) {
+                        active_key_idx = ki;
+                        authed = true;
+                        break;
+                    }
+                }
+            }
+            if (!authed) {
                 continue; /* Drop unauthenticated / corrupted packet */
             }
 
@@ -3111,6 +3159,74 @@ static int run_self_test(void) {
         return 1;
     }
 
+    /* Test multi-key authentication */
+    uint8_t key2[32];
+    for (int i = 0; i < 32; i++) key2[i] = (uint8_t)(i * 13 + 7);
+    uint8_t wire2[256], opened2[256];
+    size_t wlen2 = mstr_seal_packet(key2, PKT_AUDIO, 0x1122334455667788ULL, 1,
+                                    (const uint8_t *)sample, (uint16_t)strlen(sample), wire2);
+    /* key1 cannot open wire2 */
+    if (mstr_open_packet(key, wire2, wlen2, &otype, &osess, &oseq, opened2, &olen)) {
+        fprintf(stderr, "Self-test FAILED: wrong key opened packet\n");
+        return 1;
+    }
+    /* key2 can open wire2 */
+    if (!mstr_open_packet(key2, wire2, wlen2, &otype, &osess, &oseq, opened2, &olen) ||
+        memcmp(opened2, sample, olen) != 0) {
+        fprintf(stderr, "Self-test FAILED: key2 open failed\n");
+        return 1;
+    }
+
+    /* Test key parsing with comments, whitespace, and reject invalid */
+    char test_hex_line[128];
+    snprintf(test_hex_line, sizeof(test_hex_line),
+             "  0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  # laptop device \n");
+    uint8_t parsed_k[32];
+    if (!parse_hex_key(test_hex_line, parsed_k)) {
+        fprintf(stderr, "Self-test FAILED: parse_hex_key failed on line with comments\n");
+        return 1;
+    }
+    if (parse_hex_key("0123456789abcdef", parsed_k)) {
+        fprintf(stderr, "Self-test FAILED: parse_hex_key accepted short hex key\n");
+        return 1;
+    }
+
+    /* Test multi-key file loading */
+    char tmp_kf[] = "/tmp/meet_stream_test_XXXXXX";
+    int tmp_fd = mkstemp(tmp_kf);
+    if (tmp_fd >= 0) {
+        const char *test_file_content =
+            "# First key from laptop\n"
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f # laptop\n"
+            "\n"
+            "# Duplicate should be ignored\n"
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n"
+            "# Second key from ofis\n"
+            "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f # ofis\n";
+        ssize_t tw = write(tmp_fd, test_file_content, strlen(test_file_content));
+        (void)tw;
+        close(tmp_fd);
+
+        StreamConfig orig_cfg = g_cfg;
+        bool orig_loaded = g_key_loaded;
+        int orig_count = g_key_count;
+
+        g_key_loaded = false;
+        g_cfg.secret_key_hex[0] = '\0';
+        snprintf(g_cfg.secret_key_file, sizeof(g_cfg.secret_key_file), "%s", tmp_kf);
+
+        if (!ensure_master_key() || g_key_count != 2) {
+            fprintf(stderr, "Self-test FAILED: ensure_master_key did not load exactly 2 keys (got %d)\n", g_key_count);
+            unlink(tmp_kf);
+            return 1;
+        }
+        unlink(tmp_kf);
+
+        g_cfg = orig_cfg;
+        g_key_loaded = orig_loaded;
+        g_key_count = orig_count;
+    }
+
     /* 2. Verify Docked vs. Undocked MRU fallback without clobbering preference */
     memset(&g_pref, 0, sizeof(g_pref));
     mru_promote(g_pref.cam_prefs, &g_pref.cam_pref_count, "/dev/v4l/by-id/usb-Internal_Cam-video-index0");
@@ -3173,32 +3289,51 @@ static int run_sync_key(const char *target_ssh_host) {
         fprintf(stderr, "meet-stream: no ssh_host configured in meet-stream.conf (e.g. ssh_host = ev)\n");
         return 1;
     }
-    printf("Syncing key %s to %s:%s ...\n", g_cfg.secret_key_file, remote, g_cfg.secret_key_file);
-    char remote_dst[600];
-    snprintf(remote_dst, sizeof(remote_dst), "%s:%s", remote, g_cfg.secret_key_file);
+
+    char hex[KEY_LEN * 2 + 1];
+    static const char hexchars[] = "0123456789abcdef";
+    for (int i = 0; i < KEY_LEN; i++) {
+        hex[i * 2]     = hexchars[(g_master_key[i] >> 4) & 0xF];
+        hex[i * 2 + 1] = hexchars[g_master_key[i] & 0xF];
+    }
+    hex[KEY_LEN * 2] = '\0';
+
+    char host_comment[64] = "";
+    char my_host[64] = "";
+    if (gethostname(my_host, sizeof(my_host)) == 0 && my_host[0]) {
+        snprintf(host_comment, sizeof(host_comment), " # %s", my_host);
+    }
+
+    char remote_path[512];
+    size_t hlen = strlen(g_home_dir);
+    if (strncmp(g_cfg.secret_key_file, g_home_dir, hlen) == 0 && g_cfg.secret_key_file[hlen] == '/') {
+        snprintf(remote_path, sizeof(remote_path), "~%s", g_cfg.secret_key_file + hlen);
+    } else {
+        snprintf(remote_path, sizeof(remote_path), "%s", g_cfg.secret_key_file);
+    }
+
+    printf("Authorizing key for %s on %s:%s ...\n", my_host[0] ? my_host : "client", remote, remote_path);
+
+    char remote_cmd[1024];
+    snprintf(remote_cmd, sizeof(remote_cmd),
+             "KEYFILE=%s; dir=$(dirname \"$KEYFILE\"); mkdir -p \"$dir\" 2>/dev/null; "
+             "touch \"$KEYFILE\" && chmod 0600 \"$KEYFILE\" && "
+             "(grep -qs \"^%s\" \"$KEYFILE\" || printf '%%s%%s\\n' '%s' '%s' >> \"$KEYFILE\")",
+             remote_path, hex, hex, host_comment);
 
     pid_t pid = fork();
     if (pid < 0) return 1;
     if (pid == 0) {
-        execlp("ssh", "ssh", remote, "mkdir -p ~/.dotfiles/tmp", (char *)NULL);
+        execlp("ssh", "ssh", remote, remote_cmd, (char *)NULL);
         _exit(127);
     }
     int st = 0;
     waitpid(pid, &st, 0);
-
-    pid_t pid2 = fork();
-    if (pid2 < 0) return 1;
-    if (pid2 == 0) {
-        execlp("scp", "scp", "-p", g_cfg.secret_key_file, remote_dst, (char *)NULL);
-        _exit(127);
-    }
-    int st2 = 0;
-    waitpid(pid2, &st2, 0);
-    if (WIFEXITED(st2) && WEXITSTATUS(st2) == 0) {
-        printf("Successfully synced secret key to %s\n", remote);
+    if (WIFEXITED(st) && WEXITSTATUS(st) == 0) {
+        printf("Successfully authorized secret key on %s:%s\n", remote, remote_path);
         return 0;
     } else {
-        fprintf(stderr, "meet-stream: scp failed with exit code %d\n", WEXITSTATUS(st2));
+        fprintf(stderr, "meet-stream: ssh key sync failed with exit code %d\n", WEXITSTATUS(st));
         return 1;
     }
 }
@@ -3214,7 +3349,7 @@ static void print_usage(const char *prog) {
            "  --select                 Open Wayland Layer-Shell device selector ($mod+Shift+s)\n"
            "  --select-cam             Open Wayland Layer-Shell webcam selector\n"
            "  --select-mic             Open Wayland Layer-Shell microphone selector\n"
-           "  --sync-key [HOST]        Copy secret key to remote host via SSH (defaults to ssh_host)\n"
+           "  --sync-key [HOST]        Authorize secret key on remote host via SSH (defaults to ssh_host)\n"
            "  --serve                  Run on-demand remote receiver (systemd socket activated)\n"
            "  --status                 Print current streaming status and selected devices\n"
            "  --config <PATH>          Load configuration from custom file\n"

@@ -604,14 +604,22 @@ static bool echo_ring_contains(const uint8_t digest[32]) {
  * ============================================================================ */
 static int g_wl_fd = -1;
 static uint32_t g_wl_next_id = 2;
-static uint32_t g_id_registry = 1;
+static uint32_t g_id_registry = 0;
 static uint32_t g_id_seat = 0;
 static uint32_t g_id_manager = 0;
 static uint32_t g_id_device = 0;
-static uint32_t g_id_cur_offer = 0;
 static uint32_t g_id_active_source = 0;
+static bool g_we_own_selection = false;
 
-static char g_last_offered_mime[64] = "";
+typedef struct {
+    uint32_t id;
+    char mime[128];
+} WaylandOffer;
+
+#define MAX_WAYLAND_OFFERS 16
+static WaylandOffer g_offers[MAX_WAYLAND_OFFERS];
+static int g_offer_count = 0;
+
 static uint8_t *g_current_clip_data = NULL;
 static size_t g_current_clip_len = 0;
 static uint16_t g_current_clip_mime = MIME_CODE_TEXT_UTF8;
@@ -692,6 +700,19 @@ static void wl_send_string(uint32_t obj, uint16_t op, const char *str) {
     memcpy(buf + 4, str, slen);
     wl_send_msg(obj, op, buf, payload_len, -1);
     free(buf);
+}
+
+static void wl_registry_bind(uint32_t name, const char *iface, uint32_t version, uint32_t new_id) {
+    uint32_t buf[64];
+    buf[0] = name;
+    uint32_t slen = (uint32_t)strlen(iface) + 1;
+    buf[1] = slen;
+    memset(buf + 2, 0, ((slen + 3) & ~3));
+    memcpy(buf + 2, iface, slen);
+    int idx = 2 + (int)((slen + 3) / 4);
+    buf[idx++] = version;
+    buf[idx++] = new_id;
+    wl_send_msg(g_id_registry, 0 /* bind */, buf, (size_t)idx * 4, -1);
 }
 
 /* Forward declarations */
@@ -790,81 +811,70 @@ static void process_wayland_events(void) {
 
             if (strcmp(iface, "wl_seat") == 0 && g_id_seat == 0) {
                 g_id_seat = g_wl_next_id++;
-                uint32_t b[6] = {name, 0, 7, 0, g_id_seat, (ver < 7 ? ver : 7)};
-                memcpy(b + 1, "wl_seat\0", 8);
-                wl_send_msg(g_id_registry, 0, b, 24, -1);
+                wl_registry_bind(name, iface, ver < 7 ? ver : 7, g_id_seat);
             } else if ((strcmp(iface, "zwlr_data_control_manager_v1") == 0 ||
                         strcmp(iface, "ext_data_control_manager_v1") == 0) && g_id_manager == 0) {
                 g_id_manager = g_wl_next_id++;
-                size_t nlen = strlen(iface) + 1;
-                size_t pad = (4 - (nlen % 4)) % 4;
-                size_t blen = 4 + 4 + nlen + pad + 4 + 4;
-                uint8_t *b = (uint8_t *)calloc(1, blen);
-                if (b) {
-                    store_le32(b, name);
-                    store_le32(b + 4, (uint32_t)nlen);
-                    memcpy(b + 8, iface, nlen);
-                    store_le32(b + 8 + nlen + pad, 1); /* version 1 or 2 */
-                    store_le32(b + 8 + nlen + pad + 4, g_id_manager);
-                    wl_send_msg(g_id_registry, 0, b, blen, -1);
-                    free(b);
-                }
+                wl_registry_bind(name, iface, ver < 2 ? ver : 2, g_id_manager);
             }
         }
         /* Data control device events */
         else if (obj_id == g_id_device) {
             if (opcode == 0 /* data_offer(id) */) {
                 uint32_t offer_id = *(const uint32_t *)p;
-                g_id_cur_offer = offer_id;
-                g_last_offered_mime[0] = '\0';
+                /* Register new offer */
+                int idx = -1;
+                for (int i = 0; i < g_offer_count; i++) {
+                    if (g_offers[i].id == offer_id) { idx = i; break; }
+                }
+                if (idx < 0 && g_offer_count < MAX_WAYLAND_OFFERS) {
+                    idx = g_offer_count++;
+                }
+                if (idx >= 0) {
+                    g_offers[idx].id = offer_id;
+                    g_offers[idx].mime[0] = '\0';
+                }
             } else if (opcode == 1 /* selection(offer_id) */) {
                 uint32_t sel_id = *(const uint32_t *)p;
-                if (sel_id != 0 && sel_id == g_id_cur_offer && g_last_offered_mime[0] != '\0') {
-                    int pfd[2];
-                    if (pipe2(pfd, O_CLOEXEC) == 0) {
-                        /* offer.receive(mime_type, fd) */
-                        uint32_t slen = (uint32_t)strlen(g_last_offered_mime) + 1;
-                        uint32_t pad = (4 - (slen % 4)) % 4;
-                        size_t plen = 4 + slen + pad;
-                        uint8_t *mbuf = (uint8_t *)calloc(1, plen);
-                        if (mbuf) {
-                            store_le32(mbuf, slen);
-                            memcpy(mbuf + 4, g_last_offered_mime, slen);
-                            wl_send_msg(g_id_cur_offer, 0 /* receive */, mbuf, plen, pfd[1]);
-                            free(mbuf);
-                        }
-                        close(pfd[1]); /* Critical: close local write-end so read reaches EOF */
-
-                        size_t clip_len = 0;
-                        uint8_t *clip_data = read_pipe_all(pfd[0], &clip_len, TRANSFER_TIMEOUT_MSEC);
-                        if (clip_data && clip_len > 0) {
-                            uint8_t d[32];
-                            sha256(clip_data, clip_len, d);
-                            if (!echo_ring_contains(d)) {
-                                echo_ring_add(d);
-                                uint16_t mcode = (strcmp(g_last_offered_mime, "image/png") == 0) ?
-                                                 MIME_CODE_PNG : MIME_CODE_TEXT_UTF8;
-                                broadcast_local_clipboard(clip_data, clip_len, mcode);
-                            }
-                            free(clip_data);
-                        }
+                if (sel_id == 0) {
+                    /* Selection cleared */
+                } else if (g_we_own_selection) {
+                    /* Suppress echo: we set this selection ourselves */
+                } else {
+                    /* Find offer */
+                    int idx = -1;
+                    for (int i = 0; i < g_offer_count; i++) {
+                        if (g_offers[i].id == sel_id) { idx = i; break; }
                     }
-                }
-            }
-        }
-        /* Data control offer events */
-        else if (obj_id == g_id_cur_offer) {
-            if (opcode == 0 /* offer(mime_type) */) {
-                uint32_t slen = *(const uint32_t *)p;
-                const char *mime = (const char *)(p + 4);
-                if (slen > 0) {
-                    if (strcmp(mime, "image/png") == 0) {
-                        snprintf(g_last_offered_mime, sizeof(g_last_offered_mime), "image/png");
-                    } else if (strcmp(mime, "text/plain;charset=utf-8") == 0 ||
-                               strcmp(mime, "text/plain") == 0 ||
-                               strcmp(mime, "UTF8_STRING") == 0) {
-                        if (strcmp(g_last_offered_mime, "image/png") != 0) {
-                            snprintf(g_last_offered_mime, sizeof(g_last_offered_mime), "%s", mime);
+                    if (idx >= 0 && g_offers[idx].mime[0] != '\0') {
+                        int pfd[2];
+                        if (pipe2(pfd, O_CLOEXEC) == 0) {
+                            /* Send receive request */
+                            uint32_t slen = (uint32_t)strlen(g_offers[idx].mime) + 1;
+                            uint32_t pad = (4 - (slen % 4)) % 4;
+                            size_t plen = 4 + slen + pad;
+                            uint8_t *mbuf = (uint8_t *)calloc(1, plen);
+                            if (mbuf) {
+                                store_le32(mbuf, slen);
+                                memcpy(mbuf + 4, g_offers[idx].mime, slen);
+                                wl_send_msg(sel_id, 0 /* receive */, mbuf, plen, pfd[1]);
+                                free(mbuf);
+                            }
+                            close(pfd[1]);
+
+                            size_t clip_len = 0;
+                            uint8_t *clip_data = read_pipe_all(pfd[0], &clip_len, TRANSFER_TIMEOUT_MSEC);
+                            if (clip_data && clip_len > 0) {
+                                uint8_t d[32];
+                                sha256(clip_data, clip_len, d);
+                                if (!echo_ring_contains(d)) {
+                                    echo_ring_add(d);
+                                    uint16_t mcode = (strcmp(g_offers[idx].mime, "image/png") == 0) ?
+                                                     MIME_CODE_PNG : MIME_CODE_TEXT_UTF8;
+                                    broadcast_local_clipboard(clip_data, clip_len, mcode);
+                                }
+                                free(clip_data);
+                            }
                         }
                     }
                 }
@@ -895,8 +905,29 @@ static void process_wayland_events(void) {
                     close(send_fd);
                 }
             } else if (opcode == 1 /* cancelled */) {
+                g_we_own_selection = false;
                 wl_send_msg(g_id_active_source, 1 /* destroy */, NULL, 0, -1);
                 g_id_active_source = 0;
+            }
+        } else {
+            /* Check if this is an offer MIME event */
+            for (int i = 0; i < g_offer_count; i++) {
+                if (g_offers[i].id == obj_id && opcode == 0 /* offer(mime_type) */) {
+                    uint32_t slen = *(const uint32_t *)p;
+                    const char *mime = (const char *)(p + 4);
+                    if (slen > 0) {
+                        if (strcmp(mime, "image/png") == 0) {
+                            snprintf(g_offers[i].mime, sizeof(g_offers[i].mime), "image/png");
+                        } else if (strcmp(mime, "text/plain;charset=utf-8") == 0 ||
+                                   strcmp(mime, "text/plain") == 0 ||
+                                   strcmp(mime, "UTF8_STRING") == 0) {
+                            if (strcmp(g_offers[i].mime, "image/png") != 0) {
+                                snprintf(g_offers[i].mime, sizeof(g_offers[i].mime), "%s", mime);
+                            }
+                        }
+                    }
+                    break;
+                }
             }
         }
 
@@ -941,7 +972,10 @@ static bool wayland_init(void) {
     }
 
     /* Get registry */
+    g_id_registry = g_wl_next_id++;
     wl_send_u32_1(1 /* wl_display */, 1 /* get_registry */, g_id_registry);
+    uint32_t sync_cb = g_wl_next_id++;
+    wl_send_u32_1(1 /* wl_display */, 0 /* sync */, sync_cb);
 
     /* Pump events until seat and data_control_manager are found */
     uint64_t start = now_msec();
@@ -971,6 +1005,7 @@ static void handle_remote_clipboard(const uint8_t *data, size_t len, uint16_t mi
     uint8_t d[32];
     sha256(data, len, d);
     echo_ring_add(d);
+    g_we_own_selection = true;
 
     /* Clean up old source if active */
     if (g_id_active_source != 0) {

@@ -611,6 +611,8 @@ static uint32_t g_id_device = 0;
 static uint32_t g_id_active_source = 0;
 static bool g_we_own_selection = false;
 
+static void wl_send_msg(uint32_t obj_id, uint16_t opcode, const void *payload, size_t payload_len, int fd_to_pass);
+
 typedef struct {
     uint32_t id;
     char mime[128];
@@ -618,7 +620,30 @@ typedef struct {
 
 #define MAX_WAYLAND_OFFERS 16
 static WaylandOffer g_offers[MAX_WAYLAND_OFFERS];
-static int g_offer_count = 0;
+static int g_offer_head = 0;
+
+static void offer_register(uint32_t offer_id) {
+    for (int i = 0; i < MAX_WAYLAND_OFFERS; i++) {
+        if (g_offers[i].id == offer_id) {
+            g_offers[i].mime[0] = '\0';
+            return;
+        }
+    }
+    int idx = g_offer_head;
+    g_offer_head = (g_offer_head + 1) % MAX_WAYLAND_OFFERS;
+    if (g_offers[idx].id != 0) {
+        wl_send_msg(g_offers[idx].id, 1 /* destroy */, NULL, 0, -1);
+    }
+    g_offers[idx].id = offer_id;
+    g_offers[idx].mime[0] = '\0';
+}
+
+static WaylandOffer *offer_find(uint32_t offer_id) {
+    for (int i = 0; i < MAX_WAYLAND_OFFERS; i++) {
+        if (g_offers[i].id == offer_id) return &g_offers[i];
+    }
+    return NULL;
+}
 
 static uint8_t *g_current_clip_data = NULL;
 static size_t g_current_clip_len = 0;
@@ -822,41 +847,26 @@ static void process_wayland_events(void) {
         else if (obj_id == g_id_device) {
             if (opcode == 0 /* data_offer(id) */) {
                 uint32_t offer_id = *(const uint32_t *)p;
-                /* Register new offer */
-                int idx = -1;
-                for (int i = 0; i < g_offer_count; i++) {
-                    if (g_offers[i].id == offer_id) { idx = i; break; }
-                }
-                if (idx < 0 && g_offer_count < MAX_WAYLAND_OFFERS) {
-                    idx = g_offer_count++;
-                }
-                if (idx >= 0) {
-                    g_offers[idx].id = offer_id;
-                    g_offers[idx].mime[0] = '\0';
-                }
+                offer_register(offer_id);
             } else if (opcode == 1 /* selection(offer_id) */) {
                 uint32_t sel_id = *(const uint32_t *)p;
                 if (sel_id == 0) {
                     /* Selection cleared */
                 } else if (g_we_own_selection) {
-                    /* Suppress echo: we set this selection ourselves */
+                    g_we_own_selection = false;
                 } else {
-                    /* Find offer */
-                    int idx = -1;
-                    for (int i = 0; i < g_offer_count; i++) {
-                        if (g_offers[i].id == sel_id) { idx = i; break; }
-                    }
-                    if (idx >= 0 && g_offers[idx].mime[0] != '\0') {
+                    WaylandOffer *off = offer_find(sel_id);
+                    if (off && off->mime[0] != '\0') {
                         int pfd[2];
                         if (pipe2(pfd, O_CLOEXEC) == 0) {
                             /* Send receive request */
-                            uint32_t slen = (uint32_t)strlen(g_offers[idx].mime) + 1;
+                            uint32_t slen = (uint32_t)strlen(off->mime) + 1;
                             uint32_t pad = (4 - (slen % 4)) % 4;
                             size_t plen = 4 + slen + pad;
                             uint8_t *mbuf = (uint8_t *)calloc(1, plen);
                             if (mbuf) {
                                 store_le32(mbuf, slen);
-                                memcpy(mbuf + 4, g_offers[idx].mime, slen);
+                                memcpy(mbuf + 4, off->mime, slen);
                                 wl_send_msg(sel_id, 0 /* receive */, mbuf, plen, pfd[1]);
                                 free(mbuf);
                             }
@@ -869,7 +879,7 @@ static void process_wayland_events(void) {
                                 sha256(clip_data, clip_len, d);
                                 if (!echo_ring_contains(d)) {
                                     echo_ring_add(d);
-                                    uint16_t mcode = (strcmp(g_offers[idx].mime, "image/png") == 0) ?
+                                    uint16_t mcode = (strcmp(off->mime, "image/png") == 0) ?
                                                      MIME_CODE_PNG : MIME_CODE_TEXT_UTF8;
                                     broadcast_local_clipboard(clip_data, clip_len, mcode);
                                 }
@@ -911,22 +921,20 @@ static void process_wayland_events(void) {
             }
         } else {
             /* Check if this is an offer MIME event */
-            for (int i = 0; i < g_offer_count; i++) {
-                if (g_offers[i].id == obj_id && opcode == 0 /* offer(mime_type) */) {
-                    uint32_t slen = *(const uint32_t *)p;
-                    const char *mime = (const char *)(p + 4);
-                    if (slen > 0) {
-                        if (strcmp(mime, "image/png") == 0) {
-                            snprintf(g_offers[i].mime, sizeof(g_offers[i].mime), "image/png");
-                        } else if (strcmp(mime, "text/plain;charset=utf-8") == 0 ||
-                                   strcmp(mime, "text/plain") == 0 ||
-                                   strcmp(mime, "UTF8_STRING") == 0) {
-                            if (strcmp(g_offers[i].mime, "image/png") != 0) {
-                                snprintf(g_offers[i].mime, sizeof(g_offers[i].mime), "%s", mime);
-                            }
+            WaylandOffer *off = offer_find(obj_id);
+            if (off && opcode == 0 /* offer(mime_type) */) {
+                uint32_t slen = *(const uint32_t *)p;
+                const char *mime = (const char *)(p + 4);
+                if (slen > 0) {
+                    if (strcmp(mime, "image/png") == 0) {
+                        snprintf(off->mime, sizeof(off->mime), "image/png");
+                    } else if (strcmp(mime, "text/plain;charset=utf-8") == 0 ||
+                               strcmp(mime, "text/plain") == 0 ||
+                               strcmp(mime, "UTF8_STRING") == 0) {
+                        if (strcmp(off->mime, "image/png") != 0) {
+                            snprintf(off->mime, sizeof(off->mime), "%s", mime);
                         }
                     }
-                    break;
                 }
             }
         }
@@ -1001,6 +1009,8 @@ static bool wayland_init(void) {
 static void handle_remote_clipboard(const uint8_t *data, size_t len, uint16_t mime_code) {
     if (!data || len == 0 || g_wl_fd < 0 || g_id_device == 0) return;
 
+    fprintf(stderr, "clip-sync: applying remote clipboard (%zu bytes, mime=%u)\n", len, (unsigned)mime_code);
+
     /* Add to echo ring buffer so we don't reflect it back */
     uint8_t d[32];
     sha256(data, len, d);
@@ -1057,12 +1067,41 @@ static void configure_socket_keepalives(int fd) {
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 }
 
+static bool net_write_all(int fd, const void *buf, size_t total, int timeout_ms) {
+    const uint8_t *p = (const uint8_t *)buf;
+    size_t written = 0;
+    uint64_t start = now_msec();
+
+    while (written < total) {
+        ssize_t n = write(fd, p + written, total - written);
+        if (n > 0) {
+            written += (size_t)n;
+            continue;
+        }
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                int remain = timeout_ms - (int)(now_msec() - start);
+                if (remain <= 0) return false;
+                struct pollfd pfd = {.fd = fd, .events = POLLOUT};
+                if (poll(&pfd, 1, remain) > 0) continue;
+                return false;
+            }
+            return false;
+        }
+        return false;
+    }
+    return true;
+}
+
 static void broadcast_local_clipboard(const uint8_t *data, size_t len, uint16_t mime_code) {
     if (g_peer_net_fd < 0 || !g_session_crypto.established || len == 0 || len > MAX_PAYLOAD_BYTES) return;
 
     size_t offset = 0;
     uint16_t chunk_seq = 0;
     uint8_t wire_buf[sizeof(FrameHeader) + CHUNK_SIZE_BYTES];
+
+    fprintf(stderr, "clip-sync: broadcasting local clipboard (%zu bytes, mime=%u)\n", len, (unsigned)mime_code);
 
     while (offset < len) {
         size_t chunk_sz = len - offset;
@@ -1074,8 +1113,13 @@ static void broadcast_local_clipboard(const uint8_t *data, size_t len, uint16_t 
                    data + offset, (uint16_t)chunk_sz,
                    wire_buf, &wire_len);
 
-        ssize_t nw = write(g_peer_net_fd, wire_buf, wire_len);
-        (void)nw;
+        if (!net_write_all(g_peer_net_fd, wire_buf, wire_len, 3000)) {
+            fprintf(stderr, "clip-sync: socket write failed, closing connection\n");
+            close(g_peer_net_fd);
+            g_peer_net_fd = -1;
+            g_session_crypto.established = false;
+            return;
+        }
         offset += chunk_sz;
     }
 }
@@ -1313,8 +1357,13 @@ static void run_server(void) {
                     hmac_sha256(g_keys[0], 32, &hp, sizeof(hp) - 16, NULL, 0, full_hmac);
                     memcpy(hp.hmac, full_hmac, 16);
 
-                    ssize_t nw = write(g_peer_net_fd, &hp, sizeof(hp));
-                    (void)nw;
+                    fprintf(stderr, "clip-sync: client connected from %s:%d\n", inet_ntoa(cin.sin_addr), ntohs(cin.sin_port));
+                    if (!net_write_all(g_peer_net_fd, &hp, sizeof(hp), 2000)) {
+                        fprintf(stderr, "clip-sync: handshake send failed\n");
+                        close(g_peer_net_fd);
+                        g_peer_net_fd = -1;
+                        continue;
+                    }
 
                     ev.events = EPOLLIN | EPOLLRDHUP;
                     ev.data.fd = g_peer_net_fd;
@@ -1688,7 +1737,6 @@ int main(int argc, char **argv) {
     /* Hardening: zero core dumps, ignore SIGPIPE */
     struct rlimit rl = {0, 0};
     setrlimit(RLIMIT_CORE, &rl);
-    prctl(PR_SET_DUMPABLE, 0);
     signal(SIGPIPE, SIG_IGN);
 
     if (argc >= 2) {

@@ -1,0 +1,12 @@
+[Unit]
+Description=Moonlight Remote Clipboard Sync Encrypted Socket
+ConditionPathExists=%h/software/sunshine.AppImage
+
+[Socket]
+ListenStream=46003
+TriggerLimitIntervalSec=10s
+TriggerLimitBurst=5
+Service=moonlight-clip.service
+
+[Install]
+WantedBy=sockets.target

@@ -26,6 +26,7 @@ data/statusbar
 data/statusbar-test
 data/pixelbuds-pause
 data/meet-stream
+data/clip-sync
 *.un~
 applications/chrome-*.desktop
 applications/mimeinfo.cache

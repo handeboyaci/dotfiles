@@ -2279,25 +2279,36 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
             if (logfd > 2) close(logfd);
         }
 
-        const char *argv[36];
+        const char *argv[48];
         int a = 0;
         argv[a++] = "gst-launch-1.0";
         argv[a++] = "-q";
         argv[a++] = "v4l2src";
+        argv[a++] = "do-timestamp=true";
         argv[a++] = dev_arg;
         argv[a++] = "!";
         argv[a++] = "videoconvert";
         argv[a++] = "!";
         if (use_vah264) {
             argv[a++] = "vah264enc";
+            argv[a++] = "target-usage=7";
+            argv[a++] = "ref-frames=1";
+            argv[a++] = "key-int-max=30";
+            argv[a++] = "rate-control=cbr";
+            argv[a++] = br_arg;
         } else if (use_vaapi) {
             argv[a++] = "vaapih264enc";
+            argv[a++] = "rate-control=cbr";
+            argv[a++] = "key-int-max=30";
+            argv[a++] = "tune=low-power";
         } else {
             argv[a++] = "x264enc";
             argv[a++] = "tune=zerolatency";
             argv[a++] = "speed-preset=ultrafast";
             argv[a++] = "key-int-max=30";
             argv[a++] = "bframes=0";
+            argv[a++] = "sync-lookahead=0";
+            argv[a++] = "rc-lookahead=0";
             argv[a++] = "byte-stream=true";
             argv[a++] = br_arg;
         }
@@ -2307,6 +2318,7 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
         argv[a++] = "rtph264pay";
         argv[a++] = "config-interval=1";
         argv[a++] = "pt=96";
+        argv[a++] = "aggregate-mode=zero-latency";
         argv[a++] = "!";
         argv[a++] = "udpsink";
         argv[a++] = "host=127.0.0.1";
@@ -2349,13 +2361,14 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd) {
 
         const char *argv[] = {
             "gst-launch-1.0", "-v",
-            "udpsrc", "address=127.0.0.1", port_arg,
+            "udpsrc", "address=127.0.0.1", port_arg, "buffer-size=2097152",
             "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96",
+            "!", "rtpjitterbuffer", "latency=15", "drop-on-latency=true",
             "!", "rtph264depay",
             "!", "h264parse",
             "!", "avdec_h264",
-            "!", "videoconvert",
-            "!", "videoscale", "add-borders=true",
+            "!", "videoscale", "method=0", "add-borders=true", "n-threads=2",
+            "!", "videoconvert", "n-threads=2",
             "!", "video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1,pixel-aspect-ratio=1/1",
             "!", "fdsink", fd_arg, "sync=false",
             NULL

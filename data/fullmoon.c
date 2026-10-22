@@ -99,9 +99,26 @@ char *dlerror(void) { return NULL; }
 #define PKT_PONG                0x21
 #define PKT_MEDIA_REQ_START     0x30
 #define PKT_MEDIA_REQ_STOP      0x31
+#define PKT_MEDIA_CAPS          0x32
 
 #define MEDIA_FLAG_CAM          0x01
 #define MEDIA_FLAG_MIC          0x02
+
+typedef struct {
+    uint16_t width;
+    uint16_t height;
+    uint16_t fps_num;
+    uint16_t fps_denom;
+    uint32_t flags;
+} MediaVideoCaps;
+
+typedef struct {
+    uint16_t width;
+    uint16_t height;
+    uint16_t fps_num;
+    uint16_t fps_denom;
+    bool is_mjpeg;
+} CamCaps;
 
 /* UDP Packet types (Media streaming channel) */
 #define MSTR_MAGIC_0 'M'
@@ -1762,6 +1779,93 @@ static int discover_cameras(DeviceItem out[MAX_DEVICES]) {
     return count;
 }
 
+static bool probe_camera_best_caps(const char *devnode, CamCaps *out) {
+    if (out) {
+        memset(out, 0, sizeof(*out));
+        out->width = 1280;
+        out->height = 720;
+        out->fps_num = 30;
+        out->fps_denom = 1;
+        out->is_mjpeg = false;
+    }
+    if (!devnode || !devnode[0] || strcmp(devnode, "none") == 0 || access(devnode, R_OK) != 0) {
+        return false;
+    }
+    int fd = open(devnode, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return false;
+
+    struct v4l2_fmtdesc fdesc;
+    memset(&fdesc, 0, sizeof(fdesc));
+    fdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    uint32_t best_score = 0;
+
+    while (ioctl(fd, VIDIOC_ENUM_FMT, &fdesc) == 0) {
+        bool mjpeg = (fdesc.pixelformat == V4L2_PIX_FMT_MJPEG);
+        bool raw = (fdesc.pixelformat == V4L2_PIX_FMT_YUYV || 
+                    fdesc.pixelformat == V4L2_PIX_FMT_UYVY || 
+                    fdesc.pixelformat == V4L2_PIX_FMT_NV12);
+        if (mjpeg || raw) {
+            struct v4l2_frmsizeenum fsize;
+            memset(&fsize, 0, sizeof(fsize));
+            fsize.pixel_format = fdesc.pixelformat;
+
+            while (ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &fsize) == 0) {
+                if (fsize.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
+                    uint32_t w = fsize.discrete.width;
+                    uint32_t h = fsize.discrete.height;
+
+                    struct v4l2_frmivalenum fival;
+                    memset(&fival, 0, sizeof(fival));
+                    fival.pixel_format = fdesc.pixelformat;
+                    fival.width = w;
+                    fival.height = h;
+
+                    bool can_30fps = false;
+                    while (ioctl(fd, VIDIOC_ENUM_FRAMEINTERVALS, &fival) == 0) {
+                        if (fival.type == V4L2_FRMIVAL_TYPE_DISCRETE) {
+                            if (fival.discrete.numerator > 0 && 
+                                (fival.discrete.denominator / fival.discrete.numerator) >= 25) {
+                                can_30fps = true;
+                                break;
+                            }
+                        } else if (fival.type == V4L2_FRMIVAL_TYPE_STEPWISE ||
+                                   fival.type == V4L2_FRMIVAL_TYPE_CONTINUOUS) {
+                            can_30fps = true;
+                            break;
+                        }
+                        fival.index++;
+                    }
+
+                    if (can_30fps && w <= 1920 && h <= 1080) {
+                        uint32_t score = 0;
+                        if (w == 1920 && h == 1080) score = 10000;
+                        else if (w == 1280 && h == 720) score = 8000;
+                        else if (w == 1024 && h == 576) score = 6000;
+                        else if (w == 960 && h == 540) score = 5000;
+                        else if (w == 640 && h == 480) score = 4000;
+                        else if (w == 640 && h == 360) score = 3500;
+                        else score = (w * h) / 1000;
+
+                        if (raw) score += 10;
+
+                        if (score > best_score && out) {
+                            best_score = score;
+                            out->width = (uint16_t)w;
+                            out->height = (uint16_t)h;
+                            out->is_mjpeg = mjpeg;
+                        }
+                    }
+                }
+                fsize.index++;
+            }
+        }
+        fdesc.index++;
+    }
+    close(fd);
+    return (best_score > 0);
+}
+
 static bool camera_matches_target(const DeviceItem *cam, const char *pref_target) {
     if (!cam || !pref_target || !pref_target[0]) return false;
     if (strcmp(cam->target, pref_target) == 0 || strcmp(cam->devnode, pref_target) == 0) {
@@ -2238,9 +2342,22 @@ static pid_t spawn_client_audio_gst(const char *mic_target, uint16_t local_port)
     return pid;
 }
 
-static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port) {
+static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port,
+                                    uint16_t width, uint16_t height, bool is_mjpeg) {
     if (!cam_target || !cam_target[0] || strcmp(cam_target, "none") == 0) return 0;
     if (access(cam_target, R_OK) != 0) return 0;
+    if (width == 0 || height == 0) { width = 1280; height = 720; }
+
+    /* Disable auto-exposure throttling so webcam maintains full 30fps in indoor lighting */
+    int cfd = open(cam_target, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    if (cfd >= 0) {
+        struct v4l2_control ctrl;
+        memset(&ctrl, 0, sizeof(ctrl));
+        ctrl.id = V4L2_CID_EXPOSURE_AUTO_PRIORITY;
+        ctrl.value = 0;
+        ioctl(cfd, VIDIOC_S_CTRL, &ctrl);
+        close(cfd);
+    }
 
     bool use_vah264 = false;
     bool use_vaapi = false;
@@ -2256,9 +2373,18 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
     char dev_arg[300];
     snprintf(dev_arg, sizeof(dev_arg), "device=%s", cam_target);
     char br_arg[64];
-    snprintf(br_arg, sizeof(br_arg), "bitrate=%d", g_cfg.video_bitrate > 0 ? g_cfg.video_bitrate : 2000);
+    snprintf(br_arg, sizeof(br_arg), "bitrate=%d", g_cfg.video_bitrate > 0 ? g_cfg.video_bitrate : 4000);
     char port_arg[32];
     snprintf(port_arg, sizeof(port_arg), "port=%u", (unsigned)local_port);
+
+    char caps_str[128];
+    if (is_mjpeg) {
+        snprintf(caps_str, sizeof(caps_str), "image/jpeg,width=%u,height=%u,framerate=30/1",
+                 (unsigned)width, (unsigned)height);
+    } else {
+        snprintf(caps_str, sizeof(caps_str), "video/x-raw,width=%u,height=%u,framerate=30/1",
+                 (unsigned)width, (unsigned)height);
+    }
 
     char log_path[512];
     snprintf(log_path, sizeof(log_path), "%s/video.log", g_state_dir);
@@ -2279,19 +2405,32 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
             if (logfd > 2) close(logfd);
         }
 
-        const char *argv[36];
+        const char *argv[48];
         int a = 0;
         argv[a++] = "gst-launch-1.0";
         argv[a++] = "-q";
         argv[a++] = "v4l2src";
+        argv[a++] = "do-timestamp=true";
         argv[a++] = dev_arg;
         argv[a++] = "!";
+        argv[a++] = caps_str;
+        argv[a++] = "!";
+        if (is_mjpeg) {
+            argv[a++] = "jpegdec";
+            argv[a++] = "!";
+        }
         argv[a++] = "videoconvert";
         argv[a++] = "!";
         if (use_vah264) {
             argv[a++] = "vah264enc";
+            argv[a++] = "rate-control=cbr";
+            argv[a++] = "key-int-max=30";
+            argv[a++] = br_arg;
         } else if (use_vaapi) {
             argv[a++] = "vaapih264enc";
+            argv[a++] = "rate-control=cbr";
+            argv[a++] = "key-int-max=30";
+            argv[a++] = "tune=low-power";
         } else {
             argv[a++] = "x264enc";
             argv[a++] = "tune=zerolatency";
@@ -2307,6 +2446,7 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
         argv[a++] = "rtph264pay";
         argv[a++] = "config-interval=1";
         argv[a++] = "pt=96";
+        argv[a++] = "aggregate-mode=zero-latency";
         argv[a++] = "!";
         argv[a++] = "udpsink";
         argv[a++] = "host=127.0.0.1";
@@ -2320,13 +2460,19 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
     return pid;
 }
 
-static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd) {
+static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd, uint16_t width, uint16_t height) {
     if (v4l2_fd < 0 || access(g_cfg.loopback_device, W_OK) != 0) return 0;
+    if (width == 0 || height == 0) { width = 1920; height = 1080; }
 
     char port_arg[32];
     snprintf(port_arg, sizeof(port_arg), "port=%u", (unsigned)local_port);
     char fd_arg[32];
     snprintf(fd_arg, sizeof(fd_arg), "fd=%d", v4l2_fd);
+
+    char out_caps[128];
+    snprintf(out_caps, sizeof(out_caps),
+             "video/x-raw,format=YUY2,width=%u,height=%u,framerate=30/1,pixel-aspect-ratio=1/1",
+             (unsigned)width, (unsigned)height);
 
     pid_t parent_pid = getpid();
     pid_t pid = fork();
@@ -2349,14 +2495,14 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd) {
 
         const char *argv[] = {
             "gst-launch-1.0", "-v",
-            "udpsrc", "address=127.0.0.1", port_arg,
+            "udpsrc", "address=127.0.0.1", port_arg, "buffer-size=2097152",
             "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96",
             "!", "rtph264depay",
             "!", "h264parse",
             "!", "avdec_h264",
             "!", "videoconvert",
             "!", "videoscale", "add-borders=true",
-            "!", "video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1,pixel-aspect-ratio=1/1",
+            "!", out_caps,
             "!", "fdsink", fd_arg, "sync=false",
             NULL
         };
@@ -2507,7 +2653,9 @@ static int run_client_daemon(bool foreground) {
 
     kill_stray_camera_gst();
     pid_t audio_pid = spawn_client_audio_gst(cur_mic_target, audio_port);
-    pid_t video_pid = spawn_client_video_gst(cur_cam_target, video_port);
+    CamCaps ccaps;
+    probe_camera_best_caps(cur_cam_target, &ccaps);
+    pid_t video_pid = spawn_client_video_gst(cur_cam_target, video_port, ccaps.width, ccaps.height, ccaps.is_mjpeg);
 
     uint8_t rtp_buf[MSTR_MAX_PAYLOAD];
     uint8_t wire_buf[MSTR_HDR_LEN + MSTR_MAX_PAYLOAD];
@@ -2613,7 +2761,9 @@ static int run_client_daemon(bool foreground) {
                 size_t rlen = mstr_seal_packet(g_master_key, PKT_RESET_VIDEO, session_id, seq++,
                                                NULL, 0, wire_buf);
                 send(net_fd, wire_buf, rlen, MSG_DONTWAIT);
-                video_pid = spawn_client_video_gst(cur_cam_target, video_port);
+                CamCaps n_ccaps;
+                probe_camera_best_caps(cur_cam_target, &n_ccaps);
+                video_pid = spawn_client_video_gst(cur_cam_target, video_port, n_ccaps.width, n_ccaps.height, n_ccaps.is_mjpeg);
             }
             if (strcmp(mics[n_mic_idx].target, cur_mic_target) != 0) {
                 snprintf(cur_mic_target, sizeof(cur_mic_target), "%s", mics[n_mic_idx].target);
@@ -3751,10 +3901,20 @@ static int run_sync_key(const char *target_ssh_host) {
  * Host Server Mode: Demand Detection, Standby Handle & Full Receiver
  * ============================================================================ */
 static int g_v4l2_standby_fd = -1;
+static uint16_t g_negotiated_width = 1920;
+static uint16_t g_negotiated_height = 1080;
+static uint16_t g_negotiated_fps_num = 30;
+static uint16_t g_negotiated_fps_denom = 1;
 
-static void v4l2_write_blank_frame(int fd) {
+static int count_v4l2_external_openers(const char *devnode, pid_t child_pid1, pid_t child_pid2);
+
+static void v4l2_write_blank_frame(int fd, uint16_t width, uint16_t height) {
     if (fd < 0) return;
-    size_t frame_size = 1920 * 1080 * 2;
+    if (width == 0 || height == 0) {
+        width = g_negotiated_width > 0 ? g_negotiated_width : 1920;
+        height = g_negotiated_height > 0 ? g_negotiated_height : 1080;
+    }
+    size_t frame_size = (size_t)width * (size_t)height * 2;
     unsigned char *black = (unsigned char *)mmap(NULL, frame_size, PROT_READ | PROT_WRITE,
                                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (black == MAP_FAILED) return;
@@ -3769,30 +3929,58 @@ static void v4l2_write_blank_frame(int fd) {
     munmap(black, frame_size);
 }
 
-static void v4l2_standby_open(void) {
-    if (g_v4l2_standby_fd >= 0) return;
+static void v4l2_standby_close(void) {
+    if (g_v4l2_standby_fd >= 0) {
+        close(g_v4l2_standby_fd);
+        g_v4l2_standby_fd = -1;
+    }
+}
 
-    /* Write 30/1 directly to v4l2loopback sysfs format attribute so device-level FPS is unconditionally 30/1 */
+static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_num, uint16_t fps_denom) {
+    if (w < 320 || w > 1920 || h < 240 || h > 1080) return;
+    if (fps_num == 0 || fps_denom == 0) { fps_num = 30; fps_denom = 1; }
+
+    if (g_negotiated_width == w && g_negotiated_height == h &&
+        g_negotiated_fps_num == fps_num && g_negotiated_fps_denom == fps_denom &&
+        g_v4l2_standby_fd >= 0) {
+        return;
+    }
+
+    g_negotiated_width = w;
+    g_negotiated_height = h;
+    g_negotiated_fps_num = fps_num;
+    g_negotiated_fps_denom = fps_denom;
+
+    int openers = count_v4l2_external_openers(g_cfg.loopback_device, 0, 0);
+    if (openers > 0) {
+        /* A consumer is currently reading: leave loopback alone, videoscale will adapt */
+        return;
+    }
+
+    v4l2_standby_close();
+
+    /* Set device-level FPS in sysfs */
     char sys_fmt_path[128];
     const char *dev_name = strrchr(g_cfg.loopback_device, '/');
     dev_name = dev_name ? dev_name + 1 : "video10";
     snprintf(sys_fmt_path, sizeof(sys_fmt_path), "/sys/devices/virtual/video4linux/%s/format", dev_name);
     int sfd = open(sys_fmt_path, O_WRONLY);
     if (sfd >= 0) {
-        ssize_t w = write(sfd, "@30/1", 5);
-        (void)w;
+        char fps_buf[32];
+        snprintf(fps_buf, sizeof(fps_buf), "@%u/%u", (unsigned)fps_num, (unsigned)fps_denom);
+        ssize_t nw = write(sfd, fps_buf, strlen(fps_buf));
+        (void)nw;
         close(sfd);
     }
 
-    /* Open nonblocking with O_CLOEXEC so general children never inherit and fdsink never blocks */
     int fd = open(g_cfg.loopback_device, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) return;
 
     struct v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-    fmt.fmt.pix.width = 1920;
-    fmt.fmt.pix.height = 1080;
+    fmt.fmt.pix.width = w;
+    fmt.fmt.pix.height = h;
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
@@ -3800,20 +3988,19 @@ static void v4l2_standby_open(void) {
         return;
     }
 
-    /* Write initial black frame: primes v4l2loopback exclusive_caps=1 into CAPTURE mode */
-    v4l2_write_blank_frame(fd);
+    v4l2_write_blank_frame(fd, w, h);
     g_v4l2_standby_fd = fd;
+}
+
+static void v4l2_standby_open(void) {
+    if (g_v4l2_standby_fd >= 0) return;
+
+    v4l2_apply_negotiated_format(g_negotiated_width, g_negotiated_height,
+                                 g_negotiated_fps_num, g_negotiated_fps_denom);
 
     /* Ensure WirePlumber registers /dev/video10 with 30/1 fps for GNOME Camera/PipeWire */
     int sys_rc = system("sh -c 'if ! pw-dump 2>/dev/null | grep -A 80 \"Moonlight Virtual Camera (V4L2)\" | grep -q '\"'\"'\"denom\": 1'\"'\"'; then systemctl --user restart wireplumber >/dev/null 2>&1; fi' &");
     (void)sys_rc;
-}
-
-static void v4l2_standby_close(void) {
-    if (g_v4l2_standby_fd >= 0) {
-        close(g_v4l2_standby_fd);
-        g_v4l2_standby_fd = -1;
-    }
 }
 
 static int count_v4l2_external_openers(const char *devnode, pid_t child_pid1, pid_t child_pid2) {
@@ -3917,6 +4104,23 @@ static void send_tcp_media_command(uint8_t cmd, uint16_t flags) {
     size_t wlen = 0;
     seal_frame(&g_server_session_crypto, cmd, flags, 0, 0, NULL, 0, wire, &wlen);
     net_write_all(g_peer_tcp_fd, wire, wlen, 2000);
+}
+
+static void send_tcp_media_caps(uint16_t width, uint16_t height, uint16_t fps_num, uint16_t fps_denom) {
+    if (g_peer_tcp_fd < 0 || !g_server_session_crypto.established) return;
+    MediaVideoCaps caps;
+    caps.width = htons(width);
+    caps.height = htons(height);
+    caps.fps_num = htons(fps_num);
+    caps.fps_denom = htons(fps_denom);
+    caps.flags = 0;
+
+    uint8_t wire[sizeof(FrameHeader) + sizeof(MediaVideoCaps) + 16];
+    size_t wlen = 0;
+    if (seal_frame(&g_server_session_crypto, PKT_MEDIA_CAPS, 0, sizeof(caps), 0,
+                   (const uint8_t *)&caps, sizeof(caps), wire, &wlen)) {
+        net_write_all(g_peer_tcp_fd, wire, wlen, 2000);
+    }
 }
 
 static void run_server(void) {
@@ -4122,7 +4326,7 @@ static void run_server(void) {
                             sendto(lo_audio_fd, udp_plain, plen, MSG_DONTWAIT, (struct sockaddr *)&audio_dst, sizeof(audio_dst));
                         } else if (ptype == UDP_PKT_VIDEO && plen > 0) {
                             if (cam_wanted && server_video_gst_pid == 0 && g_v4l2_standby_fd >= 0) {
-                                server_video_gst_pid = spawn_server_video_gst(local_video_port, g_v4l2_standby_fd);
+                                server_video_gst_pid = spawn_server_video_gst(local_video_port, g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
                             }
                             if (server_video_gst_pid > 0) {
                                 sendto(lo_audio_fd, udp_plain, plen, MSG_DONTWAIT, (struct sockaddr *)&video_dst, sizeof(video_dst));
@@ -4138,7 +4342,7 @@ static void run_server(void) {
                     g_server_session_crypto.established = false;
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
-                    v4l2_write_blank_frame(g_v4l2_standby_fd);
+                    v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
                     continue;
                 }
 
@@ -4151,7 +4355,7 @@ static void run_server(void) {
                     g_server_session_crypto.established = false;
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
-                    v4l2_write_blank_frame(g_v4l2_standby_fd);
+                    v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
                     continue;
                 }
                 net_rfilled += (size_t)nr;
@@ -4205,6 +4409,16 @@ static void run_server(void) {
                     if (open_frame(&g_server_session_crypto, net_rbuf, frame_total, &opened, plain)) {
                         if (opened.type == PKT_CLIP_START || opened.type == PKT_CLIP_CHUNK || opened.type == PKT_CLIP_END) {
                             handle_net_frame(&opened, plain, ch_len);
+                        } else if (opened.type == PKT_MEDIA_CAPS && ch_len >= sizeof(MediaVideoCaps)) {
+                            MediaVideoCaps mc;
+                            memcpy(&mc, plain, sizeof(mc));
+                            uint16_t w = ntohs(mc.width);
+                            uint16_t h = ntohs(mc.height);
+                            uint16_t num = ntohs(mc.fps_num);
+                            uint16_t denom = ntohs(mc.fps_denom);
+                            if (w >= 320 && w <= 1920 && h >= 240 && h <= 1080) {
+                                v4l2_apply_negotiated_format(w, h, num, denom);
+                            }
                         }
                     }
                     if (net_rfilled > frame_total) {
@@ -4223,7 +4437,7 @@ static void run_server(void) {
                 cam_active = true;
             }
             if (server_video_gst_pid == 0 && g_v4l2_standby_fd >= 0) {
-                server_video_gst_pid = spawn_server_video_gst(local_video_port, g_v4l2_standby_fd);
+                server_video_gst_pid = spawn_server_video_gst(local_video_port, g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
             }
         } else if (cam_active || server_video_gst_pid > 0) {
             if (cam_idle_since == 0) {
@@ -4233,7 +4447,7 @@ static void run_server(void) {
                 cam_active = false;
                 cam_idle_since = 0;
                 terminate_child_pid(&server_video_gst_pid);
-                v4l2_write_blank_frame(g_v4l2_standby_fd);
+                v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
             }
         }
 
@@ -4417,6 +4631,18 @@ static void run_client_wrapper(char **argv_child) {
                 ev.data.fd = g_peer_tcp_fd;
                 epoll_ctl(epfd, EPOLL_CTL_ADD, g_peer_tcp_fd, &ev);
                 backoff_ms = 200;
+
+                load_persistent_state();
+                DeviceItem cams[MAX_DEVICES];
+                int cc = discover_cameras(cams);
+                bool cfb = false;
+                int ci = resolve_active_camera(cams, cc, &cfb);
+                if (ci >= 0 && !cams[ci].is_disabled_entry && strcmp(cams[ci].target, "none") != 0) {
+                    CamCaps ccaps;
+                    if (probe_camera_best_caps(cams[ci].target, &ccaps)) {
+                        send_tcp_media_caps(ccaps.width, ccaps.height, ccaps.fps_num, ccaps.fps_denom);
+                    }
+                }
             } else {
                 next_reconnect = now + (uint64_t)backoff_ms;
                 backoff_ms = (backoff_ms < 5000) ? backoff_ms * 2 : 5000;
@@ -4569,7 +4795,9 @@ static void run_client_wrapper(char **argv_child) {
                                         epoll_ctl(epfd, EPOLL_CTL_ADD, local_video_rx_fd, &ev);
                                     }
                                 }
-                                video_pid = spawn_client_video_gst(cams[ci].target, v_port);
+                                CamCaps ccaps;
+                                probe_camera_best_caps(cams[ci].target, &ccaps);
+                                video_pid = spawn_client_video_gst(cams[ci].target, v_port, ccaps.width, ccaps.height, ccaps.is_mjpeg);
                             }
 
                             media_streaming = (audio_pid > 0 || video_pid > 0);

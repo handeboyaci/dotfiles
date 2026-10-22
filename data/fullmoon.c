@@ -3790,6 +3790,10 @@ static void v4l2_standby_open(void) {
     /* Write initial black frame: primes v4l2loopback exclusive_caps=1 into CAPTURE mode */
     v4l2_write_blank_frame(fd);
     g_v4l2_standby_fd = fd;
+
+    /* Ensure WirePlumber registers /dev/video10 as an active Video/Source for GNOME Camera/PipeWire */
+    int sys_rc = system("wpctl status 2>/dev/null | grep -q 'Moonlight Virtual Camera (V4L2)' || systemctl --user restart wireplumber >/dev/null 2>&1 &");
+    (void)sys_rc;
 }
 
 static void v4l2_standby_close(void) {

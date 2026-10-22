@@ -2320,13 +2320,13 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port)
     return pid;
 }
 
-static pid_t spawn_server_video_gst(uint16_t local_port) {
-    if (access(g_cfg.loopback_device, W_OK) != 0) return 0;
+static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd) {
+    if (v4l2_fd < 0 || access(g_cfg.loopback_device, W_OK) != 0) return 0;
 
     char port_arg[32];
     snprintf(port_arg, sizeof(port_arg), "port=%u", (unsigned)local_port);
-    char dev_arg[160];
-    snprintf(dev_arg, sizeof(dev_arg), "device=%s", g_cfg.loopback_device);
+    char fd_arg[32];
+    snprintf(fd_arg, sizeof(fd_arg), "fd=%d", v4l2_fd);
 
     pid_t parent_pid = getpid();
     pid_t pid = fork();
@@ -2343,6 +2343,9 @@ static pid_t spawn_server_video_gst(uint16_t local_port) {
             if (devnull > 2) close(devnull);
         }
 
+        /* Retain inherited loopback writer fd in child process across exec */
+        fcntl(v4l2_fd, F_SETFD, 0);
+
         const char *argv[] = {
             "gst-launch-1.0", "-q",
             "udpsrc", "address=127.0.0.1", port_arg,
@@ -2351,7 +2354,7 @@ static pid_t spawn_server_video_gst(uint16_t local_port) {
             "!", "avdec_h264",
             "!", "videoconvert",
             "!", "video/x-raw,format=YUY2",
-            "!", "v4l2sink", dev_arg, "sync=false",
+            "!", "fdsink", fd_arg, "sync=false",
             NULL
         };
         execvp("gst-launch-1.0", (char *const *)argv);
@@ -3746,9 +3749,26 @@ static int run_sync_key(const char *target_ssh_host) {
  * ============================================================================ */
 static int g_v4l2_standby_fd = -1;
 
+static void v4l2_write_blank_frame(int fd) {
+    if (fd < 0) return;
+    size_t frame_size = 1920 * 1080 * 2;
+    unsigned char *black = (unsigned char *)malloc(frame_size);
+    if (!black) return;
+    for (size_t i = 0; i < frame_size; i += 4) {
+        black[i]   = 0;   /* Y0 */
+        black[i+1] = 128; /* U  */
+        black[i+2] = 0;   /* Y1 */
+        black[i+3] = 128; /* V  */
+    }
+    ssize_t nw = write(fd, black, frame_size);
+    (void)nw;
+    free(black);
+}
+
 static void v4l2_standby_open(void) {
     if (g_v4l2_standby_fd >= 0) return;
-    int fd = open(g_cfg.loopback_device, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    /* Open with O_CLOEXEC so general children (pactl, popen, etc.) never inherit the fd */
+    int fd = open(g_cfg.loopback_device, O_RDWR | O_CLOEXEC);
     if (fd < 0) return;
 
     struct v4l2_format fmt;
@@ -3758,30 +3778,24 @@ static void v4l2_standby_open(void) {
     fmt.fmt.pix.height = 1080;
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
-    ioctl(fd, VIDIOC_S_FMT, &fmt);
+    if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
+        close(fd);
+        return;
+    }
 
-    struct v4l2_requestbuffers req;
-    memset(&req, 0, sizeof(req));
-    req.count = 1;
-    req.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-    req.memory = V4L2_MEMORY_MMAP;
-    ioctl(fd, VIDIOC_REQBUFS, &req);
-
-    int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-    ioctl(fd, VIDIOC_STREAMON, &type);
+    /* Write initial black frame: primes v4l2loopback exclusive_caps=1 into CAPTURE mode */
+    v4l2_write_blank_frame(fd);
     g_v4l2_standby_fd = fd;
 }
 
 static void v4l2_standby_close(void) {
     if (g_v4l2_standby_fd >= 0) {
-        int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-        ioctl(g_v4l2_standby_fd, VIDIOC_STREAMOFF, &type);
         close(g_v4l2_standby_fd);
         g_v4l2_standby_fd = -1;
     }
 }
 
-static int count_v4l2_external_openers(const char *devnode, pid_t child_pid) {
+static int count_v4l2_external_openers(const char *devnode, pid_t child_pid1, pid_t child_pid2) {
     DIR *proc = opendir("/proc");
     if (!proc) return -1;
     struct dirent *de;
@@ -3793,7 +3807,7 @@ static int count_v4l2_external_openers(const char *devnode, pid_t child_pid) {
     while ((de = readdir(proc))) {
         if (!isdigit((unsigned char)de->d_name[0])) continue;
         pid_t pid = (pid_t)atoi(de->d_name);
-        if (pid == self_pid || (child_pid > 0 && pid == child_pid)) continue;
+        if (pid == self_pid || (child_pid1 > 0 && pid == child_pid1) || (child_pid2 > 0 && pid == child_pid2)) continue;
 
         char fd_dir[64];
         snprintf(fd_dir, sizeof(fd_dir), "/proc/%s/fd", de->d_name);
@@ -4002,7 +4016,22 @@ static void run_server(void) {
     uint8_t udp_wire[MSTR_HDR_LEN + MSTR_MAX_PAYLOAD];
     uint8_t udp_plain[MSTR_MAX_PAYLOAD];
 
-    while (1) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = daemon_sigterm;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+
+    int init_openers = count_v4l2_external_openers(g_cfg.loopback_device, 0, mic_sub_pid);
+    if (init_openers > 0) cam_wanted = true;
+    mic_wanted = check_mic_recording_active();
+
+    while (!g_daemon_stop) {
+        int gst_st = 0;
+        if (server_video_gst_pid > 0 && waitpid(server_video_gst_pid, &gst_st, WNOHANG) == server_video_gst_pid) {
+            server_video_gst_pid = 0;
+        }
+
         struct epoll_event events[16];
         int nfds = epoll_wait(epfd, events, 16, 250);
 
@@ -4044,7 +4073,7 @@ static void run_server(void) {
             } else if (fd == inotify_fd) {
                 char ibuf[512];
                 while (read(inotify_fd, ibuf, sizeof(ibuf)) > 0) {}
-                int openers = count_v4l2_external_openers(g_cfg.loopback_device, server_video_gst_pid);
+                int openers = count_v4l2_external_openers(g_cfg.loopback_device, server_video_gst_pid, mic_sub_pid);
                 if (openers >= 0) {
                     cam_wanted = (openers > 0);
                 }
@@ -4071,14 +4100,12 @@ static void run_server(void) {
                         if (ptype == UDP_PKT_AUDIO && plen > 0) {
                             sendto(lo_audio_fd, udp_plain, plen, MSG_DONTWAIT, (struct sockaddr *)&audio_dst, sizeof(audio_dst));
                         } else if (ptype == UDP_PKT_VIDEO && plen > 0) {
-                            if (g_v4l2_standby_fd >= 0) {
-                                v4l2_standby_close();
+                            if (cam_wanted && server_video_gst_pid == 0 && g_v4l2_standby_fd >= 0) {
+                                server_video_gst_pid = spawn_server_video_gst(local_video_port, g_v4l2_standby_fd);
                             }
-                            if (server_video_gst_pid == 0) {
-                                server_video_gst_pid = spawn_server_video_gst(local_video_port);
-                                usleep(15000);
+                            if (server_video_gst_pid > 0) {
+                                sendto(lo_audio_fd, udp_plain, plen, MSG_DONTWAIT, (struct sockaddr *)&video_dst, sizeof(video_dst));
                             }
-                            sendto(lo_audio_fd, udp_plain, plen, MSG_DONTWAIT, (struct sockaddr *)&video_dst, sizeof(video_dst));
                         }
                     }
                 }
@@ -4090,7 +4117,7 @@ static void run_server(void) {
                     g_server_session_crypto.established = false;
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
-                    v4l2_standby_open();
+                    v4l2_write_blank_frame(g_v4l2_standby_fd);
                     continue;
                 }
 
@@ -4103,7 +4130,7 @@ static void run_server(void) {
                     g_server_session_crypto.established = false;
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
-                    v4l2_standby_open();
+                    v4l2_write_blank_frame(g_v4l2_standby_fd);
                     continue;
                 }
                 net_rfilled += (size_t)nr;
@@ -4174,7 +4201,10 @@ static void run_server(void) {
                 send_tcp_media_command(PKT_MEDIA_REQ_START, MEDIA_FLAG_CAM);
                 cam_active = true;
             }
-        } else if (cam_active) {
+            if (server_video_gst_pid == 0 && g_v4l2_standby_fd >= 0) {
+                server_video_gst_pid = spawn_server_video_gst(local_video_port, g_v4l2_standby_fd);
+            }
+        } else if (cam_active || server_video_gst_pid > 0) {
             if (cam_idle_since == 0) {
                 cam_idle_since = now;
             } else if (now - cam_idle_since >= 5000) {
@@ -4182,7 +4212,7 @@ static void run_server(void) {
                 cam_active = false;
                 cam_idle_since = 0;
                 terminate_child_pid(&server_video_gst_pid);
-                v4l2_standby_open();
+                v4l2_write_blank_frame(g_v4l2_standby_fd);
             }
         }
 
@@ -4203,6 +4233,9 @@ static void run_server(void) {
             }
         }
     }
+
+    terminate_child_pid(&server_video_gst_pid);
+    v4l2_standby_close();
 }
 
 /* ============================================================================

@@ -31,6 +31,8 @@ Host *
   ControlPersist yes
   ServerAliveInterval 5
   ServerAliveCountMax 2
+  IdentitiesOnly yes
+  AddKeysToAgent 8h
   IdentityFile ~/.ssh/id_github
   IdentityFile ~/.ssh/id_rsa
 

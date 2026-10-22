@@ -43,6 +43,17 @@ if [[ "$WORKSTATION_NAME" == "cloud" ]]; then
   export SNAP_DEFAULT_FOR_NEW_WORKSPACE=true
 fi
 
+# Use GCR's underlying OpenSSH agent socket in interactive shells
+# to avoid background GUI askpass hangs across SSH and tmux
+_gcr_ssh_sock="${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/.ssh"
+if [[ ! -S "$_gcr_ssh_sock" ]]; then
+  systemctl --user start gcr-ssh-agent.service 2>/dev/null
+fi
+if [[ -S "$_gcr_ssh_sock" ]]; then
+  export SSH_AUTH_SOCK="$_gcr_ssh_sock"
+fi
+unset _gcr_ssh_sock
+
 # set shell options {{{
 eval "$(dircolors $ZDOTDIR/dircolors)"
 

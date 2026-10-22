@@ -123,7 +123,7 @@ sudo usermod -aG input $USER
 $HOME/software/sunshine.AppImage --install
 systemctl --user enable --now sunshine-headless.socket
 
-# Moonlight Meet webcam & microphone forwarding setup (Host)
+# Fullmoon unified companion (Host: Sunshine clipboard sync + on-demand webcam & mic receiver)
 sudo apt install -y linux-main-modules-v4l2loopback-$(uname -r) v4l2loopback-utils \
   gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 sudo bash -c 'cat <<EOF > /etc/modprobe.d/v4l2loopback.conf
@@ -131,13 +131,13 @@ options v4l2loopback video_nr=10 card_label="Moonlight Virtual Camera" exclusive
 EOF'
 sudo bash -c 'echo "v4l2loopback" > /etc/modules-load.d/v4l2loopback.conf'
 sudo modprobe v4l2loopback
-systemctl --user disable --now moonlight-cam.service 2>/dev/null || true
-systemctl --user enable --now moonlight-cam.socket
+systemctl --user disable --now fullmoon.service 2>/dev/null || true
+systemctl --user enable --now fullmoon.socket
 
-# Moonlight Meet webcam & microphone forwarding setup (Client)
+# Fullmoon unified companion (Client: Moonlight wrapper + on-demand webcam & mic streamer)
 sudo apt install -y gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 sudo usermod -aG video $USER
-# Sync secret key to host: $HOME/.dotfiles/data/meet-stream --sync-key (or scp -p ~/.dotfiles/tmp/meet-stream.key ev:~/.dotfiles/tmp/)
-# Toggle streaming from client with $mod+s
-# Select/switch webcam & microphone with $mod+Shift+s
+# Sync secret key to host: $HOME/.dotfiles/data/fullmoon --sync-key (or scp -p ~/.dotfiles/tmp/meet-stream.key ev:~/.dotfiles/tmp/)
+# Launch Moonlight normally (automatic two-way clipboard sync + on-demand media streaming)
+# Select/switch webcam & microphone with $mod+s
 

@@ -149,7 +149,8 @@ typedef struct {
 } TrayItem;
 
 typedef enum {
-    MOD_WORKSPACES = 0,
+    MOD_HEADLESS = 0,
+    MOD_WORKSPACES,
     MOD_MODE,
     MOD_SCRATCHPAD,
     MOD_CLOCK,
@@ -186,6 +187,12 @@ static char g_sway_bar_hidden_state[32] = "hide";
 static bool g_sway_visible_by_modifier = false;
 static bool g_manual_hidden = false;
 static bool g_bar_visible = false;
+static bool g_sway_headless = false;
+static inline bool is_sway_headless(void) {
+    const char *env = getenv("SWAY_HEADLESS");
+    return (env && env[0] != '\0' && strcmp(env, "0") != 0 &&
+            strcasecmp(env, "false") != 0 && strcasecmp(env, "no") != 0);
+}
 static volatile sig_atomic_t g_toggle_requested = 0;
 static volatile sig_atomic_t g_geoloc_update_requested = 0;
 
@@ -716,6 +723,8 @@ static inline bool is_symbola_forced(uint32_t cp) {
     if (cp == 0x1F4A4 || cp == 0x1F441) return true;
     /* Calendar icons: 📅 U+1F4C5, 📆 U+1F4C6, 🗓 U+1F5D3 */
     if (cp == 0x1F4C5 || cp == 0x1F4C6 || cp == 0x1F5D3) return true;
+    /* Headless monitor icons: ⎆ U+2386, 🖥 U+1F5A5, 🖵 U+1F5B5 */
+    if (cp == 0x2386 || cp == 0x1F5A5 || cp == 0x1F5B5) return true;
     return false;
 }
 
@@ -4023,13 +4032,25 @@ static void render_bar(SurfaceBuf *s) {
 
     pthread_mutex_lock(&g_mutex);
 
+    /* 0. LEFT: sway/headless monitor icon (leftmost, before workspace 1) */
+    if (g_sway_headless) {
+        int tw = measure_markup_line("⎆", 16, false);
+        g_mod_boxes[MOD_HEADLESS].x1 = left_x;
+        render_markup_line(s, "⎆", left_x + 4, baseline_y, 16, COL_TEXT, false, true);
+        left_x += tw + 8;
+        g_mod_boxes[MOD_HEADLESS].x2 = left_x;
+        g_mod_boxes[MOD_HEADLESS].visible = true;
+        snprintf(g_mod_boxes[MOD_HEADLESS].tooltip, sizeof(g_mod_boxes[0].tooltip), "Headless Sway Session");
+    }
+
     /* 1. LEFT: sway/workspaces */
     int ws_start = left_x;
     for (int i = 0; i < g_ws_count; i++) {
-        if (i > 0) {
+        if (i > 0 || (i == 0 && left_x > 0)) {
             left_x += 4;
             draw_separator(s, left_x);
             left_x += 5;
+            if (i == 0) ws_start = left_x;
         }
         int tw = measure_markup_line(g_workspaces[i].name, 16, false);
         int bw = tw + 10; /* padding: 0 5px */
@@ -5021,6 +5042,9 @@ static void handle_pointer_button(uint32_t time_ms, uint32_t button_code) {
             }
             break;
 
+        case MOD_HEADLESS:
+            break;
+
         case MOD_SCREENSAVER:
             if (btn == 1) {
                 toggle_screensaver();
@@ -5885,6 +5909,7 @@ int main(int argc, char *argv[]) {
     if (rdir && *rdir) snprintf(g_runtime_dir, sizeof(g_runtime_dir), "%s", rdir);
     else snprintf(g_runtime_dir, sizeof(g_runtime_dir), "/run/user/%u", getuid());
     get_system_tz(g_detected_tz, sizeof(g_detected_tz));
+    g_sway_headless = is_sway_headless();
     {
         struct stat st_lt;
         if (lstat("/etc/localtime", &st_lt) == 0) {
@@ -6302,8 +6327,27 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        printf("Self-test OK: rendered 3840x%d bar | emoji_font='%s' | workspaces=%d | tzs=%d (current='%s' label='%s') | clock_tip='%s' | namaz='%s' (city='%s' tz='%s') | screensaver=%s | quiet=%u (urg=%u preview='%s') | pulse=%d%%\n",
+        /* Verification of headless monitor sign rendering and colorless Symbola forcing */
+        {
+            g_sway_headless = true;
+            render_bar(&sb);
+            if (!g_mod_boxes[MOD_HEADLESS].visible || g_mod_boxes[MOD_HEADLESS].x1 != 0 ||
+                g_mod_boxes[MOD_HEADLESS].x1 >= g_mod_boxes[MOD_HEADLESS].x2 ||
+                (g_ws_count > 0 && g_mod_boxes[MOD_HEADLESS].x2 >= g_mod_boxes[MOD_WORKSPACES].x1)) {
+                fprintf(stderr, "Self-test error: MOD_HEADLESS not rendered as leftmost module before workspaces\n");
+                return 1;
+            }
+            if (strcmp(g_mod_boxes[MOD_HEADLESS].tooltip, "Headless Sway Session") != 0) {
+                fprintf(stderr, "Self-test error: unexpected MOD_HEADLESS tooltip '%s'\n", g_mod_boxes[MOD_HEADLESS].tooltip);
+                return 1;
+            }
+            g_sway_headless = is_sway_headless();
+            render_bar(&sb);
+        }
+
+        printf("Self-test OK: rendered 3840x%d bar | emoji_font='%s' | headless=%s | workspaces=%d | tzs=%d (current='%s' label='%s') | clock_tip='%s' | namaz='%s' (city='%s' tz='%s') | screensaver=%s | quiet=%u (urg=%u preview='%s') | pulse=%d%%\n",
                BAR_HEIGHT, g_emoji_font_path[0] ? g_emoji_font_path : "NONE (install fonts-noto-color-emoji)",
+               g_sway_headless ? "true(⎆)" : "false",
                g_ws_count, g_tz_count, g_tzs[0].tz, g_tzs[0].label,
                g_mod_boxes[MOD_CLOCK].tooltip,
                g_mod_boxes[MOD_NAMAZ].tooltip, g_namaz_city, g_namaz_tz,

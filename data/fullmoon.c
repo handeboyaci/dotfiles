@@ -2462,17 +2462,13 @@ static pid_t spawn_client_video_gst(const char *cam_target, uint16_t local_port,
 
 static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd, uint16_t width, uint16_t height) {
     if (v4l2_fd < 0 || access(g_cfg.loopback_device, W_OK) != 0) return 0;
-    if (width == 0 || height == 0) { width = 1920; height = 1080; }
+    (void)width;
+    (void)height;
 
     char port_arg[32];
     snprintf(port_arg, sizeof(port_arg), "port=%u", (unsigned)local_port);
     char fd_arg[32];
     snprintf(fd_arg, sizeof(fd_arg), "fd=%d", v4l2_fd);
-
-    char out_caps[128];
-    snprintf(out_caps, sizeof(out_caps),
-             "video/x-raw,format=YUY2,width=%u,height=%u,framerate=30/1,pixel-aspect-ratio=1/1",
-             (unsigned)width, (unsigned)height);
 
     pid_t parent_pid = getpid();
     pid_t pid = fork();
@@ -2501,8 +2497,7 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd, uint16_t w
             "!", "h264parse",
             "!", "avdec_h264",
             "!", "videoconvert",
-            "!", "videoscale", "add-borders=true",
-            "!", out_caps,
+            "!", "video/x-raw,format=YUY2",
             "!", "fdsink", fd_arg, "sync=false",
             NULL
         };
@@ -3953,7 +3948,7 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
 
     int openers = count_v4l2_external_openers(g_cfg.loopback_device, 0, 0);
     if (openers > 0) {
-        /* A consumer is currently reading: leave loopback alone, videoscale will adapt */
+        /* A consumer is currently reading: leave loopback alone */
         return;
     }
 
@@ -3988,8 +3983,22 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
         return;
     }
 
+    /* Ensure sysfs format reflects clean @30/1 after VIDIOC_S_FMT */
+    sfd = open(sys_fmt_path, O_WRONLY);
+    if (sfd >= 0) {
+        char fps_buf[32];
+        snprintf(fps_buf, sizeof(fps_buf), "@%u/%u", (unsigned)fps_num, (unsigned)fps_denom);
+        ssize_t nw = write(sfd, fps_buf, strlen(fps_buf));
+        (void)nw;
+        close(sfd);
+    }
+
     v4l2_write_blank_frame(fd, w, h);
     g_v4l2_standby_fd = fd;
+
+    /* Restart WirePlumber asynchronously so PipeWire immediately re-enumerates the updated resolution & 30/1 framerate */
+    int sys_rc = system("systemctl --user restart wireplumber >/dev/null 2>&1 &");
+    (void)sys_rc;
 }
 
 static void v4l2_standby_open(void) {
@@ -3997,10 +4006,6 @@ static void v4l2_standby_open(void) {
 
     v4l2_apply_negotiated_format(g_negotiated_width, g_negotiated_height,
                                  g_negotiated_fps_num, g_negotiated_fps_denom);
-
-    /* Ensure WirePlumber registers /dev/video10 with 30/1 fps for GNOME Camera/PipeWire */
-    int sys_rc = system("sh -c 'if ! pw-dump 2>/dev/null | grep -A 80 \"Moonlight Virtual Camera (V4L2)\" | grep -q '\"'\"'\"denom\": 1'\"'\"'; then systemctl --user restart wireplumber >/dev/null 2>&1; fi' &");
-    (void)sys_rc;
 }
 
 static int count_v4l2_external_openers(const char *devnode, pid_t child_pid1, pid_t child_pid2) {

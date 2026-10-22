@@ -3771,6 +3771,19 @@ static void v4l2_write_blank_frame(int fd) {
 
 static void v4l2_standby_open(void) {
     if (g_v4l2_standby_fd >= 0) return;
+
+    /* Write 30/1 directly to v4l2loopback sysfs format attribute so device-level FPS is unconditionally 30/1 */
+    char sys_fmt_path[128];
+    const char *dev_name = strrchr(g_cfg.loopback_device, '/');
+    dev_name = dev_name ? dev_name + 1 : "video10";
+    snprintf(sys_fmt_path, sizeof(sys_fmt_path), "/sys/devices/virtual/video4linux/%s/format", dev_name);
+    int sfd = open(sys_fmt_path, O_WRONLY);
+    if (sfd >= 0) {
+        ssize_t w = write(sfd, "@30/1", 5);
+        (void)w;
+        close(sfd);
+    }
+
     /* Open nonblocking with O_CLOEXEC so general children never inherit and fdsink never blocks */
     int fd = open(g_cfg.loopback_device, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) return;
@@ -3787,19 +3800,12 @@ static void v4l2_standby_open(void) {
         return;
     }
 
-    struct v4l2_streamparm parm;
-    memset(&parm, 0, sizeof(parm));
-    parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    parm.parm.capture.timeperframe.numerator = 1;
-    parm.parm.capture.timeperframe.denominator = 30;
-    ioctl(fd, VIDIOC_S_PARM, &parm);
-
     /* Write initial black frame: primes v4l2loopback exclusive_caps=1 into CAPTURE mode */
     v4l2_write_blank_frame(fd);
     g_v4l2_standby_fd = fd;
 
     /* Ensure WirePlumber registers /dev/video10 with 30/1 fps for GNOME Camera/PipeWire */
-    int sys_rc = system("sh -c 'if ! pw-dump 2>/dev/null | grep -A 15 \"Moonlight Virtual Camera\" | grep -q '\"'\"'\"denom\": 1'\"'\"'; then systemctl --user restart wireplumber >/dev/null 2>&1; fi' &");
+    int sys_rc = system("sh -c 'if ! pw-dump 2>/dev/null | grep -A 80 \"Moonlight Virtual Camera (V4L2)\" | grep -q '\"'\"'\"denom\": 1'\"'\"'; then systemctl --user restart wireplumber >/dev/null 2>&1; fi' &");
     (void)sys_rc;
 }
 

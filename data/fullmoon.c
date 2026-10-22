@@ -2356,7 +2356,7 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd) {
             "!", "avdec_h264",
             "!", "videoconvert",
             "!", "videoscale", "add-borders=true",
-            "!", "video/x-raw,format=YUY2,width=1920,height=1080,pixel-aspect-ratio=1/1",
+            "!", "video/x-raw,format=YUY2,width=1920,height=1080,framerate=30/1,pixel-aspect-ratio=1/1",
             "!", "fdsink", fd_arg, "sync=false",
             NULL
         };
@@ -3787,12 +3787,19 @@ static void v4l2_standby_open(void) {
         return;
     }
 
+    struct v4l2_streamparm parm;
+    memset(&parm, 0, sizeof(parm));
+    parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    parm.parm.capture.timeperframe.numerator = 1;
+    parm.parm.capture.timeperframe.denominator = 30;
+    ioctl(fd, VIDIOC_S_PARM, &parm);
+
     /* Write initial black frame: primes v4l2loopback exclusive_caps=1 into CAPTURE mode */
     v4l2_write_blank_frame(fd);
     g_v4l2_standby_fd = fd;
 
-    /* Ensure WirePlumber registers /dev/video10 as an active Video/Source for GNOME Camera/PipeWire */
-    int sys_rc = system("wpctl status 2>/dev/null | grep -q 'Moonlight Virtual Camera (V4L2)' || systemctl --user restart wireplumber >/dev/null 2>&1 &");
+    /* Ensure WirePlumber registers /dev/video10 with 30/1 fps for GNOME Camera/PipeWire */
+    int sys_rc = system("sh -c 'if ! pw-dump 2>/dev/null | grep -A 15 \"Moonlight Virtual Camera\" | grep -q '\"'\"'\"denom\": 1'\"'\"'; then systemctl --user restart wireplumber >/dev/null 2>&1; fi' &");
     (void)sys_rc;
 }
 

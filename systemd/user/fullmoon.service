@@ -1,17 +1,17 @@
 [Unit]
-Description=Moonlight Virtual Clipboard On-Demand Receiver
+Description=Fullmoon Unified Host Daemon (Clipboard Sync + Media Receiver)
 ConditionPathExists=%h/software/sunshine.AppImage
-Requires=moonlight-clip.socket
-After=moonlight-clip.socket sway-sunshine.service
+Requires=fullmoon.socket
+After=fullmoon.socket sway-sunshine.service
 PartOf=sway-sunshine.service
 
 [Service]
 Type=simple
 Environment=WAYLAND_DISPLAY=wayland-1
 Environment=SWAYSOCK=%t/sway-sunshine.sock
-ExecStart=%h/.dotfiles/data/clip-sync --serve
+ExecStart=%h/.dotfiles/data/fullmoon --serve
 Restart=no
 KillMode=control-group
 TimeoutStopSec=3s
 LimitCORE=0
-MemoryMax=64M
+MemoryMax=128M

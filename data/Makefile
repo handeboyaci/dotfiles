@@ -6,7 +6,7 @@ STATIC_LIBDIR := .static_libs
 
 .PHONY: all clean install test
 
-all: statusbar pixelbuds-pause meet-stream clip-sync
+all: statusbar pixelbuds-pause fullmoon
 
 $(STATIC_LIBDIR):
 	mkdir -p $(STATIC_LIBDIR)
@@ -20,19 +20,15 @@ statusbar: statusbar.c $(STATIC_LIBDIR)
 statusbar-test: statusbar.c $(STATIC_LIBDIR)
 	$(CC) $(CFLAGS) -DENABLE_SELF_TEST $(LDFLAGS) statusbar.c -L$(STATIC_LIBDIR) -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -ljson-c -lz -lm -lpthread -o statusbar-test
 
-meet-stream: meet-stream.c $(STATIC_LIBDIR)
-	$(CC) $(CFLAGS) $(LDFLAGS) meet-stream.c -L$(STATIC_LIBDIR) -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -lz -lm -lpthread -o meet-stream
-
-clip-sync: clip-sync.c
-	$(CC) $(CFLAGS) $(LDFLAGS) clip-sync.c -lpthread -o clip-sync
+fullmoon: fullmoon.c $(STATIC_LIBDIR)
+	$(CC) $(CFLAGS) $(LDFLAGS) fullmoon.c -L$(STATIC_LIBDIR) -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -lz -lm -lpthread -o fullmoon
 
 pixelbuds-pause: pixelbuds-pause.c
 	$(CC) -O2 -Wall -Wextra pixelbuds-pause.c $$(pkg-config --cflags --libs libsystemd) -o pixelbuds-pause
 
-test: statusbar-test meet-stream clip-sync
+test: statusbar-test fullmoon
 	./statusbar-test --self-test
-	./meet-stream --self-test
-	./clip-sync --self-test
+	./fullmoon --self-test
 
 install: statusbar pixelbuds-pause 09-timezone.sh 99-audio-leds.rules
 	install -d $(DESTDIR)$(PREFIX)/bin
@@ -44,4 +40,4 @@ install: statusbar pixelbuds-pause 09-timezone.sh 99-audio-leds.rules
 	install -m 644 99-audio-leds.rules $(DESTDIR)/etc/udev/rules.d/99-audio-leds.rules
 
 clean:
-	rm -rf statusbar statusbar-test pixelbuds-pause meet-stream clip-sync $(STATIC_LIBDIR)
+	rm -rf statusbar statusbar-test pixelbuds-pause fullmoon $(STATIC_LIBDIR)

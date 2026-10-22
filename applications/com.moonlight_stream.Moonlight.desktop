@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Moonlight Game Streaming
 Comment=Stream games and desktop from your Sunshine PC
-Exec=/home/sselcuk/.dotfiles/data/clip-sync --wrap flatpak run com.moonlight_stream.Moonlight %u
+Exec=/home/sselcuk/.dotfiles/data/fullmoon --wrap flatpak run com.moonlight_stream.Moonlight %u
 Icon=com.moonlight_stream.Moonlight
 Terminal=false
 Type=Application

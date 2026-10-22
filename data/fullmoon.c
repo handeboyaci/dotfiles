@@ -3931,9 +3931,46 @@ static void v4l2_standby_close(void) {
     }
 }
 
+static void v4l2_ensure_standard_fps(void) {
+    if (access(g_cfg.loopback_device, F_OK) != 0) return;
+    char sys_fmt_path[128];
+    const char *dev_name = strrchr(g_cfg.loopback_device, '/');
+    dev_name = dev_name ? dev_name + 1 : "video10";
+    snprintf(sys_fmt_path, sizeof(sys_fmt_path), "/sys/devices/virtual/video4linux/%s/format", dev_name);
+
+    char buf[64];
+    int rfd = open(sys_fmt_path, O_RDONLY);
+    if (rfd >= 0) {
+        ssize_t n = read(rfd, buf, sizeof(buf) - 1);
+        close(rfd);
+        if (n > 0) {
+            buf[n] = '\0';
+            while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' || buf[n - 1] == ' ')) {
+                buf[--n] = '\0';
+            }
+            if (n >= 3 && strcmp(buf + n - 3, "@30") == 0) {
+                return;
+            }
+        }
+    }
+
+    int sfd = open(sys_fmt_path, O_WRONLY);
+    if (sfd >= 0) {
+        char fps_buf[32];
+        snprintf(fps_buf, sizeof(fps_buf), "@%u/%u\n",
+                 (unsigned)(g_negotiated_fps_num > 0 ? g_negotiated_fps_num : 30),
+                 (unsigned)(g_negotiated_fps_denom > 0 ? g_negotiated_fps_denom : 1));
+        ssize_t nw = write(sfd, fps_buf, strlen(fps_buf));
+        (void)nw;
+        close(sfd);
+    }
+}
+
 static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_num, uint16_t fps_denom) {
     if (w < 320 || w > 1920 || h < 240 || h > 1080) return;
     if (fps_num == 0 || fps_denom == 0) { fps_num = 30; fps_denom = 1; }
+
+    v4l2_ensure_standard_fps();
 
     if (g_negotiated_width == w && g_negotiated_height == h &&
         g_negotiated_fps_num == fps_num && g_negotiated_fps_denom == fps_denom &&
@@ -3962,7 +3999,7 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
     int sfd = open(sys_fmt_path, O_WRONLY);
     if (sfd >= 0) {
         char fps_buf[32];
-        snprintf(fps_buf, sizeof(fps_buf), "@%u/%u", (unsigned)fps_num, (unsigned)fps_denom);
+        snprintf(fps_buf, sizeof(fps_buf), "@%u/%u\n", (unsigned)fps_num, (unsigned)fps_denom);
         ssize_t nw = write(sfd, fps_buf, strlen(fps_buf));
         (void)nw;
         close(sfd);
@@ -3987,7 +4024,7 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
     sfd = open(sys_fmt_path, O_WRONLY);
     if (sfd >= 0) {
         char fps_buf[32];
-        snprintf(fps_buf, sizeof(fps_buf), "@%u/%u", (unsigned)fps_num, (unsigned)fps_denom);
+        snprintf(fps_buf, sizeof(fps_buf), "@%u/%u\n", (unsigned)fps_num, (unsigned)fps_denom);
         ssize_t nw = write(sfd, fps_buf, strlen(fps_buf));
         (void)nw;
         close(sfd);
@@ -4002,7 +4039,10 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
 }
 
 static void v4l2_standby_open(void) {
-    if (g_v4l2_standby_fd >= 0) return;
+    if (g_v4l2_standby_fd >= 0) {
+        v4l2_ensure_standard_fps();
+        return;
+    }
 
     v4l2_apply_negotiated_format(g_negotiated_width, g_negotiated_height,
                                  g_negotiated_fps_num, g_negotiated_fps_denom);
@@ -4348,6 +4388,7 @@ static void run_server(void) {
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
                     v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
+                    v4l2_ensure_standard_fps();
                     continue;
                 }
 
@@ -4361,6 +4402,7 @@ static void run_server(void) {
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
                     v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
+                    v4l2_ensure_standard_fps();
                     continue;
                 }
                 net_rfilled += (size_t)nr;
@@ -4435,6 +4477,8 @@ static void run_server(void) {
         }
 
         /* Check camera demand state */
+        v4l2_ensure_standard_fps();
+
         if (cam_wanted) {
             cam_idle_since = 0;
             if (!cam_active) {
@@ -4447,12 +4491,14 @@ static void run_server(void) {
         } else if (cam_active || server_video_gst_pid > 0) {
             if (cam_idle_since == 0) {
                 cam_idle_since = now;
+                v4l2_ensure_standard_fps();
             } else if (now - cam_idle_since >= 5000) {
                 send_tcp_media_command(PKT_MEDIA_REQ_STOP, MEDIA_FLAG_CAM);
                 cam_active = false;
                 cam_idle_since = 0;
                 terminate_child_pid(&server_video_gst_pid);
                 v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
+                v4l2_ensure_standard_fps();
             }
         }
 

@@ -3752,8 +3752,9 @@ static int g_v4l2_standby_fd = -1;
 static void v4l2_write_blank_frame(int fd) {
     if (fd < 0) return;
     size_t frame_size = 1920 * 1080 * 2;
-    unsigned char *black = (unsigned char *)malloc(frame_size);
-    if (!black) return;
+    unsigned char *black = (unsigned char *)mmap(NULL, frame_size, PROT_READ | PROT_WRITE,
+                                                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (black == MAP_FAILED) return;
     for (size_t i = 0; i < frame_size; i += 4) {
         black[i]   = 0;   /* Y0 */
         black[i+1] = 128; /* U  */
@@ -3762,7 +3763,7 @@ static void v4l2_write_blank_frame(int fd) {
     }
     ssize_t nw = write(fd, black, frame_size);
     (void)nw;
-    free(black);
+    munmap(black, frame_size);
 }
 
 static void v4l2_standby_open(void) {

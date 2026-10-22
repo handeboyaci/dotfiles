@@ -100,6 +100,9 @@ char *dlerror(void) { return NULL; }
 #define PKT_MEDIA_REQ_START     0x30
 #define PKT_MEDIA_REQ_STOP      0x31
 
+#define MEDIA_FLAG_CAM          0x01
+#define MEDIA_FLAG_MIC          0x02
+
 /* UDP Packet types (Media streaming channel) */
 #define MSTR_MAGIC_0 'M'
 #define MSTR_MAGIC_1 'S'
@@ -163,6 +166,33 @@ static bool fill_random_bytes(uint8_t *buf, size_t len) {
         off += (size_t)n;
     }
     close(fd);
+    return true;
+}
+
+static bool net_write_all(int fd, const void *buf, size_t total, int timeout_ms) {
+    const uint8_t *p = (const uint8_t *)buf;
+    size_t written = 0;
+    uint64_t start = now_msec();
+
+    while (written < total) {
+        ssize_t n = write(fd, p + written, total - written);
+        if (n > 0) {
+            written += (size_t)n;
+            continue;
+        }
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                int remain = timeout_ms - (int)(now_msec() - start);
+                if (remain <= 0) return false;
+                struct pollfd pfd = {.fd = fd, .events = POLLOUT};
+                if (poll(&pfd, 1, remain) > 0) continue;
+                return false;
+            }
+            return false;
+        }
+        return false;
+    }
     return true;
 }
 
@@ -1122,7 +1152,21 @@ static uint8_t *read_pipe_all(int fd, size_t *out_len, uint64_t timeout_msec) {
     return buf;
 }
 
+static void wayland_cleanup(void) {
+    if (g_wl_fd >= 0) {
+        close(g_wl_fd);
+        g_wl_fd = -1;
+    }
+    g_id_registry = 0;
+    g_id_seat = 0;
+    g_id_manager = 0;
+    g_id_device = 0;
+    g_id_active_source = 0;
+    g_we_own_selection = false;
+}
+
 static void process_wayland_events(void) {
+    if (g_wl_fd < 0) return;
     static uint8_t rbuf[65536];
     static size_t rfilled = 0;
 
@@ -1137,7 +1181,11 @@ static void process_wayland_events(void) {
         msg.msg_controllen = sizeof(cmsg_buf);
 
         ssize_t n = recvmsg(g_wl_fd, &msg, MSG_DONTWAIT);
-        if (n <= 0) break;
+        if (n <= 0) {
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+            wayland_cleanup();
+            return;
+        }
 
         struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
         while (cmsg) {
@@ -1182,27 +1230,41 @@ static void process_wayland_events(void) {
                         } else if ((strcmp(iface, "zwlr_data_control_manager_v1") == 0 ||
                                     strcmp(iface, "ext_data_control_manager_v1") == 0) && g_id_manager == 0) {
                             g_id_manager = g_wl_next_id++;
-                            wl_registry_bind(name, iface, 1, g_id_manager);
+                            wl_registry_bind(name, iface, version < 2 ? version : 2, g_id_manager);
                         }
                     }
                 }
             }
         } else if (obj_id == g_id_device) {
-            if (opcode == 0) {
+            if (opcode == 0 /* data_offer(id) */) {
                 if (plen >= 4) {
                     uint32_t offer_id = load_le32(payload);
                     offer_register(offer_id);
                 }
-            } else if (opcode == 1) {
+            } else if (opcode == 1 /* selection(id) */) {
                 if (plen >= 4) {
                     uint32_t offer_id = load_le32(payload);
-                    if (offer_id != 0 && !g_we_own_selection) {
+                    if (offer_id == 0) {
+                        /* Selection cleared */
+                    } else if (g_we_own_selection) {
+                        g_we_own_selection = false;
+                    } else {
                         WaylandOffer *offr = offer_find(offer_id);
                         if (offr && offr->mime[0]) {
                             int pipefds[2];
                             if (pipe2(pipefds, O_CLOEXEC) == 0) {
-                                wl_send_msg(offer_id, 0, NULL, 0, pipefds[1]);
+                                uint32_t slen = (uint32_t)strlen(offr->mime) + 1;
+                                uint32_t pad = (4 - (slen % 4)) % 4;
+                                size_t plen_send = 4 + slen + pad;
+                                uint8_t *mbuf = (uint8_t *)calloc(1, plen_send);
+                                if (mbuf) {
+                                    store_le32(mbuf, slen);
+                                    memcpy(mbuf + 4, offr->mime, slen);
+                                    wl_send_msg(offer_id, 0 /* receive */, mbuf, plen_send, pipefds[1]);
+                                    free(mbuf);
+                                }
                                 close(pipefds[1]);
+
                                 size_t clen = 0;
                                 uint8_t *cdata = read_pipe_all(pipefds[0], &clen, TRANSFER_TIMEOUT_MSEC);
                                 if (cdata && clen > 0) {
@@ -1218,27 +1280,38 @@ static void process_wayland_events(void) {
                             }
                         }
                     }
-                    g_we_own_selection = false;
                 }
             }
         } else if (obj_id == g_id_active_source) {
-            if (opcode == 0) {
+            if (opcode == 0 /* send(mime, fd) */) {
                 int passed_fd = fd_queue_pop();
                 if (passed_fd >= 0) {
                     if (g_current_clip_data && g_current_clip_len > 0) {
-                        ssize_t w = write(passed_fd, g_current_clip_data, g_current_clip_len);
-                        (void)w;
+                        int fl = fcntl(passed_fd, F_GETFL, 0);
+                        fcntl(passed_fd, F_SETFL, fl | O_NONBLOCK);
+                        size_t written = 0;
+                        while (written < g_current_clip_len) {
+                            ssize_t nw = write(passed_fd, g_current_clip_data + written, g_current_clip_len - written);
+                            if (nw <= 0) {
+                                if (nw < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                                    struct pollfd wfd = {.fd = passed_fd, .events = POLLOUT};
+                                    if (poll(&wfd, 1, 500) > 0) continue;
+                                }
+                                break;
+                            }
+                            written += (size_t)nw;
+                        }
                     }
                     close(passed_fd);
                 }
-            } else if (opcode == 1) {
-                wl_send_msg(g_id_active_source, 1, NULL, 0, -1);
-                g_id_active_source = 0;
+            } else if (opcode == 1 /* cancelled */) {
                 g_we_own_selection = false;
+                wl_send_msg(g_id_active_source, 1 /* destroy */, NULL, 0, -1);
+                g_id_active_source = 0;
             }
         } else {
             WaylandOffer *offr = offer_find(obj_id);
-            if (offr && opcode == 0 && plen >= 4) {
+            if (offr && opcode == 0 /* offer(mime) */ && plen >= 4) {
                 uint32_t slen = load_le32(payload);
                 if (4 + slen <= plen) {
                     const char *m = (const char *)(payload + 4);
@@ -1265,70 +1338,173 @@ static void process_wayland_events(void) {
 
     if (g_id_seat != 0 && g_id_manager != 0 && g_id_device == 0) {
         g_id_device = g_wl_next_id++;
-        wl_send_u32_2(g_id_manager, 0, g_id_device, g_id_seat);
+        wl_send_u32_2(g_id_manager, 1 /* get_data_device */, g_id_device, g_id_seat);
     }
 }
 
-static void wayland_init(void) {
-    const char *xdg = getenv("XDG_RUNTIME_DIR");
-    const char *disp = getenv("WAYLAND_DISPLAY");
-    char path[512];
-    if (disp && disp[0] == '/') {
-        snprintf(path, sizeof(path), "%s", disp);
+static bool wayland_init(void) {
+    if (g_wl_fd >= 0) return true;
+
+    const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
+    if (!runtime_dir || !*runtime_dir) runtime_dir = "/run/user/1000";
+
+    char wl_path[512] = "";
+    const char *wd = getenv("WAYLAND_DISPLAY");
+    const char *sway_sock = getenv("SWAYSOCK");
+
+    if (sway_sock && strstr(sway_sock, "sway-sunshine.sock")) {
+        snprintf(wl_path, sizeof(wl_path), "%s/wayland-1", runtime_dir);
+    } else if (wd && wd[0] != '\0') {
+        if (wd[0] == '/') snprintf(wl_path, sizeof(wl_path), "%s", wd);
+        else snprintf(wl_path, sizeof(wl_path), "%s/%s", runtime_dir, wd);
     } else {
-        snprintf(path, sizeof(path), "%s/%s", (xdg && *xdg) ? xdg : "/tmp", (disp && *disp) ? disp : "wayland-0");
+        snprintf(wl_path, sizeof(wl_path), "%s/wayland-0", runtime_dir);
     }
 
-    g_wl_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (g_wl_fd < 0) return;
+    g_wl_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (g_wl_fd < 0) return false;
 
     struct sockaddr_un sa;
     memset(&sa, 0, sizeof(sa));
     sa.sun_family = AF_UNIX;
-    strncpy(sa.sun_path, path, sizeof(sa.sun_path) - 1);
+    strncpy(sa.sun_path, wl_path, sizeof(sa.sun_path) - 1);
 
     if (connect(g_wl_fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
         close(g_wl_fd);
         g_wl_fd = -1;
-        return;
+        return false;
     }
 
+    fcntl(g_wl_fd, F_SETFL, fcntl(g_wl_fd, F_GETFL, 0) | O_NONBLOCK);
+
     g_id_registry = g_wl_next_id++;
-    wl_send_u32_1(1, 1, g_id_registry);
-    process_wayland_events();
+    wl_send_u32_1(1 /* wl_display */, 1 /* get_registry */, g_id_registry);
+    uint32_t sync_cb = g_wl_next_id++;
+    wl_send_u32_1(1 /* wl_display */, 0 /* sync */, sync_cb);
+
+    uint64_t start = now_msec();
+    while ((g_id_seat == 0 || g_id_manager == 0) && (now_msec() - start < 1500)) {
+        struct pollfd pfd = {.fd = g_wl_fd, .events = POLLIN};
+        if (poll(&pfd, 1, 200) > 0) {
+            process_wayland_events();
+        }
+    }
+
+    if (g_id_seat == 0 || g_id_manager == 0) {
+        wayland_cleanup();
+        return false;
+    }
+
+    if (g_id_device == 0) {
+        g_id_device = g_wl_next_id++;
+        wl_send_u32_2(g_id_manager, 1 /* get_data_device */, g_id_device, g_id_seat);
+    }
+    return true;
 }
 
 static void handle_remote_clipboard(const uint8_t *data, size_t len, uint16_t mime_code) {
-    if (len == 0 || !data || g_id_manager == 0 || g_id_device == 0) return;
+    if (!data || len == 0 || g_wl_fd < 0 || g_id_manager == 0 || g_id_device == 0) return;
 
     uint8_t dig[32];
     sha256(data, len, dig);
     echo_ring_add(dig);
+    g_we_own_selection = true;
 
-    free(g_current_clip_data);
+    if (g_id_active_source != 0) {
+        wl_send_msg(g_id_active_source, 1 /* destroy */, NULL, 0, -1);
+        g_id_active_source = 0;
+    }
+
+    if (g_current_clip_data) free(g_current_clip_data);
     g_current_clip_data = (uint8_t *)malloc(len);
     if (!g_current_clip_data) return;
     memcpy(g_current_clip_data, data, len);
     g_current_clip_len = len;
     g_current_clip_mime = mime_code;
 
-    if (g_id_active_source != 0) {
-        wl_send_msg(g_id_active_source, 1, NULL, 0, -1);
-    }
-
+    /* Create new data control source (opcode 0) */
     g_id_active_source = g_wl_next_id++;
-    wl_send_u32_1(g_id_manager, 1, g_id_active_source);
+    wl_send_u32_1(g_id_manager, 0 /* create_data_source */, g_id_active_source);
 
+    /* Advertise MIME types (opcode 0 on source) */
     if (mime_code == MIME_CODE_PNG) {
-        wl_send_string(g_id_active_source, 0, "image/png");
+        wl_send_string(g_id_active_source, 0 /* offer */, "image/png");
     } else {
-        wl_send_string(g_id_active_source, 0, "text/plain;charset=utf-8");
-        wl_send_string(g_id_active_source, 0, "UTF8_STRING");
-        wl_send_string(g_id_active_source, 0, "text/plain");
+        wl_send_string(g_id_active_source, 0 /* offer */, "text/plain;charset=utf-8");
+        wl_send_string(g_id_active_source, 0 /* offer */, "text/plain");
+        wl_send_string(g_id_active_source, 0 /* offer */, "UTF8_STRING");
     }
 
-    g_we_own_selection = true;
-    wl_send_u32_1(g_id_device, 2, g_id_active_source);
+    /* Set selection on data device (opcode 0 on device) */
+    wl_send_u32_1(g_id_device, 0 /* set_selection */, g_id_active_source);
+}
+
+static int g_peer_tcp_fd = -1;
+static SessionCrypto g_server_session_crypto;
+
+/* Incoming clipboard chunk assembly */
+static uint8_t *g_in_clip_buf = NULL;
+static size_t g_in_clip_len = 0;
+static size_t g_in_clip_received = 0;
+static uint16_t g_in_clip_mime = MIME_CODE_TEXT_UTF8;
+
+static void handle_net_frame(const FrameHeader *hdr, const uint8_t *plain, size_t chunk_len) {
+    if (hdr->type == PKT_CLIP_CHUNK || hdr->type == PKT_CLIP_START || hdr->type == PKT_CLIP_END) {
+        uint32_t total = ntohl(hdr->total_len);
+        uint16_t chunk_seq = ntohs(hdr->chunk_seq);
+        uint16_t mcode = ntohs(hdr->mime_code);
+
+        if (total == 0 || total > MAX_PAYLOAD_BYTES) return;
+
+        if (chunk_seq == 0) {
+            if (g_in_clip_buf) free(g_in_clip_buf);
+            g_in_clip_buf = (uint8_t *)malloc(total);
+            if (!g_in_clip_buf) return;
+            g_in_clip_len = total;
+            g_in_clip_received = 0;
+            g_in_clip_mime = mcode;
+        }
+
+        if (g_in_clip_buf && g_in_clip_received + chunk_len <= g_in_clip_len) {
+            memcpy(g_in_clip_buf + g_in_clip_received, plain, chunk_len);
+            g_in_clip_received += chunk_len;
+
+            if (g_in_clip_received >= g_in_clip_len) {
+                handle_remote_clipboard(g_in_clip_buf, g_in_clip_len, g_in_clip_mime);
+                free(g_in_clip_buf);
+                g_in_clip_buf = NULL;
+                g_in_clip_len = 0;
+                g_in_clip_received = 0;
+            }
+        }
+    }
+}
+
+static void broadcast_local_clipboard(const uint8_t *data, size_t len, uint16_t mime_code) {
+    if (g_peer_tcp_fd < 0 || !g_server_session_crypto.established || len == 0 || !data || len > MAX_PAYLOAD_BYTES) return;
+
+    size_t offset = 0;
+    uint16_t chunk_seq = 0;
+    uint8_t wire_buf[sizeof(FrameHeader) + CHUNK_SIZE_BYTES];
+
+    while (offset < len) {
+        size_t chunk_sz = len - offset;
+        if (chunk_sz > CHUNK_SIZE_BYTES) chunk_sz = CHUNK_SIZE_BYTES;
+        size_t wire_len = 0;
+
+        seal_frame(&g_server_session_crypto, PKT_CLIP_CHUNK, mime_code, (uint32_t)len, chunk_seq,
+                   data + offset, (uint16_t)chunk_sz,
+                   wire_buf, &wire_len);
+
+        if (!net_write_all(g_peer_tcp_fd, wire_buf, wire_len, 3000)) {
+            close(g_peer_tcp_fd);
+            g_peer_tcp_fd = -1;
+            g_server_session_crypto.established = false;
+            return;
+        }
+        offset += chunk_sz;
+        chunk_seq++;
+    }
 }
 
 
@@ -3605,17 +3781,44 @@ static void v4l2_standby_close(void) {
     }
 }
 
-static int v4l2_get_opener_count(void) {
-    const char *p = strstr(g_cfg.loopback_device, "video");
-    if (!p) return 0;
-    char path[256], buf[32] = "";
-    snprintf(path, sizeof(path), "/sys/devices/virtual/video4linux/%s/openers", p);
-    read_first_line_file(path, buf, sizeof(buf));
-    if (buf[0]) return atoi(buf);
-    snprintf(path, sizeof(path), "/sys/class/video4linux/%s/openers", p);
-    read_first_line_file(path, buf, sizeof(buf));
-    if (buf[0]) return atoi(buf);
-    return -1;
+static int count_v4l2_external_openers(const char *devnode, pid_t child_pid) {
+    DIR *proc = opendir("/proc");
+    if (!proc) return -1;
+    struct dirent *de;
+    int openers = 0;
+    char target[PATH_MAX];
+    char linkpath[64];
+    pid_t self_pid = getpid();
+
+    while ((de = readdir(proc))) {
+        if (!isdigit((unsigned char)de->d_name[0])) continue;
+        pid_t pid = (pid_t)atoi(de->d_name);
+        if (pid == self_pid || (child_pid > 0 && pid == child_pid)) continue;
+
+        char fd_dir[64];
+        snprintf(fd_dir, sizeof(fd_dir), "/proc/%s/fd", de->d_name);
+        DIR *fdd = opendir(fd_dir);
+        if (!fdd) continue;
+
+        struct dirent *fde;
+        bool has_opened = false;
+        while ((fde = readdir(fdd))) {
+            if (!isdigit((unsigned char)fde->d_name[0])) continue;
+            snprintf(linkpath, sizeof(linkpath), "/proc/%s/fd/%s", de->d_name, fde->d_name);
+            ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
+            if (len > 0) {
+                target[len] = '\0';
+                if (strcmp(target, devnode) == 0) {
+                    has_opened = true;
+                    break;
+                }
+            }
+        }
+        closedir(fdd);
+        if (has_opened) openers++;
+    }
+    closedir(proc);
+    return openers;
 }
 
 static int spawn_mic_subscriber(pid_t *out_pid) {
@@ -3639,55 +3842,46 @@ static int spawn_mic_subscriber(pid_t *out_pid) {
 }
 
 static bool check_mic_recording_active(void) {
-    FILE *fp = popen("pactl list short source-outputs 2>/dev/null", "r");
+    FILE *fp = popen("pactl list short sources 2>/dev/null", "r");
     if (!fp) return false;
     char line[256];
+    unsigned int mic_src_id = 0;
+    while (fgets(line, sizeof(line), fp)) {
+        unsigned int id = 0;
+        char name[128] = "";
+        if (sscanf(line, "%u %127s", &id, name) == 2) {
+            if (strcmp(name, "source-moonlight-mic") == 0) {
+                mic_src_id = id;
+                break;
+            }
+        }
+    }
+    pclose(fp);
+    if (mic_src_id == 0) return false;
+
+    fp = popen("pactl list short source-outputs 2>/dev/null", "r");
+    if (!fp) return false;
     bool active = false;
     while (fgets(line, sizeof(line), fp)) {
-        if (line[0] && isdigit((unsigned char)line[0])) {
-            active = true;
-            break;
+        unsigned int so_id = 0, src_id = 0;
+        if (sscanf(line, "%u %u", &so_id, &src_id) == 2) {
+            if (src_id == mic_src_id) {
+                active = true;
+                break;
+            }
         }
     }
     pclose(fp);
     return active;
 }
 
-static int g_peer_tcp_fd = -1;
-static SessionCrypto g_server_session_crypto;
-
-static void send_tcp_media_command(uint8_t cmd) {
+static void send_tcp_media_command(uint8_t cmd, uint16_t flags) {
     if (g_peer_tcp_fd < 0 || !g_server_session_crypto.established) return;
     uint8_t wire[sizeof(FrameHeader) + 16];
+    memset(wire, 0, sizeof(wire));
     size_t wlen = 0;
-    seal_frame(&g_server_session_crypto, cmd, 0, 0, 0, NULL, 0, wire, &wlen);
-    send(g_peer_tcp_fd, wire, wlen, MSG_NOSIGNAL);
-}
-
-static void broadcast_local_clipboard(const uint8_t *data, size_t len, uint16_t mime_code) {
-    if (g_peer_tcp_fd < 0 || !g_server_session_crypto.established || len == 0 || !data) return;
-
-    size_t sent = 0;
-    uint16_t chunk_seq = 0;
-    uint8_t wire[sizeof(FrameHeader) + CHUNK_SIZE_BYTES];
-
-    while (sent < len) {
-        size_t rem = len - sent;
-        uint16_t clen = (rem < CHUNK_SIZE_BYTES) ? (uint16_t)rem : CHUNK_SIZE_BYTES;
-        uint8_t type = (chunk_seq == 0 && rem <= CHUNK_SIZE_BYTES) ? PKT_CLIP_START :
-                       (chunk_seq == 0) ? PKT_CLIP_START :
-                       (sent + clen >= len) ? PKT_CLIP_END : PKT_CLIP_CHUNK;
-
-        size_t wlen = 0;
-        seal_frame(&g_server_session_crypto, type, mime_code, (uint32_t)len, chunk_seq,
-                   data + sent, clen, wire, &wlen);
-
-        ssize_t s = send(g_peer_tcp_fd, wire, wlen, MSG_NOSIGNAL);
-        if (s <= 0) break;
-
-        sent += clen;
-        chunk_seq++;
-    }
+    seal_frame(&g_server_session_crypto, cmd, flags, 0, 0, NULL, 0, wire, &wlen);
+    net_write_all(g_peer_tcp_fd, wire, wlen, 2000);
 }
 
 static void run_server(void) {
@@ -3747,7 +3941,10 @@ static void run_server(void) {
     video_dst.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     video_dst.sin_port = htons(local_video_port);
 
-    wayland_init();
+    uint64_t wl_start = now_msec();
+    while (!wayland_init() && (now_msec() - wl_start < 2500)) {
+        usleep(150000);
+    }
 
     /* Establish zero-CPU standby on /dev/video10 */
     v4l2_standby_open();
@@ -3790,8 +3987,11 @@ static void run_server(void) {
 
     bool cam_wanted = false;
     bool mic_wanted = false;
-    bool stream_requested = false;
-    uint64_t idle_since = 0;
+    bool cam_active = false;
+    bool mic_active = false;
+    uint64_t cam_idle_since = 0;
+    uint64_t mic_idle_since = 0;
+    uint64_t next_wl_attempt = 0;
 
     pid_t server_video_gst_pid = 0;
     ReplayWindow udp_rw;
@@ -3807,6 +4007,15 @@ static void run_server(void) {
         int nfds = epoll_wait(epfd, events, 16, 250);
 
         uint64_t now = now_msec();
+
+        if (g_wl_fd < 0 && now >= next_wl_attempt) {
+            if (wayland_init()) {
+                ev.events = EPOLLIN;
+                ev.data.fd = g_wl_fd;
+                epoll_ctl(epfd, EPOLL_CTL_ADD, g_wl_fd, &ev);
+            }
+            next_wl_attempt = now + 1500;
+        }
 
         for (int i = 0; i < nfds; i++) {
             int fd = events[i].data.fd;
@@ -3829,17 +4038,27 @@ static void run_server(void) {
                 }
             } else if (fd == g_wl_fd) {
                 process_wayland_events();
+                if (g_wl_fd < 0) {
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+                }
             } else if (fd == inotify_fd) {
                 char ibuf[512];
                 while (read(inotify_fd, ibuf, sizeof(ibuf)) > 0) {}
-                int openers = v4l2_get_opener_count();
+                int openers = count_v4l2_external_openers(g_cfg.loopback_device, server_video_gst_pid);
                 if (openers >= 0) {
-                    cam_wanted = (g_v4l2_standby_fd >= 0) ? (openers > 1) : (openers > 0);
+                    cam_wanted = (openers > 0);
                 }
             } else if (fd == mic_sub_fd) {
                 char pbuf[512];
-                while (read(mic_sub_fd, pbuf, sizeof(pbuf)) > 0) {}
-                mic_wanted = check_mic_recording_active();
+                bool has_so = false;
+                ssize_t pr;
+                while ((pr = read(mic_sub_fd, pbuf, sizeof(pbuf) - 1)) > 0) {
+                    pbuf[pr] = '\0';
+                    if (strstr(pbuf, "source-output")) has_so = true;
+                }
+                if (has_so) {
+                    mic_wanted = check_mic_recording_active();
+                }
             } else if (fd == udp_rx_fd) {
                 for (int k = 0; k < 64; k++) {
                     ssize_t n = recv(udp_rx_fd, udp_wire, sizeof(udp_wire), MSG_DONTWAIT);
@@ -3869,6 +4088,9 @@ static void run_server(void) {
                     close(g_peer_tcp_fd);
                     g_peer_tcp_fd = -1;
                     g_server_session_crypto.established = false;
+                    cam_active = mic_active = false;
+                    terminate_child_pid(&server_video_gst_pid);
+                    v4l2_standby_open();
                     continue;
                 }
 
@@ -3879,6 +4101,9 @@ static void run_server(void) {
                     close(g_peer_tcp_fd);
                     g_peer_tcp_fd = -1;
                     g_server_session_crypto.established = false;
+                    cam_active = mic_active = false;
+                    terminate_child_pid(&server_video_gst_pid);
+                    v4l2_standby_open();
                     continue;
                 }
                 net_rfilled += (size_t)nr;
@@ -3931,7 +4156,7 @@ static void run_server(void) {
                     FrameHeader opened;
                     if (open_frame(&g_server_session_crypto, net_rbuf, frame_total, &opened, plain)) {
                         if (opened.type == PKT_CLIP_START || opened.type == PKT_CLIP_CHUNK || opened.type == PKT_CLIP_END) {
-                            handle_remote_clipboard(plain, ch_len, ntohs(opened.mime_code));
+                            handle_net_frame(&opened, plain, ch_len);
                         }
                     }
                     if (net_rfilled > frame_total) {
@@ -3942,22 +4167,39 @@ static void run_server(void) {
             }
         }
 
-        /* Check on-demand demand state */
-        if (cam_wanted || mic_wanted) {
-            idle_since = 0;
-            if (!stream_requested) {
-                send_tcp_media_command(PKT_MEDIA_REQ_START);
-                stream_requested = true;
+        /* Check camera demand state */
+        if (cam_wanted) {
+            cam_idle_since = 0;
+            if (!cam_active) {
+                send_tcp_media_command(PKT_MEDIA_REQ_START, MEDIA_FLAG_CAM);
+                cam_active = true;
             }
-        } else if (stream_requested) {
-            if (idle_since == 0) {
-                idle_since = now;
-            } else if (now - idle_since >= 5000) {
-                send_tcp_media_command(PKT_MEDIA_REQ_STOP);
-                stream_requested = false;
+        } else if (cam_active) {
+            if (cam_idle_since == 0) {
+                cam_idle_since = now;
+            } else if (now - cam_idle_since >= 5000) {
+                send_tcp_media_command(PKT_MEDIA_REQ_STOP, MEDIA_FLAG_CAM);
+                cam_active = false;
+                cam_idle_since = 0;
                 terminate_child_pid(&server_video_gst_pid);
                 v4l2_standby_open();
-                idle_since = 0;
+            }
+        }
+
+        /* Check mic demand state */
+        if (mic_wanted) {
+            mic_idle_since = 0;
+            if (!mic_active) {
+                send_tcp_media_command(PKT_MEDIA_REQ_START, MEDIA_FLAG_MIC);
+                mic_active = true;
+            }
+        } else if (mic_active) {
+            if (mic_idle_since == 0) {
+                mic_idle_since = now;
+            } else if (now - mic_idle_since >= 5000) {
+                send_tcp_media_command(PKT_MEDIA_REQ_STOP, MEDIA_FLAG_MIC);
+                mic_active = false;
+                mic_idle_since = 0;
             }
         }
     }
@@ -4100,8 +4342,19 @@ static void run_client_wrapper(char **argv_child) {
     uint8_t rtp_buf[MSTR_MAX_PAYLOAD];
     uint8_t wire_media_buf[MSTR_HDR_LEN + MSTR_MAX_PAYLOAD];
 
+    uint64_t client_next_wl_attempt = 0;
+
     while (child_running) {
         uint64_t now = now_msec();
+
+        if (g_wl_fd < 0 && now >= client_next_wl_attempt) {
+            if (wayland_init()) {
+                ev.events = EPOLLIN;
+                ev.data.fd = g_wl_fd;
+                epoll_ctl(epfd, EPOLL_CTL_ADD, g_wl_fd, &ev);
+            }
+            client_next_wl_attempt = now + 1500;
+        }
 
         if (g_peer_tcp_fd < 0 && now >= next_reconnect) {
             g_peer_tcp_fd = client_connect_to_host();
@@ -4165,6 +4418,9 @@ static void run_client_wrapper(char **argv_child) {
                 }
             } else if (fd == g_wl_fd) {
                 process_wayland_events();
+                if (g_wl_fd < 0) {
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+                }
             } else if (fd == local_audio_rx_fd && media_streaming) {
                 for (int k = 0; k < 32; k++) {
                     ssize_t n = recv(local_audio_rx_fd, rtp_buf, sizeof(rtp_buf), MSG_DONTWAIT);
@@ -4211,17 +4467,20 @@ static void run_client_wrapper(char **argv_child) {
                     FrameHeader opened_h;
                     if (open_frame(&g_server_session_crypto, net_rbuf, frame_total, &opened_h, plain)) {
                         if (opened_h.type == PKT_CLIP_START || opened_h.type == PKT_CLIP_CHUNK || opened_h.type == PKT_CLIP_END) {
-                            handle_remote_clipboard(plain, ch_len, ntohs(opened_h.mime_code));
+                            handle_net_frame(&opened_h, plain, ch_len);
                         } else if (opened_h.type == PKT_MEDIA_REQ_START) {
-                            if (!media_streaming) {
-                                load_persistent_state();
-                                DeviceItem cams[MAX_DEVICES], mics[MAX_DEVICES];
-                                int cc = discover_cameras(cams);
-                                int mc = discover_microphones(mics);
-                                bool cfb = false, mfb = false;
-                                int ci = resolve_active_camera(cams, cc, &cfb);
-                                int mi = resolve_active_microphone(mics, mc, &mfb);
+                            uint16_t flags = ntohs(opened_h.mime_code);
+                            if (flags == 0) flags = MEDIA_FLAG_CAM | MEDIA_FLAG_MIC;
 
+                            load_persistent_state();
+                            DeviceItem cams[MAX_DEVICES], mics[MAX_DEVICES];
+                            int cc = discover_cameras(cams);
+                            int mc = discover_microphones(mics);
+                            bool cfb = false, mfb = false;
+                            int ci = resolve_active_camera(cams, cc, &cfb);
+                            int mi = resolve_active_microphone(mics, mc, &mfb);
+
+                            if (media_udp_out_fd < 0) {
                                 char thost[128];
                                 resolve_target_host(thost, sizeof(thost));
                                 struct sockaddr_in d_sin;
@@ -4229,40 +4488,61 @@ static void run_client_wrapper(char **argv_child) {
 
                                 media_udp_out_fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
                                 connect(media_udp_out_fd, (struct sockaddr *)&d_sin, sizeof(d_sin));
-
-                                uint16_t a_port = 0, v_port = 0;
-                                local_audio_rx_fd = bind_local_ephemeral_udp(&a_port);
-                                local_video_rx_fd = bind_local_ephemeral_udp(&v_port);
-
-                                audio_pid = spawn_client_audio_gst(mics[mi].target, a_port);
-                                video_pid = spawn_client_video_gst(cams[ci].target, v_port);
-
-                                ev.events = EPOLLIN;
-                                ev.data.fd = local_audio_rx_fd;
-                                epoll_ctl(epfd, EPOLL_CTL_ADD, local_audio_rx_fd, &ev);
-
-                                ev.events = EPOLLIN;
-                                ev.data.fd = local_video_rx_fd;
-                                epoll_ctl(epfd, EPOLL_CTL_ADD, local_video_rx_fd, &ev);
-
                                 fill_random_bytes((uint8_t *)&media_sess_id, sizeof(media_sess_id));
                                 media_seq = 1;
-                                media_streaming = true;
-
-                                /* Heartbeat wake packet */
-                                size_t hb_len = mstr_seal_packet(g_keys[0], UDP_PKT_HEARTBEAT, media_sess_id, media_seq++, NULL, 0, wire_media_buf);
-                                send(media_udp_out_fd, wire_media_buf, hb_len, MSG_DONTWAIT);
                             }
+
+                            if ((flags & MEDIA_FLAG_MIC) && audio_pid == 0 && !g_pref.mic_disabled && mc > 0) {
+                                uint16_t a_port = 0;
+                                if (local_audio_rx_fd < 0) {
+                                    local_audio_rx_fd = bind_local_ephemeral_udp(&a_port);
+                                    if (local_audio_rx_fd >= 0) {
+                                        ev.events = EPOLLIN;
+                                        ev.data.fd = local_audio_rx_fd;
+                                        epoll_ctl(epfd, EPOLL_CTL_ADD, local_audio_rx_fd, &ev);
+                                    }
+                                }
+                                audio_pid = spawn_client_audio_gst(mics[mi].target, a_port);
+                            }
+
+                            if ((flags & MEDIA_FLAG_CAM) && video_pid == 0 && !g_pref.cam_disabled && cc > 0) {
+                                uint16_t v_port = 0;
+                                if (local_video_rx_fd < 0) {
+                                    local_video_rx_fd = bind_local_ephemeral_udp(&v_port);
+                                    if (local_video_rx_fd >= 0) {
+                                        ev.events = EPOLLIN;
+                                        ev.data.fd = local_video_rx_fd;
+                                        epoll_ctl(epfd, EPOLL_CTL_ADD, local_video_rx_fd, &ev);
+                                    }
+                                }
+                                video_pid = spawn_client_video_gst(cams[ci].target, v_port);
+                            }
+
+                            media_streaming = (audio_pid > 0 || video_pid > 0);
                         } else if (opened_h.type == PKT_MEDIA_REQ_STOP) {
-                            if (media_streaming) {
-                                epoll_ctl(epfd, EPOLL_CTL_DEL, local_audio_rx_fd, NULL);
-                                epoll_ctl(epfd, EPOLL_CTL_DEL, local_video_rx_fd, NULL);
+                            uint16_t flags = ntohs(opened_h.mime_code);
+                            if (flags == 0) flags = MEDIA_FLAG_CAM | MEDIA_FLAG_MIC;
+
+                            if (flags & MEDIA_FLAG_MIC) {
                                 terminate_child_pid(&audio_pid);
+                                if (local_audio_rx_fd >= 0) {
+                                    epoll_ctl(epfd, EPOLL_CTL_DEL, local_audio_rx_fd, NULL);
+                                    close(local_audio_rx_fd);
+                                    local_audio_rx_fd = -1;
+                                }
+                            }
+                            if (flags & MEDIA_FLAG_CAM) {
                                 terminate_child_pid(&video_pid);
-                                if (local_audio_rx_fd >= 0) close(local_audio_rx_fd);
-                                if (local_video_rx_fd >= 0) close(local_video_rx_fd);
-                                if (media_udp_out_fd >= 0) close(media_udp_out_fd);
-                                media_streaming = false;
+                                if (local_video_rx_fd >= 0) {
+                                    epoll_ctl(epfd, EPOLL_CTL_DEL, local_video_rx_fd, NULL);
+                                    close(local_video_rx_fd);
+                                    local_video_rx_fd = -1;
+                                }
+                            }
+                            media_streaming = (audio_pid > 0 || video_pid > 0);
+                            if (!media_streaming && media_udp_out_fd >= 0) {
+                                close(media_udp_out_fd);
+                                media_udp_out_fd = -1;
                             }
                         }
                     }

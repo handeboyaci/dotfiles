@@ -2335,25 +2335,28 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd) {
         prctl(PR_SET_PDEATHSIG, SIGKILL);
         if (getppid() != parent_pid) _exit(0);
         setsid();
-        int devnull = open("/dev/null", O_RDWR);
-        if (devnull >= 0) {
-            dup2(devnull, STDIN_FILENO);
-            dup2(devnull, STDOUT_FILENO);
-            dup2(devnull, STDERR_FILENO);
-            if (devnull > 2) close(devnull);
+        int logfd = open("/tmp/fullmoon_server_video.log", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        int devnull = open("/dev/null", O_RDONLY);
+        if (devnull >= 0) { dup2(devnull, STDIN_FILENO); if (devnull > 2) close(devnull); }
+        if (logfd >= 0) {
+            dup2(logfd, STDOUT_FILENO);
+            dup2(logfd, STDERR_FILENO);
+            if (logfd > 2) close(logfd);
         }
 
         /* Retain inherited loopback writer fd in child process across exec */
         fcntl(v4l2_fd, F_SETFD, 0);
 
         const char *argv[] = {
-            "gst-launch-1.0", "-q",
+            "gst-launch-1.0", "-v",
             "udpsrc", "address=127.0.0.1", port_arg,
             "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96",
             "!", "rtph264depay",
+            "!", "h264parse",
             "!", "avdec_h264",
             "!", "videoconvert",
-            "!", "video/x-raw,format=YUY2",
+            "!", "videoscale",
+            "!", "video/x-raw,format=YUY2,width=1920,height=1080",
             "!", "fdsink", fd_arg, "sync=false",
             NULL
         };
@@ -3768,8 +3771,8 @@ static void v4l2_write_blank_frame(int fd) {
 
 static void v4l2_standby_open(void) {
     if (g_v4l2_standby_fd >= 0) return;
-    /* Open with O_CLOEXEC so general children (pactl, popen, etc.) never inherit the fd */
-    int fd = open(g_cfg.loopback_device, O_RDWR | O_CLOEXEC);
+    /* Open nonblocking with O_CLOEXEC so general children never inherit and fdsink never blocks */
+    int fd = open(g_cfg.loopback_device, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) return;
 
     struct v4l2_format fmt;

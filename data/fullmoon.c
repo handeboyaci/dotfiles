@@ -2355,8 +2355,8 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd) {
             "!", "h264parse",
             "!", "avdec_h264",
             "!", "videoconvert",
-            "!", "videoscale",
-            "!", "video/x-raw,format=YUY2,width=1920,height=1080",
+            "!", "videoscale", "add-borders=true",
+            "!", "video/x-raw,format=YUY2,width=1920,height=1080,pixel-aspect-ratio=1/1",
             "!", "fdsink", fd_arg, "sync=false",
             NULL
         };

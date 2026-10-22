@@ -1,0 +1,17 @@
+[Unit]
+Description=SwayOSD display server
+Documentation=man:swayosd(1)
+PartOf=graphical-session.target
+After=graphical-session.target sway-session.target
+
+[Service]
+Type=dbus
+BusName=org.erikreider.swayosd-server
+ExecStartPre=/bin/sleep 1
+ExecStart=/usr/bin/swayosd-server
+Restart=always
+RestartSec=1
+TimeoutStartSec=5s
+
+[Install]
+WantedBy=sway-session.target

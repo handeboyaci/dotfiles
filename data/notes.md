@@ -116,7 +116,7 @@ make
 sudo make install
 cd $HOME
 
-systemctl --user enable --now mpris-proxy.service notification.service pixelbuds-pause.service swayidle.service
+systemctl --user enable --now mpris-proxy.service notification.service pixelbuds-pause.service swayidle.service swayosd-server.service
 
 # Sunshine headless streaming setup
 sudo usermod -aG input $USER

@@ -4240,30 +4240,34 @@ static int client_sway_ipc_connect(void) {
             close(fd);
         }
     }
-    DIR *d = opendir(g_runtime_dir);
-    if (!d) return -1;
-    struct dirent *de;
-    int fd = -1;
-    while ((de = readdir(d)) != NULL) {
-        if (strncmp(de->d_name, "sway-ipc.", 9) == 0) {
-            char candidate[512];
-            snprintf(candidate, sizeof(candidate), "%s/%s", g_runtime_dir, de->d_name);
-            fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-            if (fd >= 0) {
-                struct sockaddr_un addr;
-                memset(&addr, 0, sizeof(addr));
-                addr.sun_family = AF_UNIX;
-                snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", candidate);
-                if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-                    break;
+    const char *dirs[] = {g_runtime_dir, "/tmp"};
+    for (size_t di = 0; di < sizeof(dirs)/sizeof(dirs[0]); di++) {
+        if (!dirs[di] || !dirs[di][0]) continue;
+        DIR *d = opendir(dirs[di]);
+        if (!d) continue;
+        struct dirent *de;
+        while ((de = readdir(d)) != NULL) {
+            if (strncmp(de->d_name, "sway-ipc.", 9) == 0 ||
+                (strncmp(de->d_name, "sway", 4) == 0 && strstr(de->d_name, ".sock"))) {
+                char candidate[512];
+                snprintf(candidate, sizeof(candidate), "%s/%s", dirs[di], de->d_name);
+                int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+                if (fd >= 0) {
+                    struct sockaddr_un addr;
+                    memset(&addr, 0, sizeof(addr));
+                    addr.sun_family = AF_UNIX;
+                    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", candidate);
+                    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+                        closedir(d);
+                        return fd;
+                    }
+                    close(fd);
                 }
-                close(fd);
-                fd = -1;
             }
         }
+        closedir(d);
     }
-    closedir(d);
-    return fd;
+    return -1;
 }
 
 static bool sway_ipc_send_msg(int fd, uint32_t type, const char *payload) {
@@ -4814,6 +4818,8 @@ static void run_client_wrapper(char **argv_child) {
     }
     uint64_t client_next_sway_attempt = (sway_fd < 0) ? (now_msec() + 1500) : 0;
     bool client_passthrough = false;
+    uint8_t sway_rbuf[2048];
+    size_t sway_rfilled = 0;
 
     uint64_t next_reconnect = 0;
     int backoff_ms = 200;
@@ -4853,6 +4859,7 @@ static void run_client_wrapper(char **argv_child) {
                 ev.events = EPOLLIN | EPOLLRDHUP;
                 ev.data.fd = sway_fd;
                 epoll_ctl(epfd, EPOLL_CTL_ADD, sway_fd, &ev);
+                sway_rfilled = 0;
             }
             client_next_sway_attempt = now + 2000;
         }
@@ -4941,26 +4948,61 @@ static void run_client_wrapper(char **argv_child) {
                     epoll_ctl(epfd, EPOLL_CTL_DEL, sway_fd, NULL);
                     close(sway_fd);
                     sway_fd = -1;
+                    sway_rfilled = 0;
                     client_next_sway_attempt = now_msec() + 2000;
                     continue;
                 }
-                char sbuf[1024];
-                ssize_t sn = read(sway_fd, sbuf, sizeof(sbuf) - 1);
+                ssize_t sn = read(sway_fd, sway_rbuf + sway_rfilled, sizeof(sway_rbuf) - 1 - sway_rfilled);
                 if (sn <= 0) {
                     if (sn < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
                     epoll_ctl(epfd, EPOLL_CTL_DEL, sway_fd, NULL);
                     close(sway_fd);
                     sway_fd = -1;
+                    sway_rfilled = 0;
                     client_next_sway_attempt = now_msec() + 2000;
                     continue;
                 }
-                sbuf[sn] = '\0';
-                bool is_pt = false;
-                if (parse_sway_mode_is_passthrough(sbuf, &is_pt)) {
-                    if (is_pt != client_passthrough) {
-                        client_passthrough = is_pt;
-                        send_tcp_passthrough_state(client_passthrough);
+                sway_rfilled += (size_t)sn;
+
+                while (sway_rfilled >= 14) {
+                    if (memcmp(sway_rbuf, "i3-ipc", 6) != 0) {
+                        uint8_t *p = memmem(sway_rbuf + 1, sway_rfilled - 1, "i3-ipc", 6);
+                        if (p) {
+                            size_t drop = (size_t)(p - sway_rbuf);
+                            memmove(sway_rbuf, p, sway_rfilled - drop);
+                            sway_rfilled -= drop;
+                            continue;
+                        }
+                        sway_rfilled = 0;
+                        break;
                     }
+                    uint32_t payload_len = 0;
+                    memcpy(&payload_len, sway_rbuf + 6, 4);
+                    if (payload_len > 16384) {
+                        sway_rfilled = 0;
+                        break;
+                    }
+                    if (sway_rfilled < 14 + payload_len) {
+                        break;
+                    }
+                    char json_payload[1024];
+                    size_t copy_len = (payload_len < sizeof(json_payload) - 1) ? payload_len : (sizeof(json_payload) - 1);
+                    memcpy(json_payload, sway_rbuf + 14, copy_len);
+                    json_payload[copy_len] = '\0';
+
+                    bool is_pt = false;
+                    if (parse_sway_mode_is_passthrough(json_payload, &is_pt)) {
+                        if (is_pt != client_passthrough) {
+                            client_passthrough = is_pt;
+                            send_tcp_passthrough_state(client_passthrough);
+                        }
+                    }
+
+                    size_t frame_total = 14 + payload_len;
+                    if (sway_rfilled > frame_total) {
+                        memmove(sway_rbuf, sway_rbuf + frame_total, sway_rfilled - frame_total);
+                    }
+                    sway_rfilled -= frame_total;
                 }
             } else if (fd == local_audio_rx_fd && media_streaming) {
                 for (int k = 0; k < 32; k++) {
@@ -5205,6 +5247,25 @@ static int run_self_test(void) {
     if (!parse_sway_mode_is_passthrough("{\"change\":\"resize\",\"pango_markup\":false}", &pt_val) || pt_val) {
         fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough expected false for resize mode\n");
         return 1;
+    }
+    {
+        uint8_t mock_ipc[64];
+        const char *pl = "{\"change\":\"⇸\",\"pango_markup\":false}";
+        uint32_t plen = (uint32_t)strlen(pl);
+        uint32_t mtype = 0x80000002;
+        memcpy(mock_ipc, "i3-ipc", 6);
+        memcpy(mock_ipc + 6, &plen, 4);
+        memcpy(mock_ipc + 10, &mtype, 4);
+        memcpy(mock_ipc + 14, pl, plen);
+
+        char json_extracted[64];
+        memcpy(json_extracted, mock_ipc + 14, plen);
+        json_extracted[plen] = '\0';
+        bool pt_framed = false;
+        if (!parse_sway_mode_is_passthrough(json_extracted, &pt_framed) || !pt_framed) {
+            fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough failed on framed IPC payload\n");
+            return 1;
+        }
     }
 
     printf("ALL TESTS PASSED: Crypto, directional keys, and TCP/UDP packet framing verified.\n");

@@ -2488,16 +2488,11 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd, uint16_t w
 
         /* Retain inherited loopback writer fd in child process across exec */
         fcntl(v4l2_fd, F_SETFD, 0);
-        int fl = fcntl(v4l2_fd, F_GETFL);
-        if (fl >= 0) {
-            fcntl(v4l2_fd, F_SETFL, fl & ~O_NONBLOCK);
-        }
 
         const char *argv[] = {
             "gst-launch-1.0", "-v",
             "udpsrc", "address=127.0.0.1", port_arg, "buffer-size=2097152",
             "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96",
-            "!", "rtpjitterbuffer", "latency=40",
             "!", "rtph264depay",
             "!", "h264parse",
             "!", "avdec_h264",
@@ -3971,42 +3966,10 @@ static void v4l2_ensure_standard_fps(void) {
     }
 }
 
-static void v4l2_ensure_sufficient_buffers(void) {
-    if (access(g_cfg.loopback_device, F_OK) != 0) return;
-    char sys_buf_path[128];
-    const char *dev_name = strrchr(g_cfg.loopback_device, '/');
-    dev_name = dev_name ? dev_name + 1 : "video10";
-    snprintf(sys_buf_path, sizeof(sys_buf_path), "/sys/devices/virtual/video4linux/%s/buffers", dev_name);
-
-    char buf[32];
-    int rfd = open(sys_buf_path, O_RDONLY);
-    if (rfd >= 0) {
-        ssize_t n = read(rfd, buf, sizeof(buf) - 1);
-        close(rfd);
-        if (n > 0) {
-            buf[n] = '\0';
-            int bufs = atoi(buf);
-            if (bufs >= 4) return;
-        }
-    }
-
-    int openers = count_v4l2_external_openers(g_cfg.loopback_device, 0, 0);
-    if (openers > 0) return;
-
-    v4l2_standby_close();
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd),
-             "v4l2loopback-ctl delete %s >/dev/null 2>&1; v4l2loopback-ctl add -b 8 -n \"Moonlight Virtual Camera\" -x 1 %s >/dev/null 2>&1",
-             g_cfg.loopback_device, g_cfg.loopback_device);
-    int rc = system(cmd);
-    (void)rc;
-}
-
 static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_num, uint16_t fps_denom) {
     if (w < 320 || w > 1920 || h < 240 || h > 1080) return;
     if (fps_num == 0 || fps_denom == 0) { fps_num = 30; fps_denom = 1; }
 
-    v4l2_ensure_sufficient_buffers();
     v4l2_ensure_standard_fps();
 
     if (g_negotiated_width == w && g_negotiated_height == h &&
@@ -4015,16 +3978,18 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
         return;
     }
 
+    /* Only skip format change if we already have an open standby fd and an active consumer is reading */
+    if (g_v4l2_standby_fd >= 0) {
+        int openers = count_v4l2_external_openers(g_cfg.loopback_device, 0, 0);
+        if (openers > 0) {
+            return;
+        }
+    }
+
     g_negotiated_width = w;
     g_negotiated_height = h;
     g_negotiated_fps_num = fps_num;
     g_negotiated_fps_denom = fps_denom;
-
-    int openers = count_v4l2_external_openers(g_cfg.loopback_device, 0, 0);
-    if (openers > 0) {
-        /* A consumer is currently reading: leave loopback alone */
-        return;
-    }
 
     v4l2_standby_close();
 
@@ -4042,7 +4007,7 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
         close(sfd);
     }
 
-    int fd = open(g_cfg.loopback_device, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    int fd = open(g_cfg.loopback_device, O_RDWR | O_CLOEXEC);
     if (fd < 0) return;
 
     struct v4l2_format fmt;
@@ -4538,6 +4503,10 @@ static void run_server(void) {
         if (now - last_fps_check >= 1000) {
             v4l2_ensure_standard_fps();
             last_fps_check = now;
+        }
+
+        if (g_v4l2_standby_fd < 0) {
+            v4l2_standby_open();
         }
 
         if (cam_wanted) {

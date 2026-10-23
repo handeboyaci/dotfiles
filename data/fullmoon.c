@@ -4034,10 +4034,6 @@ static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_nu
 
     v4l2_write_blank_frame(fd, w, h);
     g_v4l2_standby_fd = fd;
-
-    /* Restart WirePlumber asynchronously so PipeWire immediately re-enumerates the updated resolution & 30/1 framerate */
-    int sys_rc = system("systemctl --user restart wireplumber >/dev/null 2>&1 &");
-    (void)sys_rc;
 }
 
 static void v4l2_standby_open(void) {

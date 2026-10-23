@@ -100,6 +100,7 @@ char *dlerror(void) { return NULL; }
 #define PKT_MEDIA_REQ_START     0x30
 #define PKT_MEDIA_REQ_STOP      0x31
 #define PKT_MEDIA_CAPS          0x32
+#define PKT_PASSTHROUGH_STATE   0x40
 
 #define MEDIA_FLAG_CAM          0x01
 #define MEDIA_FLAG_MIC          0x02
@@ -4166,11 +4167,141 @@ static void send_tcp_media_caps(uint16_t width, uint16_t height, uint16_t fps_nu
     }
 }
 
+static void send_tcp_passthrough_state(bool active) {
+    send_tcp_media_command(PKT_PASSTHROUGH_STATE, active ? 1 : 0);
+}
+
+static void set_host_passthrough_file(bool pt) {
+    mkdir_p(g_state_dir, 0700);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/passthrough", g_state_dir);
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd >= 0) {
+        const char *val = pt ? "1\n" : "0\n";
+        ssize_t w = write(fd, val, 2);
+        (void)w;
+        close(fd);
+    }
+}
+
+static bool parse_sway_mode_is_passthrough(const char *buf, bool *out_is_pt) {
+    if (!buf) return false;
+    bool found = false;
+    const char *cur = buf;
+    while (*cur) {
+        const char *p_chg = strstr(cur, "\"change\"");
+        const char *p_name = strstr(cur, "\"name\"");
+        const char *p = NULL;
+        if (p_chg && p_name) p = (p_chg < p_name) ? p_chg : p_name;
+        else if (p_chg) p = p_chg;
+        else if (p_name) p = p_name;
+        if (!p) break;
+
+        const char *col = strchr(p, ':');
+        if (!col) { cur = p + 1; continue; }
+        col++;
+        while (*col && isspace((unsigned char)*col)) col++;
+        if (*col == '"') col++;
+
+        char val[64];
+        size_t idx = 0;
+        while (*col && *col != '"' && idx < sizeof(val) - 1) {
+            val[idx++] = *col++;
+        }
+        val[idx] = '\0';
+
+        if (strcmp(val, "default") == 0 || val[0] == '\0') {
+            *out_is_pt = false;
+            found = true;
+        } else if (strstr(val, "⇸") != NULL || strcasestr(val, "passthrough") != NULL) {
+            *out_is_pt = true;
+            found = true;
+        } else {
+            *out_is_pt = false;
+            found = true;
+        }
+        cur = col;
+    }
+    return found;
+}
+
+static int client_sway_ipc_connect(void) {
+    const char *env = getenv("SWAYSOCK");
+    if (env && *env) {
+        int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        if (fd >= 0) {
+            struct sockaddr_un addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sun_family = AF_UNIX;
+            snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", env);
+            if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+                return fd;
+            }
+            close(fd);
+        }
+    }
+    DIR *d = opendir(g_runtime_dir);
+    if (!d) return -1;
+    struct dirent *de;
+    int fd = -1;
+    while ((de = readdir(d)) != NULL) {
+        if (strncmp(de->d_name, "sway-ipc.", 9) == 0) {
+            char candidate[512];
+            snprintf(candidate, sizeof(candidate), "%s/%s", g_runtime_dir, de->d_name);
+            fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+            if (fd >= 0) {
+                struct sockaddr_un addr;
+                memset(&addr, 0, sizeof(addr));
+                addr.sun_family = AF_UNIX;
+                snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", candidate);
+                if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+                    break;
+                }
+                close(fd);
+                fd = -1;
+            }
+        }
+    }
+    closedir(d);
+    return fd;
+}
+
+static bool sway_ipc_send_msg(int fd, uint32_t type, const char *payload) {
+    uint32_t len = payload ? (uint32_t)strlen(payload) : 0;
+    uint8_t hdr[14];
+    memcpy(hdr, "i3-ipc", 6);
+    memcpy(hdr + 6, &len, 4);
+    memcpy(hdr + 10, &type, 4);
+    if (write(fd, hdr, 14) != 14) return false;
+    if (len > 0 && write(fd, payload, len) != (ssize_t)len) return false;
+    return true;
+}
+
+static int client_init_sway_listener(void) {
+    int fd = client_sway_ipc_connect();
+    if (fd < 0) return -1;
+
+    /* Subscribe to mode events (type 2) */
+    if (!sway_ipc_send_msg(fd, 2 /* SUBSCRIBE */, "[\"mode\"]")) {
+        close(fd);
+        return -1;
+    }
+    /* Query initial binding state (type 12) */
+    if (!sway_ipc_send_msg(fd, 12 /* GET_BINDING_STATE */, "")) {
+        close(fd);
+        return -1;
+    }
+
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    return fd;
+}
+
 static void run_server(void) {
     if (!ensure_keys()) {
         fprintf(stderr, "fullmoon --serve: failed to load or create secret key\n");
         exit(1);
     }
+    set_host_passthrough_file(false);
 
     int listen_tcp_fd = -1;
     const char *listen_fds = getenv("LISTEN_FDS");
@@ -4403,6 +4534,7 @@ static void run_server(void) {
                     close(g_peer_tcp_fd);
                     g_peer_tcp_fd = -1;
                     g_server_session_crypto.established = false;
+                    set_host_passthrough_file(false);
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
                     v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
@@ -4417,6 +4549,7 @@ static void run_server(void) {
                     close(g_peer_tcp_fd);
                     g_peer_tcp_fd = -1;
                     g_server_session_crypto.established = false;
+                    set_host_passthrough_file(false);
                     cam_active = mic_active = false;
                     terminate_child_pid(&server_video_gst_pid);
                     v4l2_write_blank_frame(g_v4l2_standby_fd, g_negotiated_width, g_negotiated_height);
@@ -4484,6 +4617,9 @@ static void run_server(void) {
                             if (w >= 320 && w <= 1920 && h >= 240 && h <= 1080) {
                                 v4l2_apply_negotiated_format(w, h, num, denom);
                             }
+                        } else if (opened.type == PKT_PASSTHROUGH_STATE) {
+                            bool pt = (ntohs(opened.mime_code) != 0);
+                            set_host_passthrough_file(pt);
                         }
                     }
                     if (net_rfilled > frame_total) {
@@ -4547,6 +4683,7 @@ static void run_server(void) {
     }
 
     terminate_child_pid(&server_video_gst_pid);
+    set_host_passthrough_file(false);
     v4l2_standby_close();
 }
 
@@ -4669,6 +4806,15 @@ static void run_client_wrapper(char **argv_child) {
         epoll_ctl(epfd, EPOLL_CTL_ADD, g_wl_fd, &ev);
     }
 
+    int sway_fd = client_init_sway_listener();
+    if (sway_fd >= 0) {
+        ev.events = EPOLLIN | EPOLLRDHUP;
+        ev.data.fd = sway_fd;
+        epoll_ctl(epfd, EPOLL_CTL_ADD, sway_fd, &ev);
+    }
+    uint64_t client_next_sway_attempt = (sway_fd < 0) ? (now_msec() + 1500) : 0;
+    bool client_passthrough = false;
+
     uint64_t next_reconnect = 0;
     int backoff_ms = 200;
     uint8_t net_rbuf[sizeof(FrameHeader) + CHUNK_SIZE_BYTES];
@@ -4701,6 +4847,16 @@ static void run_client_wrapper(char **argv_child) {
             client_next_wl_attempt = now + 1500;
         }
 
+        if (sway_fd < 0 && now >= client_next_sway_attempt) {
+            sway_fd = client_init_sway_listener();
+            if (sway_fd >= 0) {
+                ev.events = EPOLLIN | EPOLLRDHUP;
+                ev.data.fd = sway_fd;
+                epoll_ctl(epfd, EPOLL_CTL_ADD, sway_fd, &ev);
+            }
+            client_next_sway_attempt = now + 2000;
+        }
+
         if (g_peer_tcp_fd < 0 && now >= next_reconnect) {
             g_peer_tcp_fd = client_connect_to_host();
             if (g_peer_tcp_fd >= 0) {
@@ -4708,6 +4864,8 @@ static void run_client_wrapper(char **argv_child) {
                 ev.data.fd = g_peer_tcp_fd;
                 epoll_ctl(epfd, EPOLL_CTL_ADD, g_peer_tcp_fd, &ev);
                 backoff_ms = 200;
+
+                send_tcp_passthrough_state(client_passthrough);
 
                 load_persistent_state();
                 DeviceItem cams[MAX_DEVICES];
@@ -4777,6 +4935,32 @@ static void run_client_wrapper(char **argv_child) {
                 process_wayland_events();
                 if (g_wl_fd < 0) {
                     epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+                }
+            } else if (fd == sway_fd) {
+                if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, sway_fd, NULL);
+                    close(sway_fd);
+                    sway_fd = -1;
+                    client_next_sway_attempt = now_msec() + 2000;
+                    continue;
+                }
+                char sbuf[1024];
+                ssize_t sn = read(sway_fd, sbuf, sizeof(sbuf) - 1);
+                if (sn <= 0) {
+                    if (sn < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, sway_fd, NULL);
+                    close(sway_fd);
+                    sway_fd = -1;
+                    client_next_sway_attempt = now_msec() + 2000;
+                    continue;
+                }
+                sbuf[sn] = '\0';
+                bool is_pt = false;
+                if (parse_sway_mode_is_passthrough(sbuf, &is_pt)) {
+                    if (is_pt != client_passthrough) {
+                        client_passthrough = is_pt;
+                        send_tcp_passthrough_state(client_passthrough);
+                    }
                 }
             } else if (fd == local_audio_rx_fd && media_streaming) {
                 for (int k = 0; k < 32; k++) {
@@ -4923,6 +5107,7 @@ static void run_client_wrapper(char **argv_child) {
     }
     if (g_peer_tcp_fd >= 0) close(g_peer_tcp_fd);
     if (g_wl_fd >= 0) close(g_wl_fd);
+    if (sway_fd >= 0) close(sway_fd);
     close(epfd);
     close(sig_fd);
     exit(exit_code);
@@ -4978,6 +5163,47 @@ static int run_self_test(void) {
     }
     if (out_type != UDP_PKT_AUDIO || out_sess != 0x12345678 || out_seq != 1 || out_plen != tlen) {
         fprintf(stderr, "FAIL: mstr packet metadata mismatch\n");
+        return 1;
+    }
+
+    /* Test TCP passthrough state packet framing */
+    if (!seal_frame(&sc_c, PKT_PASSTHROUGH_STATE, 1, 0, 0, NULL, 0, wire, &wlen)) {
+        fprintf(stderr, "FAIL: seal_frame PKT_PASSTHROUGH_STATE failed\n");
+        return 1;
+    }
+    if (!open_frame(&sc_s, wire, wlen, &opened, plain)) {
+        fprintf(stderr, "FAIL: open_frame PKT_PASSTHROUGH_STATE failed\n");
+        return 1;
+    }
+    if (opened.type != PKT_PASSTHROUGH_STATE || ntohs(opened.mime_code) != 1) {
+        fprintf(stderr, "FAIL: PKT_PASSTHROUGH_STATE metadata mismatch\n");
+        return 1;
+    }
+
+    /* Test Sway mode parsing for passthrough detection */
+    bool pt_val = false;
+    if (!parse_sway_mode_is_passthrough("{\"change\":\"⇸\",\"pango_markup\":false}", &pt_val) || !pt_val) {
+        fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough expected true for ⇸ change\n");
+        return 1;
+    }
+    if (!parse_sway_mode_is_passthrough("{\"change\":\"default\",\"pango_markup\":false}", &pt_val) || pt_val) {
+        fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough expected false for default change\n");
+        return 1;
+    }
+    if (!parse_sway_mode_is_passthrough("{\"name\":\"⇸\"}", &pt_val) || !pt_val) {
+        fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough expected true for ⇸ name\n");
+        return 1;
+    }
+    if (!parse_sway_mode_is_passthrough("{\"name\":\"default\"}", &pt_val) || pt_val) {
+        fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough expected false for default name\n");
+        return 1;
+    }
+    if (!parse_sway_mode_is_passthrough("{\"change\":\"passthrough\",\"pango_markup\":false}", &pt_val) || !pt_val) {
+        fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough expected true for passthrough keyword\n");
+        return 1;
+    }
+    if (!parse_sway_mode_is_passthrough("{\"change\":\"resize\",\"pango_markup\":false}", &pt_val) || pt_val) {
+        fprintf(stderr, "FAIL: parse_sway_mode_is_passthrough expected false for resize mode\n");
         return 1;
     }
 

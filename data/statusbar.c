@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <sys/inotify.h>
 #include <time.h>
 #include <unistd.h>
 #include <linux/netlink.h>
@@ -63,6 +64,7 @@ static uint32_t g_col_ws_foc_bg     = 0xFF333333U; /* #333333 dark grey focused 
 static uint32_t g_col_ws_foc_bdr    = 0xFF3EAEFFU; /* #3eaeff sway blue focused border */
 static uint32_t g_col_urgent        = 0xFFCC6666U; /* #cc6666 red */
 static uint32_t g_col_warning       = 0xFFE5A454U; /* #e5a454 amber */
+static uint32_t g_col_active        = 0xFF2ECC71U; /* #2ecc71 emerald green */
 static uint32_t g_col_tip_bg        = 0xF0111111U; /* rgba(17, 17, 17, 0.94) */
 static uint32_t g_col_tip_bdr       = 0xFF333333U; /* #333333 */
 static uint32_t g_col_cld_month     = 0xFFFFFFFFU; /* #ffffff */
@@ -78,6 +80,7 @@ static uint32_t g_col_cld_today_fg  = 0xFF000000U; /* #000000 */
 #define COL_WS_FOC_BDR   g_col_ws_foc_bdr
 #define COL_URGENT       g_col_urgent
 #define COL_WARNING      g_col_warning
+#define COL_ACTIVE       g_col_active
 #define COL_TIP_BG       g_col_tip_bg
 #define COL_TIP_BDR      g_col_tip_bdr
 #define COL_CLD_MONTH    g_col_cld_month
@@ -188,10 +191,37 @@ static bool g_sway_visible_by_modifier = false;
 static bool g_manual_hidden = false;
 static bool g_bar_visible = false;
 static bool g_sway_headless = false;
+static bool g_client_passthrough = false;
+static int g_passthrough_inotify_fd = -1;
 static inline bool is_sway_headless(void) {
-    const char *env = getenv("SWAY_HEADLESS");
-    return (env && env[0] != '\0' && strcmp(env, "0") != 0 &&
-            strcasecmp(env, "false") != 0 && strcasecmp(env, "no") != 0);
+    const char *env = getenv("SWAYSOCK");
+    (void)env;
+    const char *h = getenv("SWAY_HEADLESS");
+    return (h && h[0] != '\0' && strcmp(h, "0") != 0 &&
+            strcasecmp(h, "false") != 0 && strcasecmp(h, "no") != 0);
+}
+
+static bool check_client_passthrough_file(void) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/fullmoon/passthrough", g_runtime_dir);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return false;
+    char c = '0';
+    ssize_t r = read(fd, &c, 1);
+    close(fd);
+    return (r > 0 && c == '1');
+}
+
+static void init_passthrough_inotify(void) {
+    if (g_passthrough_inotify_fd >= 0) return;
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/fullmoon", g_runtime_dir);
+    mkdir(dir, 0700);
+    g_passthrough_inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    if (g_passthrough_inotify_fd >= 0) {
+        inotify_add_watch(g_passthrough_inotify_fd, dir, IN_CREATE | IN_MODIFY | IN_DELETE | IN_MOVED_TO | IN_CLOSE_WRITE);
+    }
+    g_client_passthrough = check_client_passthrough_file();
 }
 static volatile sig_atomic_t g_toggle_requested = 0;
 static volatile sig_atomic_t g_geoloc_update_requested = 0;
@@ -4036,11 +4066,16 @@ static void render_bar(SurfaceBuf *s) {
     if (g_sway_headless) {
         int tw = measure_markup_line("⎆", 16, false);
         g_mod_boxes[MOD_HEADLESS].x1 = left_x;
-        render_markup_line(s, "⎆", left_x + 4, baseline_y, 16, COL_TEXT, false, true);
+        uint32_t fg_col = g_client_passthrough ? COL_ACTIVE : COL_TEXT;
+        render_markup_line(s, "⎆", left_x + 4, baseline_y, 16, fg_col, false, true);
         left_x += tw + 8;
         g_mod_boxes[MOD_HEADLESS].x2 = left_x;
         g_mod_boxes[MOD_HEADLESS].visible = true;
-        snprintf(g_mod_boxes[MOD_HEADLESS].tooltip, sizeof(g_mod_boxes[0].tooltip), "Headless Sway Session");
+        if (g_client_passthrough) {
+            snprintf(g_mod_boxes[MOD_HEADLESS].tooltip, sizeof(g_mod_boxes[0].tooltip), "Headless Sway Session (Client Passthrough Active)");
+        } else {
+            snprintf(g_mod_boxes[MOD_HEADLESS].tooltip, sizeof(g_mod_boxes[0].tooltip), "Headless Sway Session");
+        }
     }
 
     /* 1. LEFT: sway/workspaces */
@@ -5744,6 +5779,14 @@ static bool load_config_file(const char *path) {
                 trim_and_unquote(eq);
                 g_col_warning = parse_color_spec(eq, g_col_warning);
             }
+        } else if (strncmp(s, "active_color", 12) == 0 || strncmp(s, "col_active", 10) == 0 ||
+                   strncmp(s, "color_active", 12) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                eq++;
+                trim_and_unquote(eq);
+                g_col_active = parse_color_spec(eq, g_col_active);
+            }
         } else if (strncmp(s, "tip_bg", 6) == 0 || strncmp(s, "col_tip_bg", 10) == 0) {
             char *eq = strchr(s, '=');
             if (eq) {
@@ -6330,6 +6373,7 @@ int main(int argc, char *argv[]) {
         /* Verification of headless monitor sign rendering and colorless Symbola forcing */
         {
             g_sway_headless = true;
+            g_client_passthrough = false;
             render_bar(&sb);
             if (!g_mod_boxes[MOD_HEADLESS].visible || g_mod_boxes[MOD_HEADLESS].x1 != 0 ||
                 g_mod_boxes[MOD_HEADLESS].x1 >= g_mod_boxes[MOD_HEADLESS].x2 ||
@@ -6341,6 +6385,17 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Self-test error: unexpected MOD_HEADLESS tooltip '%s'\n", g_mod_boxes[MOD_HEADLESS].tooltip);
                 return 1;
             }
+
+            /* Test client passthrough active indicator (green) */
+            g_client_passthrough = true;
+            render_bar(&sb);
+            if (!g_mod_boxes[MOD_HEADLESS].visible ||
+                strstr(g_mod_boxes[MOD_HEADLESS].tooltip, "Client Passthrough Active") == NULL) {
+                fprintf(stderr, "Self-test error: unexpected MOD_HEADLESS passthrough tooltip '%s'\n", g_mod_boxes[MOD_HEADLESS].tooltip);
+                return 1;
+            }
+
+            g_client_passthrough = false;
             g_sway_headless = is_sway_headless();
             render_bar(&sb);
         }
@@ -6429,6 +6484,7 @@ int main(int argc, char *argv[]) {
     poll_battery();
     poll_screensaver();
     poll_gcal_private();
+    init_passthrough_inotify();
 
     pthread_t th_sway, th_quiet, th_audio, th_bat, th_bg;
     pthread_create(&th_sway, NULL, sway_event_thread, NULL);
@@ -6437,11 +6493,17 @@ int main(int argc, char *argv[]) {
     pthread_create(&th_bat, NULL, battery_uevent_thread, NULL);
     pthread_create(&th_bg, NULL, background_worker_thread, NULL);
 
-    struct pollfd fds[2];
+    struct pollfd fds[3];
     fds[0].fd = g_wl_fd;
     fds[0].events = POLLIN;
     fds[1].fd = g_wakeup_pipe[0];
     fds[1].events = POLLIN;
+    int nfds = 2;
+    if (g_passthrough_inotify_fd >= 0) {
+        fds[2].fd = g_passthrough_inotify_fd;
+        fds[2].events = POLLIN;
+        nfds = 3;
+    }
 
     while (1) {
         int timeout_ms = 60000;
@@ -6461,7 +6523,7 @@ int main(int argc, char *argv[]) {
             }
             pthread_mutex_unlock(&g_mutex);
         }
-        int ret = poll(fds, 2, timeout_ms);
+        int ret = poll(fds, nfds, timeout_ms);
         if (ret > 0) {
             if (fds[0].revents & (POLLHUP | POLLERR | POLLNVAL)) {
                 exit(0);
@@ -6480,6 +6542,17 @@ int main(int argc, char *argv[]) {
                 }
                 update_bar_visibility_state();
                 redraw_all();
+            }
+            if (nfds > 2 && (fds[2].revents & POLLIN)) {
+                char ibuf[512];
+                while (read(g_passthrough_inotify_fd, ibuf, sizeof(ibuf)) > 0) {}
+                bool new_pt = check_client_passthrough_file();
+                if (new_pt != g_client_passthrough) {
+                    pthread_mutex_lock(&g_mutex);
+                    g_client_passthrough = new_pt;
+                    pthread_mutex_unlock(&g_mutex);
+                    redraw_all();
+                }
             }
         } else if (ret == 0) {
             g_bat_blink_on = !g_bat_blink_on;

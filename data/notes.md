@@ -127,7 +127,7 @@ systemctl --user enable --now sunshine-headless.socket
 sudo apt install -y linux-main-modules-v4l2loopback-$(uname -r) v4l2loopback-utils \
   gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 sudo bash -c 'cat <<EOF > /etc/modprobe.d/v4l2loopback.conf
-options v4l2loopback video_nr=10 card_label="Moonlight Virtual Camera" exclusive_caps=1
+options v4l2loopback video_nr=10 card_label="Moonlight Virtual Camera" exclusive_caps=1 max_buffers=8
 EOF'
 sudo bash -c 'echo "v4l2loopback" > /etc/modules-load.d/v4l2loopback.conf'
 sudo modprobe v4l2loopback

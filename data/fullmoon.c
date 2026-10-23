@@ -2488,11 +2488,16 @@ static pid_t spawn_server_video_gst(uint16_t local_port, int v4l2_fd, uint16_t w
 
         /* Retain inherited loopback writer fd in child process across exec */
         fcntl(v4l2_fd, F_SETFD, 0);
+        int fl = fcntl(v4l2_fd, F_GETFL);
+        if (fl >= 0) {
+            fcntl(v4l2_fd, F_SETFL, fl & ~O_NONBLOCK);
+        }
 
         const char *argv[] = {
             "gst-launch-1.0", "-v",
             "udpsrc", "address=127.0.0.1", port_arg, "buffer-size=2097152",
             "caps=application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96",
+            "!", "rtpjitterbuffer", "latency=40",
             "!", "rtph264depay",
             "!", "h264parse",
             "!", "avdec_h264",
@@ -3966,10 +3971,42 @@ static void v4l2_ensure_standard_fps(void) {
     }
 }
 
+static void v4l2_ensure_sufficient_buffers(void) {
+    if (access(g_cfg.loopback_device, F_OK) != 0) return;
+    char sys_buf_path[128];
+    const char *dev_name = strrchr(g_cfg.loopback_device, '/');
+    dev_name = dev_name ? dev_name + 1 : "video10";
+    snprintf(sys_buf_path, sizeof(sys_buf_path), "/sys/devices/virtual/video4linux/%s/buffers", dev_name);
+
+    char buf[32];
+    int rfd = open(sys_buf_path, O_RDONLY);
+    if (rfd >= 0) {
+        ssize_t n = read(rfd, buf, sizeof(buf) - 1);
+        close(rfd);
+        if (n > 0) {
+            buf[n] = '\0';
+            int bufs = atoi(buf);
+            if (bufs >= 4) return;
+        }
+    }
+
+    int openers = count_v4l2_external_openers(g_cfg.loopback_device, 0, 0);
+    if (openers > 0) return;
+
+    v4l2_standby_close();
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd),
+             "v4l2loopback-ctl delete %s >/dev/null 2>&1; v4l2loopback-ctl add -b 8 -n \"Moonlight Virtual Camera\" -x 1 %s >/dev/null 2>&1",
+             g_cfg.loopback_device, g_cfg.loopback_device);
+    int rc = system(cmd);
+    (void)rc;
+}
+
 static void v4l2_apply_negotiated_format(uint16_t w, uint16_t h, uint16_t fps_num, uint16_t fps_denom) {
     if (w < 320 || w > 1920 || h < 240 || h > 1080) return;
     if (fps_num == 0 || fps_denom == 0) { fps_num = 30; fps_denom = 1; }
 
+    v4l2_ensure_sufficient_buffers();
     v4l2_ensure_standard_fps();
 
     if (g_negotiated_width == w && g_negotiated_height == h &&
@@ -4343,6 +4380,7 @@ static void run_server(void) {
             } else if (fd == inotify_fd) {
                 char ibuf[512];
                 while (read(inotify_fd, ibuf, sizeof(ibuf)) > 0) {}
+                v4l2_ensure_standard_fps();
                 int openers = count_v4l2_external_openers(g_cfg.loopback_device, server_video_gst_pid, mic_sub_pid);
                 if (openers >= 0) {
                     cam_wanted = (openers > 0);
@@ -4351,12 +4389,31 @@ static void run_server(void) {
                 char pbuf[512];
                 bool has_so = false;
                 ssize_t pr;
+                bool got_eof = false;
                 while ((pr = read(mic_sub_fd, pbuf, sizeof(pbuf) - 1)) > 0) {
                     pbuf[pr] = '\0';
                     if (strstr(pbuf, "source-output")) has_so = true;
                 }
+                if (pr == 0 || (pr < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+                    got_eof = true;
+                }
                 if (has_so) {
                     mic_wanted = check_mic_recording_active();
+                }
+                if (got_eof) {
+                    epoll_ctl(epfd, EPOLL_CTL_DEL, mic_sub_fd, NULL);
+                    close(mic_sub_fd);
+                    if (mic_sub_pid > 0) {
+                        kill(mic_sub_pid, SIGTERM);
+                        waitpid(mic_sub_pid, NULL, WNOHANG);
+                        mic_sub_pid = 0;
+                    }
+                    mic_sub_fd = spawn_mic_subscriber(&mic_sub_pid);
+                    if (mic_sub_fd >= 0) {
+                        ev.events = EPOLLIN;
+                        ev.data.fd = mic_sub_fd;
+                        epoll_ctl(epfd, EPOLL_CTL_ADD, mic_sub_fd, &ev);
+                    }
                 }
             } else if (fd == udp_rx_fd) {
                 for (int k = 0; k < 64; k++) {
@@ -4477,7 +4534,11 @@ static void run_server(void) {
         }
 
         /* Check camera demand state */
-        v4l2_ensure_standard_fps();
+        static uint64_t last_fps_check = 0;
+        if (now - last_fps_check >= 1000) {
+            v4l2_ensure_standard_fps();
+            last_fps_check = now;
+        }
 
         if (cam_wanted) {
             cam_idle_since = 0;

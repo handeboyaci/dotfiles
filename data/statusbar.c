@@ -751,10 +751,10 @@ static inline bool is_symbola_forced(uint32_t cp) {
     if (cp == 0x1F50B || cp == 0x26A1 || cp == 0x1F50C || cp == 0x2581) return true;
     /* Screensaver icons: 💤 U+1F4A4, 👁 U+1F441 */
     if (cp == 0x1F4A4 || cp == 0x1F441) return true;
-    /* Calendar icons: 📅 U+1F4C5, 📆 U+1F4C6, 🗓 U+1F5D3 */
-    if (cp == 0x1F4C5 || cp == 0x1F4C6 || cp == 0x1F5D3) return true;
-    /* Headless monitor icons: ⎆ U+2386, 🖥 U+1F5A5, 🖵 U+1F5B5 */
-    if (cp == 0x2386 || cp == 0x1F5A5 || cp == 0x1F5B5) return true;
+    /* Calendar icons: 📆 U+1F4C6 */
+    if (cp == 0x1F4C6) return true;
+    /* Headless monitor icons: ⎆ U+2386 */
+    if (cp == 0x21E4 ) return true;
     return false;
 }
 
@@ -4064,11 +4064,11 @@ static void render_bar(SurfaceBuf *s) {
 
     /* 0. LEFT: sway/headless monitor icon (leftmost, before workspace 1) */
     if (g_sway_headless) {
-        int tw = measure_markup_line("⎆", 16, false);
+        int tw = measure_markup_line("⇸", 16, false);
         g_mod_boxes[MOD_HEADLESS].x1 = left_x;
-        uint32_t fg_col = g_client_passthrough ? COL_ACTIVE : COL_TEXT;
-        render_markup_line(s, "⎆", left_x + 4, baseline_y, 16, fg_col, false, true);
-        left_x += tw + 8;
+        uint32_t fg_col = g_client_passthrough ? COL_ACTIVE : COL_WS_IDLE;
+        render_markup_line(s, "⇸", left_x + 4, baseline_y, 16, fg_col, false, true);
+        left_x += tw + 1;
         g_mod_boxes[MOD_HEADLESS].x2 = left_x;
         g_mod_boxes[MOD_HEADLESS].visible = true;
         if (g_client_passthrough) {

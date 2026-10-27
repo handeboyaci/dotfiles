@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=[P] Google Chrome
+Name=Google Chrome
 Icon=google-chrome
-Exec=google-chrome --profile-directory=Default
+Exec=google-chrome %U
 Terminal=false
 Type=Application
 StartupNotify=true
-Keywords=Google;Chrome;Personal;Browser
+NoDisplay=true
 MimeType=x-scheme-handler/mailto;x-scheme-handler/unknown;x-scheme-handler/about;x-scheme-handler/https;x-scheme-handler/http;text/html;

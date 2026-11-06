@@ -4,7 +4,7 @@ export BROWSER=xdg-open
 export LANG=en_US.UTF-8
 
 export TMPDIR=/tmp/$USER
-mkdir -p -m 700 "$TMPDIR"
+[[ -d "$TMPDIR" ]] || mkdir -p -m 700 "$TMPDIR"
 
 export PAGER=less
 export LESS='-g -i -M -R -W -z-4 -X -F -x2'

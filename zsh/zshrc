@@ -45,17 +45,23 @@ fi
 
 # Use GCR's underlying OpenSSH agent socket in interactive shells
 # to avoid background GUI askpass hangs across SSH and tmux
-_gcr_ssh_sock="${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr/.ssh"
-if [[ ! -S "$_gcr_ssh_sock" ]]; then
-  systemctl --user start gcr-ssh-agent.service 2>/dev/null
+_gcr_ssh_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}/gcr"
+if [[ ! -S "$_gcr_ssh_dir/.ssh" && -S "$_gcr_ssh_dir/ssh" ]]; then
+  SSH_AUTH_SOCK="$_gcr_ssh_dir/ssh" ssh-add -l &>/dev/null
 fi
-if [[ -S "$_gcr_ssh_sock" ]]; then
-  export SSH_AUTH_SOCK="$_gcr_ssh_sock"
+if [[ -S "$_gcr_ssh_dir/.ssh" ]]; then
+  export SSH_AUTH_SOCK="$_gcr_ssh_dir/.ssh"
 fi
-unset _gcr_ssh_sock
+unset _gcr_ssh_dir
 
 # set shell options {{{
-eval "$(dircolors $ZDOTDIR/dircolors)"
+local _dircolors_cache="$HOME/.dotfiles/tmp/dircolors.zsh"
+if [[ ! -s "$_dircolors_cache" || "$ZDOTDIR/dircolors" -nt "$_dircolors_cache" ]]; then
+  mkdir -p "${_dircolors_cache:h}"
+  dircolors "$ZDOTDIR/dircolors" >| "$_dircolors_cache" 2>/dev/null
+fi
+[[ -s "$_dircolors_cache" ]] && source "$_dircolors_cache"
+unset _dircolors_cache
 
 setopt ALWAYS_TO_END
 setopt AUTO_CD
@@ -391,17 +397,17 @@ bindkey -M viins '\eo' zsh-widget-noop
 zmodload zsh/terminfo
 
 for mode in viins vicmd; do
-  bindkey -M $mode "$terminfo[khome]" beginning-of-line
-  bindkey -M $mode "$terminfo[kend]"  end-of-line
+  [[ -n "$terminfo[khome]" ]] && bindkey -M $mode "$terminfo[khome]" beginning-of-line
+  [[ -n "$terminfo[kend]"  ]] && bindkey -M $mode "$terminfo[kend]"  end-of-line
   bindkey -M $mode "\e[H"             beginning-of-line
   bindkey -M $mode "\e[F"             end-of-line
-  bindkey -M $mode "$terminfo[kcuu1]" history-beginning-search-backward
-  bindkey -M $mode "$terminfo[kcud1]" history-beginning-search-forward
+  [[ -n "$terminfo[kcuu1]" ]] && bindkey -M $mode "$terminfo[kcuu1]" history-beginning-search-backward
+  [[ -n "$terminfo[kcud1]" ]] && bindkey -M $mode "$terminfo[kcud1]" history-beginning-search-forward
   bindkey -M $mode "\e[A"             history-beginning-search-backward
   bindkey -M $mode "\e[B"             history-beginning-search-forward
-  bindkey -M $mode "$terminfo[kcbt]"  reverse-menu-complete
-  bindkey -M $mode "$terminfo[kdch1]" delete-char
-  bindkey -M $mode "$terminfo[kbs]"   backward-delete-char
+  [[ -n "$terminfo[kcbt]"  ]] && bindkey -M $mode "$terminfo[kcbt]"  reverse-menu-complete
+  [[ -n "$terminfo[kdch1]" ]] && bindkey -M $mode "$terminfo[kdch1]" delete-char
+  [[ -n "$terminfo[kbs]"   ]] && bindkey -M $mode "$terminfo[kbs]"   backward-delete-char
   bindkey -M $mode "\C-?"             backward-delete-char
   bindkey -M $mode "\C-q"             push-input
   bindkey -M $mode "\eq"              get-line
@@ -543,7 +549,11 @@ function set-theme {
   RPS1+='%(0?..%?%(1j.$b.))%(1j.%j bg jobs.)%f%b'
 }
 set-theme
-tabs -2
+if [[ -t 1 && "$TERM" != "dumb" ]]; then
+  print -n '\e[3g\r'
+  printf '\eH  %.0s' {1..80}
+  print -n '\r'
+fi
 # }}}
 
 HISTFILE="$HOME/.dotfiles/tmp/history"
@@ -559,14 +569,6 @@ do
 done
 
 fpath=($ZDOTDIR/autoload $ZDOTDIR/zsh-completions/src $fpath)
-
-if [[ -f /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion ]]
-then
-  fpath=(
-    $(realpath /google/src/files/head/depot/google3/devtools/blaze/scripts/zsh_completion)
-    $fpath
-  )
-fi
 
 # Remove platform-specific completions for other OSes
 fpath=(${fpath:#*/Completion/(AIX|BSD|Cygwin|Darwin|Solaris|openSUSE|Redhat|Mandriva)})
@@ -597,14 +599,6 @@ else
   touch ~/.dotfiles/tmp/zcompdump
 fi
 unset "_comps[open]"
-# compile zcompdump
-{
-  zcomp="$HOME/.dotfiles/tmp/zcompdump" 
-  if [[ -s "$zcomp" && (! -s "${zcomp}.zwc" || "${zcomp}" -nt "${zcomp}.zwc") ]]
-  then 
-    zcompile "$zcomp"
-  fi
-} &!
 #}}}
 
 # syntax highlighting {{{
@@ -624,9 +618,17 @@ sched +1 _load_fast_highlight
 # Auto-compile large zsh scripts in the background
 function _auto_zcompile() {
   local files=(
-    "$ZDOTDIR/zshrc"
+    "$HOME/.dotfiles/tmp/zcompdump"
+    "$ZDOTDIR/.zshrc"
     "$ZDOTDIR/syntax-highlight/fast-syntax-highlighting.plugin.zsh"
     "$ZDOTDIR/syntax-highlight/fast-highlight"
+    "$ZDOTDIR/autoload/setup-uv-env"
+    "$ZDOTDIR/autoload/cd"
+    "$ZDOTDIR/autoload/cpg"
+    "$ZDOTDIR/autoload/mkg"
+    "$ZDOTDIR/autoload/mvg"
+    "$ZDOTDIR/autoload/open"
+    "$ZDOTDIR/autoload/_bluetoothctl"
   )
   if [[ -d /google/src/cloud ]]; then
     files+=(

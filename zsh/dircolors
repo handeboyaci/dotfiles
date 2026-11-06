@@ -42,6 +42,11 @@ TERM screen-16color
 TERM screen-16color-bce
 TERM screen-256color
 TERM tmux-256color
+TERM tmux
+TERM foot
+TERM foot-extra
+TERM kitty
+TERM xterm-ghostty
 TERM screen-256color-bce
 TERM vt100
 TERM Eterm

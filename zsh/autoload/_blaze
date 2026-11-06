@@ -113,7 +113,7 @@ _blaze_get_commands() {
     # blaze_cmd_list is a global (g) array (a)
     typeset -ga _blaze_cmd_list
     _blaze_cmd_list=(
-      ${=${(f)${${"$(LC_ALL=C _call_program help ${BLAZE} 2> /dev/null)"#l#*Available commands:}%%Getting more help*}}/(#s)[[:space:]]#(#b)([a-z_-]##)*/$match[1]}
+	${=${(f)${${"$(LC_ALL=C _call_program help ${BLAZE} help 2> /dev/null)"#l#*Available commands:}%%Getting*help*}}/(#s)[[:space:]]#(#b)([a-z_-]##)*/$match[1]}
     )
     if [[ $? -eq 0 ]]; then
       _store_cache BLAZE_commands _blaze_cmd_list

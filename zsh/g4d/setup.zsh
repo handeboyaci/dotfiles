@@ -41,6 +41,9 @@ function cl-precmd {
 }
 
 function async-cl-precmd {
+  if [[ -z $VCS || -z $CITC_ROOT ]]; then
+    return
+  fi
   async_start_worker prompt
   async_register_callback prompt cl-update-prompt
   async_job prompt cl-precmd

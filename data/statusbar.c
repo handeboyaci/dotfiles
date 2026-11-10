@@ -272,6 +272,7 @@ static char g_gcal_ignored_events[MAX_IGNORED_EVENTS][128];
 static int g_gcal_ignored_event_count = 0;
 static int g_gcal_max_duration_mins = 360; /* Default 6h (ignore_long_event_threshold) */
 static int g_gcal_notify_mins = 5;         /* Default 5m urgent notification before start */
+static int g_gcal_notify_expire_mins = 8;  /* Default 8m expiration (3m after start) */
 static char g_gcal_open_cmd[512] = "google-chrome --profile-directory=Default --app=https://calendar.google.com/";
 
 /* MPRIS */
@@ -372,8 +373,16 @@ static void notify_urgent(const char *summary, const char *body) {
             snprintf(bus, sizeof(bus), "unix:path=%s/bus", g_runtime_dir);
             setenv("DBUS_SESSION_BUS_ADDRESS", bus, 0);
         }
-        execlp("notify-send", "notify-send", "-a", "Google Calendar", "-i", "calendar", "-u", "critical",
-               summary ? summary : "", body ? body : "", (char *)NULL);
+        int expire_ms = (g_gcal_notify_expire_mins > 0) ? g_gcal_notify_expire_mins * 60 * 1000 : 0;
+        if (expire_ms > 0) {
+            char exp_str[32];
+            snprintf(exp_str, sizeof(exp_str), "%d", expire_ms);
+            execlp("notify-send", "notify-send", "-a", "Google Calendar", "-i", "calendar", "-u", "critical",
+                   "-t", exp_str, summary ? summary : "", body ? body : "", (char *)NULL);
+        } else {
+            execlp("notify-send", "notify-send", "-a", "Google Calendar", "-i", "calendar", "-u", "critical",
+                   summary ? summary : "", body ? body : "", (char *)NULL);
+        }
         _exit(127);
     }
     int st = 0;
@@ -5593,6 +5602,11 @@ static bool load_config_file(const char *path) {
             if (eq) {
                 g_gcal_notify_mins = atoi(eq + 1);
             }
+        } else if (strncmp(s, "gcal_notify_expire_mins", 23) == 0 || strncmp(s, "gcal_expire_mins", 16) == 0) {
+            char *eq = strchr(s, '=');
+            if (eq) {
+                g_gcal_notify_expire_mins = atoi(eq + 1);
+            }
         } else if (strncmp(s, "gcal_open_cmd", 13) == 0 || strncmp(s, "calendar_cmd", 12) == 0) {
             char *eq = strchr(s, '=');
             if (eq) {
@@ -5918,6 +5932,7 @@ static void print_usage(const char *prog) {
            "  --ignore-long-event-threshold <DUR>     Ignore events longer than threshold (default: 6h)\n"
            "  --ignored-events <LIST>                 Comma-separated event titles/patterns to filter (e.g. 'DNS,DND,Commute')\n"
            "  --gcal-notify-mins <MINS>               Urgent notification lead time in minutes (default: 5)\n"
+           "  --gcal-notify-expire-mins <MINS>        Urgent notification expiration timeout in minutes (default: 8)\n"
            "  --lat <DEGREES|auto>                    Latitude for offline prayer times (or 'auto')\n"
            "  --lon <DEGREES|auto>                    Longitude for offline prayer times (or 'auto')\n"
            "  --auto-location                         Automatically detect latitude, longitude & timezone\n"
@@ -6094,6 +6109,8 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "--gcal-notify-mins") == 0 && i + 1 < argc) {
             g_gcal_notify_mins = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--gcal-notify-expire-mins") == 0 && i + 1 < argc) {
+            g_gcal_notify_expire_mins = atoi(argv[++i]);
         } else if ((strcmp(argv[i], "--lat") == 0 || strcmp(argv[i], "--latitude") == 0) && i + 1 < argc) {
             i++;
             if (strcasecmp(argv[i], "auto") == 0) {

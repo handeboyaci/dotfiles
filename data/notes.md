@@ -98,12 +98,11 @@ sudo rm -f \
   /usr/share/nvim/runtime/plugin/netrwPlugin.vim \
   /usr/share/nvim/runtime/syntax/netrw.vim
 
-nvim --headless -c "TSInstallSync all" -c qall
+nvim --headless -c "lua require('nvim-treesitter').install({'all'}):wait(300000) vim.cmd('qa')"
 
 nvim --headless \
-  -c 'MasonInstall bash-language-server basedpyright lua-language-server pyink ruff shellcheck shfmt stylua texlab uv vim-language-server vint' \
+  -c 'MasonInstall bash-language-server basedpyright lua-language-server ltex-ls pyink shellcheck shfmt texlab uv vim-language-server vint' \
   -c qall
-
 
 sudo systemctl mask --now ctrl-alt-del.target swayosd-libinput-backend.service
 sudo systemctl daemon-reload

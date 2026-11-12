@@ -1,10 +1,11 @@
-// BlueZ Pixel Buds media helper:
+// BlueZ Bluetooth media & headset helper:
 // - Pauses media players when earbuds are removed from ears (MediaTransport1
 //   State=="idle" debounced by 600ms so brief RF blips are ignored) or when
 //   Bluetooth disconnects (Device1.Connected==false / InterfacesRemoved)
-// - Automatically resumes playback if an idle/pause is caused by a momentary
-//   Bluetooth connection/transport drop that reconnects within 25s
-// - Displays SwayOSD volume popup on Pixel Buds AVRCP volume swipes
+// - Automatically resumes playback ONLY when an active A2DP audio transport is confirmed
+// - Automatically cycles disconnect -> wait for link drop -> connect
+//   if BlueZ drops A2DP during device power-on boot collisions (e.g. Google GID8)
+// - Displays SwayOSD volume popup on AVRCP volume swipes
 #define _GNU_SOURCE
 
 #include <ctype.h>
@@ -21,20 +22,32 @@
 #define USEC_PER_MSEC 1000ULL
 
 // Debounce before pausing on MediaTransport1 State=="idle" (earbud removal).
-// Filters out sub-600ms RF hiccups while still pausing promptly when buds are removed.
 #define IDLE_PAUSE_DEBOUNCE_USEC (600ULL * USEC_PER_MSEC)
 // If Bluetooth reconnects within 25s of a drop while playing, auto-resume.
 #define AUTO_RESUME_WINDOW_USEC  (25ULL * USEC_PER_SEC)
 // How long after MediaTransport1 appears to wait for PipeWire sink creation.
 #define TRANSPORT_SETTLE_USEC    (700ULL * USEC_PER_MSEC)
-// Fallback settle delay after Device1.Connected=true if transport already up.
-#define CONNECT_SETTLE_USEC      (1500ULL * USEC_PER_MSEC)
+// Settle delay after Device1.Connected before checking if A2DP transport was established.
+#define BOOT_SETTLE_CHECK_USEC   (3500ULL * USEC_PER_MSEC)
+// Delay before initiating disconnect cycle if initial Connect() did not bring up A2DP.
+#define RETRY_CYCLE_CHECK_USEC   (3000ULL * USEC_PER_MSEC)
+// Gap after actual link drop (Connected==0) before issuing clean reconnect.
+#define RECONNECT_GAP_AFTER_DROP_USEC (1500ULL * USEC_PER_MSEC)
 // Window linking an idle-pause to a subsequent HCI link supervision disconnect (~2-5s).
 #define DROP_BURST_WINDOW_USEC   (6ULL * USEC_PER_SEC)
 // Minimum interval between SwayOSD volume popups on earbud swipe.
 #define VOLUME_OSD_DEBOUNCE_USEC (150ULL * USEC_PER_MSEC)
 
 static const char *g_device_prefix = "/org/bluez";
+static char g_connected_device_path[256] = "";
+static char g_reconnect_target_path[256] = "";
+static bool g_has_a2dp_transport = false;
+static bool g_cycling_reconnect = false;
+
+static uint64_t g_verify_a2dp_at_usec = 0;
+static uint64_t g_trigger_disconnect_at_usec = 0;
+static uint64_t g_cycle_connect_at_usec = 0;
+
 static bool g_transport_active = false;
 static uint64_t g_active_when_idled_usec = 0;
 static uint64_t g_paused_by_idle_usec = 0;
@@ -58,6 +71,32 @@ static bool path_matches_device(const char *path) {
     size_t len = strlen(g_device_prefix);
     if (strncmp(path, g_device_prefix, len) != 0) return false;
     return path[len] == '\0' || path[len] == '/';
+}
+
+// In BlueZ, A2DP stream endpoints are under /sep<N>/fd<M>.
+// Path /dev_.../fd0 without /sep is Hands-Free (HFP/HSP) only.
+static bool is_a2dp_endpoint(const char *path) {
+    if (!path) return false;
+    return strstr(path, "/sep") != NULL;
+}
+
+static int on_connect_reply(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
+    (void)userdata;
+    (void)ret_error;
+    if (sd_bus_message_is_method_error(m, NULL)) {
+        const sd_bus_error *err = sd_bus_message_get_error(m);
+        fprintf(stderr, "bt-media-helper: connect reply: %s (%s)\n",
+                err ? err->name : "error", err ? err->message : "unknown");
+        // If br-connection-busy, immediately initiate the disconnect cycle
+        if (err && strstr(err->message ? err->message : "", "br-connection-busy") &&
+            !g_cycling_reconnect && g_connected_device_path[0] != '\0') {
+            g_trigger_disconnect_at_usec = now_usec() + (500ULL * USEC_PER_MSEC);
+        }
+    } else {
+        fprintf(stderr, "bt-media-helper: connect request completed successfully\n");
+    }
+    fflush(stderr);
+    return 1;
 }
 
 // Checks if any MPRIS player is currently Playing, and records its instance name.
@@ -96,7 +135,7 @@ static bool check_and_record_playing_player(void) {
 }
 
 static void pause_players(void) {
-    fprintf(stderr, "pixelbuds-pause: pausing all active MPRIS players\n");
+    fprintf(stderr, "bt-media-helper: pausing all active MPRIS players\n");
     fflush(stderr);
     int status = system("playerctl -a pause >/dev/null 2>&1");
     (void)status;
@@ -104,7 +143,7 @@ static void pause_players(void) {
 
 static void resume_players(void) {
     char cmd[256];
-    fprintf(stderr, "pixelbuds-pause: auto-resuming MPRIS player (%s)\n",
+    fprintf(stderr, "bt-media-helper: auto-resuming MPRIS player (%s)\n",
             g_playing_instance[0] ? g_playing_instance : "default");
     fflush(stderr);
     if (g_playing_instance[0] != '\0') {
@@ -123,6 +162,56 @@ static void show_volume_osd(void) {
     if (now - g_last_vol_osd_usec < VOLUME_OSD_DEBOUNCE_USEC) return;
     g_last_vol_osd_usec = now;
     int status = system("swayosd-client --output-volume +0 >/dev/null 2>&1 &");
+    (void)status;
+}
+
+static uint64_t g_last_sink_switch_usec = 0;
+
+static void switch_default_audio_sink(const char *path) {
+    uint64_t now = now_usec();
+    if (g_last_sink_switch_usec > 0 && (now - g_last_sink_switch_usec) < (2500ULL * USEC_PER_MSEC)) {
+        return;
+    }
+    g_last_sink_switch_usec = now;
+
+    char raw_mac[32] = "";
+    char formatted_mac[32] = "";
+    if (path) {
+        const char *dev = strstr(path, "dev_");
+        if (dev) {
+            dev += 4;
+            int i = 0;
+            while (dev[i] && dev[i] != '/' && i < 30) {
+                raw_mac[i] = dev[i];
+                formatted_mac[i] = (dev[i] == '_') ? ':' : dev[i];
+                i++;
+            }
+            raw_mac[i] = '\0';
+            formatted_mac[i] = '\0';
+        }
+    }
+
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd),
+        "(for i in $(seq 1 15); do "
+        "  id=$(pw-dump Node 2>/dev/null | jq -r --arg mac '%s' --arg raw '%s' '"
+        "    .[] | objects | select(.info?.props?[\"media.class\"] == \"Audio/Sink\" and ("
+        "      ($mac != \"\" and (((.info?.props?[\"api.bluez5.address\"] // \"\") | ascii_upcase) == ($mac | ascii_upcase) or "
+        "                         ((.info?.props?[\"node.name\"] // \"\") | contains($raw)))) or "
+        "      ($mac == \"\" and ((.info?.props?[\"node.name\"] // \"\") | startswith(\"bluez_output.\")))"
+        "    )) | .id' | head -n 1); "
+        "  if [ -n \"$id\" ]; then "
+        "    wpctl set-default \"$id\" >/dev/null 2>&1; "
+        "    exit 0; "
+        "  fi; "
+        "  sleep 0.2; "
+        "done) >/dev/null 2>&1 &",
+        formatted_mac, raw_mac);
+
+    fprintf(stderr, "bt-media-helper: triggering default audio sink switch for %s (%s)\n",
+            path ? path : "unknown", formatted_mac[0] ? formatted_mac : "any-bt");
+    fflush(stderr);
+    int status = system(cmd);
     (void)status;
 }
 
@@ -149,7 +238,6 @@ static void handle_disconnect_or_transport_drop(void) {
     g_active_when_idled_usec = 0;
     g_paused_by_idle_usec = 0;
 
-    // Always pause on disconnect/transport loss so audio never leaks to laptop speakers.
     pause_players();
 
     if (was_playing) {
@@ -209,34 +297,48 @@ static int property_changed(sd_bus_message *message, void *userdata,
             if (result < 0) return result;
 
             uint64_t now = now_usec();
-            fprintf(stderr, "pixelbuds-pause: %s MediaTransport1.State=%s\n", path, state);
+            fprintf(stderr, "bt-media-helper: %s MediaTransport1.State=%s\n", path, state);
             fflush(stderr);
+
+            bool is_a2dp = is_a2dp_endpoint(path);
+            if (is_a2dp) {
+                g_has_a2dp_transport = true;
+                g_verify_a2dp_at_usec = 0;
+                g_trigger_disconnect_at_usec = 0;
+                g_cycle_connect_at_usec = 0;
+                g_cycling_reconnect = false;
+            }
+
             if (strcmp(state, "active") == 0) {
-                g_transport_active = true;
-                g_transport_activated_usec = now;
-                g_pause_at_usec = 0;
-                g_active_when_idled_usec = 0;
-                g_paused_by_idle_usec = 0;
-                if (g_pending_resume) {
-                    schedule_auto_resume(200ULL * USEC_PER_MSEC);
+                if (is_a2dp) {
+                    g_transport_active = true;
+                    g_transport_activated_usec = now;
+                    g_pause_at_usec = 0;
+                    g_active_when_idled_usec = 0;
+                    g_paused_by_idle_usec = 0;
+                    switch_default_audio_sink(path);
+                    if (g_pending_resume) {
+                        schedule_auto_resume(300ULL * USEC_PER_MSEC);
+                    }
                 }
             } else if (strcmp(state, "pending") == 0) {
-                g_pause_at_usec = 0;
-                if (g_pending_resume) {
-                    schedule_auto_resume(TRANSPORT_SETTLE_USEC);
+                if (is_a2dp) {
+                    g_pause_at_usec = 0;
+                    if (g_pending_resume) {
+                        schedule_auto_resume(TRANSPORT_SETTLE_USEC);
+                    }
                 }
             } else if (strcmp(state, "idle") == 0) {
-                // On Linux, removing Pixel Buds from ears sets MediaTransport1 State
-                // to "idle". Schedule a 600ms debounced pause so earbud removal pauses
-                // media promptly while sub-600ms RF hiccups are ignored.
-                if (g_transport_active || check_and_record_playing_player()) {
-                    g_active_when_idled_usec = now;
-                    g_pause_at_usec = now + IDLE_PAUSE_DEBOUNCE_USEC;
-                } else {
-                    g_active_when_idled_usec = 0;
-                    g_pause_at_usec = 0;
+                if (is_a2dp) {
+                    if (g_transport_active || check_and_record_playing_player()) {
+                        g_active_when_idled_usec = now;
+                        g_pause_at_usec = now + IDLE_PAUSE_DEBOUNCE_USEC;
+                    } else {
+                        g_active_when_idled_usec = 0;
+                        g_pause_at_usec = 0;
+                    }
+                    g_transport_active = false;
                 }
-                g_transport_active = false;
             }
 
             result = sd_bus_message_exit_container(message);
@@ -268,12 +370,31 @@ static int property_changed(sd_bus_message *message, void *userdata,
             result = sd_bus_message_read(message, "b", &connected);
             if (result < 0) return result;
 
-            fprintf(stderr, "pixelbuds-pause: %s Device1.Connected=%d\n", path, connected);
+            fprintf(stderr, "bt-media-helper: %s Device1.Connected=%d\n", path, connected);
             fflush(stderr);
             if (!connected) {
+                if (g_cycling_reconnect && strcmp(g_reconnect_target_path, path) == 0) {
+                    fprintf(stderr, "bt-media-helper: disconnect completed; scheduling reconnect in 1.5s for %s\n", path);
+                    fflush(stderr);
+                    g_cycling_reconnect = false;
+                    g_cycle_connect_at_usec = now_usec() + RECONNECT_GAP_AFTER_DROP_USEC;
+                } else {
+                    if (strcmp(g_connected_device_path, path) == 0) {
+                        g_connected_device_path[0] = '\0';
+                        g_verify_a2dp_at_usec = 0;
+                        g_trigger_disconnect_at_usec = 0;
+                        g_has_a2dp_transport = false;
+                    }
+                }
                 handle_disconnect_or_transport_drop();
             } else {
-                schedule_auto_resume(CONNECT_SETTLE_USEC);
+                snprintf(g_connected_device_path, sizeof(g_connected_device_path), "%s", path);
+                g_has_a2dp_transport = false;
+                g_cycling_reconnect = false;
+                g_trigger_disconnect_at_usec = 0;
+                g_cycle_connect_at_usec = 0;
+                // Wait 3.5s for headset boot announcements before verifying A2DP
+                g_verify_a2dp_at_usec = now_usec() + BOOT_SETTLE_CHECK_USEC;
             }
 
             result = sd_bus_message_exit_container(message);
@@ -313,8 +434,17 @@ static int interfaces_added(sd_bus_message *message, void *userdata,
         if (result < 0) return result;
 
         if (strcmp(iface, "org.bluez.MediaTransport1") == 0) {
-            g_transport_activated_usec = now_usec();
-            schedule_auto_resume(TRANSPORT_SETTLE_USEC);
+            fprintf(stderr, "bt-media-helper: transport added: %s\n", object_path);
+            fflush(stderr);
+            if (is_a2dp_endpoint(object_path)) {
+                g_has_a2dp_transport = true;
+                g_verify_a2dp_at_usec = 0;
+                g_trigger_disconnect_at_usec = 0;
+                g_cycle_connect_at_usec = 0;
+                g_cycling_reconnect = false;
+                g_transport_activated_usec = now_usec();
+                switch_default_audio_sink(object_path);
+            }
         }
 
         result = sd_bus_message_skip(message, "a{sv}");
@@ -345,7 +475,12 @@ static int interfaces_removed(sd_bus_message *message, void *userdata,
     const char *iface = NULL;
     while ((result = sd_bus_message_read(message, "s", &iface)) > 0) {
         if (strcmp(iface, "org.bluez.MediaTransport1") == 0) {
-            handle_disconnect_or_transport_drop();
+            fprintf(stderr, "bt-media-helper: transport removed: %s\n", object_path);
+            fflush(stderr);
+            if (is_a2dp_endpoint(object_path)) {
+                g_has_a2dp_transport = false;
+                handle_disconnect_or_transport_drop();
+            }
         }
     }
 
@@ -383,7 +518,7 @@ int main(int argc, char **argv) {
 
     result = sd_bus_open_system(&bus);
     if (result < 0) {
-        fprintf(stderr, "pixelbuds-pause: system bus: %s\n",
+        fprintf(stderr, "bt-media-helper: system bus: %s\n",
                 strerror(-result));
         return EXIT_FAILURE;
     }
@@ -426,6 +561,49 @@ int main(int argc, char **argv) {
             }
         }
 
+        // Step 1: If 3.5s after connection there is still NO A2DP stereo transport,
+        // request BlueZ to connect the A2DP profile.
+        if (g_verify_a2dp_at_usec > 0 && now >= g_verify_a2dp_at_usec) {
+            g_verify_a2dp_at_usec = 0;
+            if (g_connected_device_path[0] != '\0' && !g_has_a2dp_transport) {
+                fprintf(stderr, "bt-media-helper: no A2DP transport after 3.5s; requesting profile connect on %s\n",
+                        g_connected_device_path);
+                fflush(stderr);
+                sd_bus_call_method_async(bus, NULL, "org.bluez", g_connected_device_path,
+                                         "org.bluez.Device1", "Connect", on_connect_reply, NULL, "");
+                // If A2DP still missing in 3s, schedule disconnect
+                g_trigger_disconnect_at_usec = now + RETRY_CYCLE_CHECK_USEC;
+            }
+        }
+
+        // Step 2: Trigger disconnect to tear down wedged link
+        if (g_trigger_disconnect_at_usec > 0 && now >= g_trigger_disconnect_at_usec) {
+            g_trigger_disconnect_at_usec = 0;
+            if (g_connected_device_path[0] != '\0' && !g_has_a2dp_transport && !g_cycling_reconnect) {
+                fprintf(stderr, "bt-media-helper: A2DP still missing; initiating clean disconnect cycle for %s\n",
+                        g_connected_device_path);
+                fflush(stderr);
+                g_cycling_reconnect = true;
+                snprintf(g_reconnect_target_path, sizeof(g_reconnect_target_path), "%s", g_connected_device_path);
+                sd_bus_call_method_async(bus, NULL, "org.bluez", g_connected_device_path,
+                                         "org.bluez.Device1", "Disconnect", NULL, NULL, "");
+            }
+        }
+
+        // Step 3: Issue Connect() ONLY AFTER the link has actually dropped (Connected==0) + 1.5s gap
+        if (g_cycle_connect_at_usec > 0 && now >= g_cycle_connect_at_usec) {
+            g_cycle_connect_at_usec = 0;
+            if (g_reconnect_target_path[0] != '\0') {
+                fprintf(stderr, "bt-media-helper: link clean; issuing fresh Connect() for %s\n",
+                        g_reconnect_target_path);
+                fflush(stderr);
+                sd_bus_call_method_async(bus, NULL, "org.bluez", g_reconnect_target_path,
+                                         "org.bluez.Device1", "Connect", on_connect_reply, NULL, "");
+                snprintf(g_connected_device_path, sizeof(g_connected_device_path), "%s", g_reconnect_target_path);
+                g_reconnect_target_path[0] = '\0';
+            }
+        }
+
         if (g_pending_resume) {
             if (now - g_disconnect_usec > AUTO_RESUME_WINDOW_USEC) {
                 g_pending_resume = false;
@@ -445,6 +623,18 @@ int main(int argc, char **argv) {
         if (g_pause_at_usec > 0) {
             wait_usec = (g_pause_at_usec > now) ? (g_pause_at_usec - now) : 0;
         }
+        if (g_verify_a2dp_at_usec > 0) {
+            uint64_t a2dp_wait = (g_verify_a2dp_at_usec > now) ? (g_verify_a2dp_at_usec - now) : 0;
+            if (a2dp_wait < wait_usec) wait_usec = a2dp_wait;
+        }
+        if (g_trigger_disconnect_at_usec > 0) {
+            uint64_t disc_wait = (g_trigger_disconnect_at_usec > now) ? (g_trigger_disconnect_at_usec - now) : 0;
+            if (disc_wait < wait_usec) wait_usec = disc_wait;
+        }
+        if (g_cycle_connect_at_usec > 0) {
+            uint64_t conn_wait = (g_cycle_connect_at_usec > now) ? (g_cycle_connect_at_usec - now) : 0;
+            if (conn_wait < wait_usec) wait_usec = conn_wait;
+        }
         if (g_pending_resume) {
             uint64_t expire_at = g_disconnect_usec + AUTO_RESUME_WINDOW_USEC;
             uint64_t next_wakeup = expire_at;
@@ -460,7 +650,7 @@ int main(int argc, char **argv) {
     }
 
 fail:
-    fprintf(stderr, "pixelbuds-pause: D-Bus error: %s\n", strerror(-result));
+    fprintf(stderr, "bt-media-helper: D-Bus error: %s\n", strerror(-result));
     sd_bus_slot_unref(removed_slot);
     sd_bus_slot_unref(added_slot);
     sd_bus_slot_unref(props_slot);

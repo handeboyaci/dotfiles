@@ -1,0 +1,15 @@
+[Unit]
+Description=Auto-pause, auto-resume, and Bluetooth profile helper
+After=graphical-session.target mpris-proxy.service
+Wants=mpris-proxy.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 'if [ -x "$HOME/.dotfiles/data/bt-media-helper" ]; then exec "$HOME/.dotfiles/data/bt-media-helper"; elif [ -x "$HOME/.local/bin/bt-media-helper" ]; then exec "$HOME/.local/bin/bt-media-helper"; elif [ -x "$HOME/.dotfiles/data/pixelbuds-pause" ]; then exec "$HOME/.dotfiles/data/pixelbuds-pause"; else exec /usr/bin/bt-media-helper; fi'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=sway-session.target
+Alias=pixelbuds-pause.service

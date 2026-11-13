@@ -24,6 +24,7 @@
 #include <sys/inotify.h>
 #include <time.h>
 #include <unistd.h>
+#include <linux/input-event-codes.h>
 #include <linux/netlink.h>
 
 #include <ft2build.h>
@@ -120,6 +121,7 @@ static char g_cache_dir[512] = "";
  * ============================================================================ */
 typedef struct {
     char name[32];
+    int num;
     bool focused;
     bool urgent;
     int x1, x2;
@@ -225,6 +227,13 @@ static void init_passthrough_inotify(void) {
 }
 static volatile sig_atomic_t g_toggle_requested = 0;
 static volatile sig_atomic_t g_geoloc_update_requested = 0;
+static volatile sig_atomic_t g_rename_ws_requested = 0;
+
+/* Inline Workspace Rename Widget */
+static bool g_ws_renaming = false;
+static char g_ws_rename_buf[32] = "";
+static int g_ws_rename_cursor = 0;
+static int g_ws_rename_num = -1;
 
 
 /* Quiet Notification Daemon */
@@ -1513,10 +1522,12 @@ static bool refresh_sway_state_ex(bool check_tree) {
             memset(new_ws, 0, sizeof(new_ws));
             for (int i = 0; i < len && new_cnt < 32; i++) {
                 struct json_object *item = json_object_array_get_idx(root, i);
-                struct json_object *j_name = NULL, *j_foc = NULL, *j_urg = NULL;
+                struct json_object *j_name = NULL, *j_num = NULL, *j_foc = NULL, *j_urg = NULL;
                 if (json_object_object_get_ex(item, "name", &j_name)) {
                     snprintf(new_ws[new_cnt].name, sizeof(new_ws[0].name),
                              "%s", json_object_get_string(j_name));
+                    new_ws[new_cnt].num =
+                        json_object_object_get_ex(item, "num", &j_num) ? json_object_get_int(j_num) : -1;
                     new_ws[new_cnt].focused =
                         json_object_object_get_ex(item, "focused", &j_foc) && json_object_get_boolean(j_foc);
                     new_ws[new_cnt].urgent =
@@ -1529,6 +1540,7 @@ static bool refresh_sway_state_ex(bool check_tree) {
             } else {
                 for (int i = 0; i < new_cnt; i++) {
                     if (strcmp(new_ws[i].name, g_workspaces[i].name) != 0 ||
+                        new_ws[i].num != g_workspaces[i].num ||
                         new_ws[i].focused != g_workspaces[i].focused ||
                         new_ws[i].urgent != g_workspaces[i].urgent) {
                         changed = true;
@@ -1539,6 +1551,7 @@ static bool refresh_sway_state_ex(bool check_tree) {
             if (changed) {
                 for (int i = 0; i < new_cnt; i++) {
                     snprintf(g_workspaces[i].name, sizeof(g_workspaces[0].name), "%s", new_ws[i].name);
+                    g_workspaces[i].num = new_ws[i].num;
                     g_workspaces[i].focused = new_ws[i].focused;
                     g_workspaces[i].urgent = new_ws[i].urgent;
                 }
@@ -4096,18 +4109,51 @@ static void render_bar(SurfaceBuf *s) {
             left_x += 5;
             if (i == 0) ws_start = left_x;
         }
-        int tw = measure_markup_line(g_workspaces[i].name, 16, false);
-        int bw = tw + 10; /* padding: 0 5px */
-        g_workspaces[i].x1 = left_x;
-        g_workspaces[i].x2 = left_x + bw;
-        if (g_workspaces[i].focused) {
+        if (g_ws_renaming && g_workspaces[i].focused) {
+            char prefix[16] = "";
+            if (g_ws_rename_num >= 0) {
+                snprintf(prefix, sizeof(prefix), "%d:", g_ws_rename_num);
+            }
+            char before_cur[48], after_cur[32];
+            snprintf(before_cur, sizeof(before_cur), "%s%.*s", prefix, g_ws_rename_cursor, g_ws_rename_buf);
+            snprintf(after_cur, sizeof(after_cur), "%s", g_ws_rename_buf + g_ws_rename_cursor);
+
+            int pw = measure_markup_line(prefix, 16, false);
+            int bw_before = measure_markup_line(before_cur, 16, false);
+            int bw_after = measure_markup_line(after_cur, 16, false);
+            int content_w = bw_before + 2 + bw_after;
+            if (g_ws_rename_buf[0] == '\0') {
+                int hint_w = pw + 2 + measure_markup_line("...", 16, false);
+                if (content_w < hint_w) content_w = hint_w;
+            }
+            int bw = content_w + 12;
+            g_workspaces[i].x1 = left_x;
+            g_workspaces[i].x2 = left_x + bw;
             draw_rounded_box(s, left_x, 1, bw, BAR_HEIGHT - 3, 3, COL_WS_FOC_BG, COL_WS_FOC_BDR);
-            render_markup_line(s, g_workspaces[i].name, left_x + 5, baseline_y, 16, COL_TEXT, false, true);
+            int tx = left_x + 5;
+            render_markup_line(s, before_cur, tx, baseline_y, 16, COL_TEXT, false, true);
+            int cur_x = tx + bw_before;
+            fill_rect(s, cur_x, 4, 2, BAR_HEIGHT - 8, COL_WS_FOC_BDR);
+            if (after_cur[0] != '\0') {
+                render_markup_line(s, after_cur, cur_x + 2, baseline_y, 16, COL_TEXT, false, true);
+            } else if (g_ws_rename_buf[0] == '\0') {
+                render_markup_line(s, "...", cur_x + 3, baseline_y, 16, COL_WS_IDLE, false, true);
+            }
+            left_x += bw;
         } else {
-            uint32_t col = g_workspaces[i].urgent ? COL_URGENT : COL_WS_IDLE;
-            render_markup_line(s, g_workspaces[i].name, left_x + 5, baseline_y, 16, col, false, true);
+            int tw = measure_markup_line(g_workspaces[i].name, 16, false);
+            int bw = tw + 10; /* padding: 0 5px */
+            g_workspaces[i].x1 = left_x;
+            g_workspaces[i].x2 = left_x + bw;
+            if (g_workspaces[i].focused) {
+                draw_rounded_box(s, left_x, 1, bw, BAR_HEIGHT - 3, 3, COL_WS_FOC_BG, COL_WS_FOC_BDR);
+                render_markup_line(s, g_workspaces[i].name, left_x + 5, baseline_y, 16, COL_TEXT, false, true);
+            } else {
+                uint32_t col = g_workspaces[i].urgent ? COL_URGENT : COL_WS_IDLE;
+                render_markup_line(s, g_workspaces[i].name, left_x + 5, baseline_y, 16, col, false, true);
+            }
+            left_x += bw;
         }
-        left_x += bw;
     }
     if (g_ws_count > 0) {
         g_mod_boxes[MOD_WORKSPACES].x1 = ws_start;
@@ -4562,6 +4608,8 @@ static uint32_t g_id_compositor = 0;
 static uint32_t g_id_shm = 0;
 static uint32_t g_id_seat = 0;
 static uint32_t g_id_pointer = 0;
+static uint32_t g_id_keyboard = 0;
+static uint32_t g_kbd_mods = 0;
 static uint32_t g_id_layer_shell = 0;
 static uint32_t g_id_idle_inhibit_mgr = 0;
 static uint32_t g_id_idle_inhibitor = 0;
@@ -4803,7 +4851,7 @@ static void show_bar_surface(void) {
         wl_send_u32_2(g_id_bar_layer, 0 /* set_size */, 0, BAR_HEIGHT);
         wl_send_u32_1(g_id_bar_layer, 1 /* set_anchor */, 1 | 4 | 8 /* TOP | LEFT | RIGHT */);
         wl_send_u32_1(g_id_bar_layer, 2 /* set_exclusive_zone */, BAR_HEIGHT);
-        wl_send_u32_1(g_id_bar_layer, 4 /* set_keyboard_interactivity */, 0);
+        wl_send_u32_1(g_id_bar_layer, 4 /* set_keyboard_interactivity */, g_ws_renaming ? 1 : 0);
         wl_send_msg(g_id_bar_surface, 6 /* commit */, NULL, 0, -1);
     }
     sync_idle_inhibitor();
@@ -4832,6 +4880,7 @@ static void hide_bar_surface(void) {
 }
 
 static bool compute_expected_bar_visibility(void) {
+    if (g_ws_renaming) return true;
     if (g_manual_hidden) return false;
     if (strcmp(g_sway_bar_mode, "invisible") == 0) return false;
     if (strcmp(g_sway_bar_mode, "hide") == 0 && strcmp(g_sway_bar_hidden_state, "hide") == 0) {
@@ -4893,6 +4942,16 @@ static void sigusr1_handler(int sig) {
 static void sigusr2_handler(int sig) {
     (void)sig;
     g_geoloc_update_requested = 1;
+    if (g_wakeup_pipe[1] >= 0) {
+        char c = 1;
+        ssize_t r = write(g_wakeup_pipe[1], &c, 1);
+        (void)r;
+    }
+}
+
+static void sigrtmin_handler(int sig) {
+    (void)sig;
+    g_rename_ws_requested = 1;
     if (g_wakeup_pipe[1] >= 0) {
         char c = 1;
         ssize_t r = write(g_wakeup_pipe[1], &c, 1);
@@ -5157,6 +5216,207 @@ static void handle_pointer_axis(uint32_t axis, int32_t fixed_val) {
 }
 
 /* ============================================================================
+ * Inline Workspace Rename Widget & Keyboard Input
+ * ============================================================================ */
+static void start_workspace_rename(void) {
+    if (g_ws_renaming) return;
+
+    pthread_mutex_lock(&g_mutex);
+    g_ws_rename_num = -1;
+    for (int i = 0; i < g_ws_count; i++) {
+        if (g_workspaces[i].focused) {
+            g_ws_rename_num = g_workspaces[i].num;
+            break;
+        }
+    }
+    g_ws_rename_buf[0] = '\0';
+    g_ws_rename_cursor = 0;
+    g_ws_renaming = true;
+    pthread_mutex_unlock(&g_mutex);
+
+    destroy_tooltip_surface();
+    update_bar_visibility_state();
+    if (g_id_bar_layer && g_id_bar_surface) {
+        wl_send_u32_1(g_id_bar_layer, 4 /* set_keyboard_interactivity */, 1 /* EXCLUSIVE */);
+        wl_send_msg(g_id_bar_surface, 6 /* commit */, NULL, 0, -1);
+    }
+    redraw_all();
+}
+
+static void cancel_workspace_rename(void) {
+    if (!g_ws_renaming) return;
+
+    pthread_mutex_lock(&g_mutex);
+    g_ws_renaming = false;
+    g_ws_rename_buf[0] = '\0';
+    g_ws_rename_cursor = 0;
+    pthread_mutex_unlock(&g_mutex);
+
+    if (g_id_bar_layer && g_id_bar_surface) {
+        wl_send_u32_1(g_id_bar_layer, 4 /* set_keyboard_interactivity */, 0 /* NONE */);
+        wl_send_msg(g_id_bar_surface, 6 /* commit */, NULL, 0, -1);
+    }
+    update_bar_visibility_state();
+    redraw_all();
+}
+
+static void commit_workspace_rename(void) {
+    if (!g_ws_renaming) return;
+
+    char name[32];
+    int num = -1;
+    pthread_mutex_lock(&g_mutex);
+    snprintf(name, sizeof(name), "%s", g_ws_rename_buf);
+    num = g_ws_rename_num;
+    pthread_mutex_unlock(&g_mutex);
+
+    if (name[0] != '\0') {
+        char escaped[64];
+        size_t j = 0;
+        for (size_t i = 0; name[i] && j + 2 < sizeof(escaped); i++) {
+            if (name[i] == '"' || name[i] == '\\') escaped[j++] = '\\';
+            escaped[j++] = name[i];
+        }
+        escaped[j] = '\0';
+
+        char cmd[128];
+        if (num >= 0) {
+            snprintf(cmd, sizeof(cmd), "rename workspace to \"%d:%s\"", num, escaped);
+        } else {
+            snprintf(cmd, sizeof(cmd), "rename workspace to \"%s\"", escaped);
+        }
+        sway_send_cmd(cmd);
+        refresh_sway_state_ex(false);
+    }
+    cancel_workspace_rename();
+}
+
+static char evdev_key_to_ascii(uint32_t key, bool shift, bool caps) {
+    static const struct { uint32_t code; char normal; char shifted; } map[] = {
+        {KEY_1, '1', '!'}, {KEY_2, '2', '@'}, {KEY_3, '3', '#'}, {KEY_4, '4', '$'},
+        {KEY_5, '5', '%'}, {KEY_6, '6', '^'}, {KEY_7, '7', '&'}, {KEY_8, '8', '*'},
+        {KEY_9, '9', '('}, {KEY_0, '0', ')'}, {KEY_MINUS, '-', '_'}, {KEY_EQUAL, '=', '+'},
+        {KEY_LEFTBRACE, '[', '{'}, {KEY_RIGHTBRACE, ']', '}'},
+        {KEY_SEMICOLON, ';', ':'}, {KEY_APOSTROPHE, '\'', '"'},
+        {KEY_GRAVE, '`', '~'}, {KEY_BACKSLASH, '\\', '|'},
+        {KEY_COMMA, ',', '<'}, {KEY_DOT, '.', '>'}, {KEY_SLASH, '/', '?'},
+        {KEY_SPACE, ' ', ' '},
+        {KEY_Q, 'q', 'Q'}, {KEY_W, 'w', 'W'}, {KEY_E, 'e', 'E'}, {KEY_R, 'r', 'R'},
+        {KEY_T, 't', 'T'}, {KEY_Y, 'y', 'Y'}, {KEY_U, 'u', 'U'}, {KEY_I, 'i', 'I'},
+        {KEY_O, 'o', 'O'}, {KEY_P, 'p', 'P'}, {KEY_A, 'a', 'A'}, {KEY_S, 's', 'S'},
+        {KEY_D, 'd', 'D'}, {KEY_F, 'f', 'F'}, {KEY_G, 'g', 'G'}, {KEY_H, 'h', 'H'},
+        {KEY_J, 'j', 'J'}, {KEY_K, 'k', 'K'}, {KEY_L, 'l', 'L'}, {KEY_Z, 'z', 'Z'},
+        {KEY_X, 'x', 'X'}, {KEY_C, 'c', 'C'}, {KEY_V, 'v', 'V'}, {KEY_B, 'b', 'B'},
+        {KEY_N, 'n', 'N'}, {KEY_M, 'm', 'M'},
+    };
+    for (size_t i = 0; i < sizeof(map) / sizeof(map[0]); i++) {
+        if (map[i].code == key) {
+            bool is_alpha = (map[i].normal >= 'a' && map[i].normal <= 'z');
+            bool upper = is_alpha ? (shift ^ caps) : shift;
+            return upper ? map[i].shifted : map[i].normal;
+        }
+    }
+    return 0;
+}
+
+static void handle_keyboard_key(uint32_t key) {
+    bool shift = (g_kbd_mods & 1) != 0;
+    bool caps = (g_kbd_mods & 2) != 0;
+    bool ctrl = (g_kbd_mods & 4) != 0;
+
+    if (key == KEY_ESC || (ctrl && (key == KEY_C || key == KEY_G))) {
+        cancel_workspace_rename();
+        return;
+    }
+    if (key == KEY_ENTER || key == KEY_KPENTER) {
+        commit_workspace_rename();
+        return;
+    }
+
+    int len = (int)strlen(g_ws_rename_buf);
+    if (key == KEY_BACKSPACE) {
+        if (g_ws_rename_cursor > 0) {
+            if (ctrl) {
+                int p = g_ws_rename_cursor;
+                while (p > 0 && g_ws_rename_buf[p - 1] == ' ') p--;
+                while (p > 0 && g_ws_rename_buf[p - 1] != ' ') p--;
+                memmove(g_ws_rename_buf + p, g_ws_rename_buf + g_ws_rename_cursor, (size_t)(len - g_ws_rename_cursor + 1));
+                g_ws_rename_cursor = p;
+            } else {
+                memmove(g_ws_rename_buf + g_ws_rename_cursor - 1, g_ws_rename_buf + g_ws_rename_cursor, (size_t)(len - g_ws_rename_cursor + 1));
+                g_ws_rename_cursor--;
+            }
+            redraw_all();
+        }
+        return;
+    }
+    if (key == KEY_DELETE) {
+        if (g_ws_rename_cursor < len) {
+            memmove(g_ws_rename_buf + g_ws_rename_cursor, g_ws_rename_buf + g_ws_rename_cursor + 1, (size_t)(len - g_ws_rename_cursor));
+            redraw_all();
+        }
+        return;
+    }
+    if (key == KEY_LEFT) {
+        if (g_ws_rename_cursor > 0) {
+            g_ws_rename_cursor--;
+            redraw_all();
+        }
+        return;
+    }
+    if (key == KEY_RIGHT) {
+        if (g_ws_rename_cursor < len) {
+            g_ws_rename_cursor++;
+            redraw_all();
+        }
+        return;
+    }
+    if (key == KEY_HOME || (ctrl && key == KEY_A)) {
+        if (g_ws_rename_cursor != 0) {
+            g_ws_rename_cursor = 0;
+            redraw_all();
+        }
+        return;
+    }
+    if (key == KEY_END || (ctrl && key == KEY_E)) {
+        if (g_ws_rename_cursor != len) {
+            g_ws_rename_cursor = len;
+            redraw_all();
+        }
+        return;
+    }
+    if (ctrl && key == KEY_U) {
+        if (len > 0) {
+            g_ws_rename_buf[0] = '\0';
+            g_ws_rename_cursor = 0;
+            redraw_all();
+        }
+        return;
+    }
+    if (ctrl && key == KEY_W) {
+        if (g_ws_rename_cursor > 0) {
+            int p = g_ws_rename_cursor;
+            while (p > 0 && g_ws_rename_buf[p - 1] == ' ') p--;
+            while (p > 0 && g_ws_rename_buf[p - 1] != ' ') p--;
+            memmove(g_ws_rename_buf + p, g_ws_rename_buf + g_ws_rename_cursor, (size_t)(len - g_ws_rename_cursor + 1));
+            g_ws_rename_cursor = p;
+            redraw_all();
+        }
+        return;
+    }
+
+    if (!ctrl) {
+        char ch = evdev_key_to_ascii(key, shift, caps);
+        if (ch && len + 1 < (int)sizeof(g_ws_rename_buf)) {
+            memmove(g_ws_rename_buf + g_ws_rename_cursor + 1, g_ws_rename_buf + g_ws_rename_cursor, (size_t)(len - g_ws_rename_cursor + 1));
+            g_ws_rename_buf[g_ws_rename_cursor] = ch;
+            g_ws_rename_cursor++;
+            redraw_all();
+        }
+    }
+}
+
+/* ============================================================================
  * Wayland Socket Event Loop Dispatcher
  * ============================================================================ */
 static void process_wayland_events(void) {
@@ -5224,6 +5484,10 @@ static void process_wayland_events(void) {
                 g_id_pointer = g_wl_next_id++;
                 wl_send_u32_1(g_id_seat, 0 /* get_pointer */, g_id_pointer);
             }
+            if ((caps & 2) && !g_id_keyboard) {
+                g_id_keyboard = g_wl_next_id++;
+                wl_send_u32_1(g_id_seat, 1 /* get_keyboard */, g_id_keyboard);
+            }
         } else if (obj_id == g_id_bar_layer && opcode == 0 /* configure */) {
             uint32_t serial = *(const uint32_t *)p;
             uint32_t w = *(const uint32_t *)(p + 4);
@@ -5267,6 +5531,24 @@ static void process_wayland_events(void) {
                 uint32_t axis = *(const uint32_t *)(p + 4);
                 int32_t val = *(const int32_t *)(p + 8);
                 handle_pointer_axis(axis, val);
+            }
+        } else if (obj_id == g_id_keyboard) {
+            if (opcode == 2 /* leave */) {
+                uint32_t surf = *(const uint32_t *)(p + 4);
+                if (surf == g_id_bar_surface && g_ws_renaming) {
+                    cancel_workspace_rename();
+                }
+            } else if (opcode == 3 /* key */) {
+                uint32_t key = *(const uint32_t *)(p + 8);
+                uint32_t state = *(const uint32_t *)(p + 12);
+                if (state == 1 && g_ws_renaming) {
+                    handle_keyboard_key(key);
+                }
+            } else if (opcode == 4 /* modifiers */) {
+                uint32_t depressed = *(const uint32_t *)(p + 4);
+                uint32_t latched = *(const uint32_t *)(p + 8);
+                uint32_t locked = *(const uint32_t *)(p + 12);
+                g_kbd_mods = depressed | latched | (locked & 2);
             }
         }
         pos += len;
@@ -5923,6 +6205,7 @@ static void print_usage(const char *prog) {
            "Pure-C statically linked Wayland Layer-Shell statusbar matching custom Waybar.\n\n"
            "Configurability Options:\n"
            "  --toggle                                Toggle visibility (hide/unhide) of running statusbar (or start if not running)\n"
+           "  --rename-workspace                      Prompt inline in running statusbar to rename focused workspace\n"
            "  --kill                                  Terminate any running statusbar instance\n"
            "  --tz <TZ>[=<EMOJI_OR_LABEL>]            Add a timezone and optional label/emoji (repeatable;\n"
            "                                          label/emoji can be empty, e.g. --tz 'UTC=' or --tz 'America/New_York=NY 🇺🇸')\n"
@@ -5954,6 +6237,7 @@ int main(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGUSR1, sigusr1_handler);
     signal(SIGUSR2, sigusr2_handler);
+    signal(SIGRTMIN, sigrtmin_handler);
 
     signal(SIGINT, sigterm_handler);
     signal(SIGTERM, sigterm_handler);
@@ -6016,6 +6300,13 @@ int main(int argc, char *argv[]) {
                 return 0;
             }
             /* Not running: continue and launch */
+        } else if (strcmp(argv[i], "--rename-workspace") == 0) {
+            pid_t pid = find_running_statusbar_pid();
+            if (pid > 0) {
+                kill(pid, SIGRTMIN);
+                return 0;
+            }
+            return 1;
         } else if (strcmp(argv[i], "--kill") == 0) {
             pid_t pid = find_running_statusbar_pid();
             if (pid > 0) {
@@ -6556,6 +6847,10 @@ int main(int argc, char *argv[]) {
                 if (g_geoloc_update_requested) {
                     g_geoloc_update_requested = 0;
                     check_location_and_timezone(true);
+                }
+                if (g_rename_ws_requested) {
+                    g_rename_ws_requested = 0;
+                    start_workspace_rename();
                 }
                 update_bar_visibility_state();
                 redraw_all();

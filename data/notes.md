@@ -15,7 +15,7 @@ sudo apt install \
   libxkbcommon-x11-dev meson ninja-build nwg-bar pkg-config playerctl \
   python3-pip ripgrep scdoc slurp swaybg swayidle swaylock swayosd tree-sitter-cli \
   tmux unzip wl-clipboard  wdisplays xdg-desktop-portal-wlr zlib1g-dev \
-  papirus-icon-theme rofi fonts-noto-color-emoji
+  papirus-icon-theme fonts-noto-color-emoji
 
 mkdir -p $HOME/.local/bin
 quiet_tmp=$(mktemp -d)
@@ -69,7 +69,7 @@ done
 
 
 cd $HOME/.config
-for f in foot jj kanshi meet-stream.conf nvim nwg-bar pipewire rofi statusbar.conf sunshine sway swayidle swaylock systemd wireplumber xdg-desktop-portal
+for f in foot jj kanshi meet-stream.conf nvim nwg-bar pipewire statusbar.conf sunshine sway swayidle swaylock systemd wireplumber xdg-desktop-portal
 do
   rm -rf $f
   ln -s $HOME/.dotfiles/$f

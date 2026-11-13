@@ -23,8 +23,6 @@ bindsym $mod+Shift+w exec nwg-bar
 
 bindsym $mod+Space exec $HOME/.local/bin/launcher
 
-bindsym $mod+b exec rofi -modi locate:$HOME/.dotfiles/rofi/rofi-locate -show locate -matching fuzzy -sort -no-levenshtein-sort -columns 1
-
 bindsym $mod+e exec $HOME/.local/bin/quietctl --toggle
 
 # change focus
@@ -78,7 +76,7 @@ bindsym shift+Print exec grim -g "$(slurp)"
 # Define names for default workspaces for which we configure key bindings later on.
 # We use variables to avoid repeating the names in multiple places.
 # switch to workspace
-bindsym $mod+n exec $HOME/.dotfiles/rofi/rofi-rename-workspace
+bindsym $mod+n exec /usr/bin/statusbar --rename-workspace
 
 bindsym $mod+1 workspace number 1
 bindsym $mod+2 workspace number 2

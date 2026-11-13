@@ -4606,10 +4606,35 @@ static uint32_t g_wl_next_id = 2;
 static uint32_t g_id_registry = 0;
 static uint32_t g_id_compositor = 0;
 static uint32_t g_id_shm = 0;
-static uint32_t g_id_seat = 0;
-static uint32_t g_id_pointer = 0;
-static uint32_t g_id_keyboard = 0;
+#define MAX_WL_SEATS 8
+static struct {
+    uint32_t seat;
+    uint32_t pointer;
+    uint32_t keyboard;
+} g_seats[MAX_WL_SEATS];
+static int g_num_seats = 0;
 static uint32_t g_kbd_mods = 0;
+
+static int find_seat_by_obj(uint32_t obj_id) {
+    for (int i = 0; i < g_num_seats; i++) {
+        if (g_seats[i].seat == obj_id) return i;
+    }
+    return -1;
+}
+
+static bool is_pointer_obj(uint32_t obj_id) {
+    for (int i = 0; i < g_num_seats; i++) {
+        if (g_seats[i].pointer == obj_id) return true;
+    }
+    return false;
+}
+
+static bool is_keyboard_obj(uint32_t obj_id) {
+    for (int i = 0; i < g_num_seats; i++) {
+        if (g_seats[i].keyboard == obj_id) return true;
+    }
+    return false;
+}
 static uint32_t g_id_layer_shell = 0;
 static uint32_t g_id_idle_inhibit_mgr = 0;
 static uint32_t g_id_idle_inhibitor = 0;
@@ -4847,7 +4872,7 @@ static void show_bar_surface(void) {
     }
     if (!g_id_bar_layer) {
         g_id_bar_layer = g_wl_next_id++;
-        wl_get_layer_surface(g_id_bar_layer, g_id_bar_surface, 0, 2 /* LAYER_TOP */, "waybar");
+        wl_get_layer_surface(g_id_bar_layer, g_id_bar_surface, 0, g_ws_renaming ? 3 /* LAYER_OVERLAY */ : 2 /* LAYER_TOP */, "waybar");
         wl_send_u32_2(g_id_bar_layer, 0 /* set_size */, 0, BAR_HEIGHT);
         wl_send_u32_1(g_id_bar_layer, 1 /* set_anchor */, 1 | 4 | 8 /* TOP | LEFT | RIGHT */);
         wl_send_u32_1(g_id_bar_layer, 2 /* set_exclusive_zone */, BAR_HEIGHT);
@@ -5235,11 +5260,11 @@ static void start_workspace_rename(void) {
     pthread_mutex_unlock(&g_mutex);
 
     destroy_tooltip_surface();
-    update_bar_visibility_state();
-    if (g_id_bar_layer && g_id_bar_surface) {
-        wl_send_u32_1(g_id_bar_layer, 4 /* set_keyboard_interactivity */, 1 /* EXCLUSIVE */);
-        wl_send_msg(g_id_bar_surface, 6 /* commit */, NULL, 0, -1);
+    /* Recreate the layer surface so keyboard_interactivity=EXCLUSIVE is set before initial map */
+    if (g_bar_visible) {
+        hide_bar_surface();
     }
+    update_bar_visibility_state();
     redraw_all();
 }
 
@@ -5252,9 +5277,8 @@ static void cancel_workspace_rename(void) {
     g_ws_rename_cursor = 0;
     pthread_mutex_unlock(&g_mutex);
 
-    if (g_id_bar_layer && g_id_bar_surface) {
-        wl_send_u32_1(g_id_bar_layer, 4 /* set_keyboard_interactivity */, 0 /* NONE */);
-        wl_send_msg(g_id_bar_surface, 6 /* commit */, NULL, 0, -1);
+    if (g_bar_visible) {
+        hide_bar_surface();
     }
     update_bar_visibility_state();
     redraw_all();
@@ -5468,8 +5492,14 @@ static void process_wayland_events(void) {
                 g_id_shm = g_wl_next_id++;
                 wl_registry_bind(name, iface, 1, g_id_shm);
             } else if (strcmp(iface, "wl_seat") == 0) {
-                g_id_seat = g_wl_next_id++;
-                wl_registry_bind(name, iface, ver < 5 ? ver : 5, g_id_seat);
+                if (g_num_seats < MAX_WL_SEATS) {
+                    uint32_t sid = g_wl_next_id++;
+                    g_seats[g_num_seats].seat = sid;
+                    g_seats[g_num_seats].pointer = 0;
+                    g_seats[g_num_seats].keyboard = 0;
+                    g_num_seats++;
+                    wl_registry_bind(name, iface, ver < 5 ? ver : 5, sid);
+                }
             } else if (strcmp(iface, "zwlr_layer_shell_v1") == 0) {
                 g_id_layer_shell = g_wl_next_id++;
                 wl_registry_bind(name, iface, ver < 4 ? ver : 4, g_id_layer_shell);
@@ -5478,15 +5508,16 @@ static void process_wayland_events(void) {
                 wl_registry_bind(name, iface, 1, g_id_idle_inhibit_mgr);
                 sync_idle_inhibitor();
             }
-        } else if (obj_id == g_id_seat && opcode == 0 /* capabilities */) {
+        } else if (opcode == 0 /* capabilities */ && find_seat_by_obj(obj_id) >= 0) {
+            int si = find_seat_by_obj(obj_id);
             uint32_t caps = *(const uint32_t *)p;
-            if ((caps & 1) && !g_id_pointer) {
-                g_id_pointer = g_wl_next_id++;
-                wl_send_u32_1(g_id_seat, 0 /* get_pointer */, g_id_pointer);
+            if ((caps & 1) && !g_seats[si].pointer) {
+                g_seats[si].pointer = g_wl_next_id++;
+                wl_send_u32_1(g_seats[si].seat, 0 /* get_pointer */, g_seats[si].pointer);
             }
-            if ((caps & 2) && !g_id_keyboard) {
-                g_id_keyboard = g_wl_next_id++;
-                wl_send_u32_1(g_id_seat, 1 /* get_keyboard */, g_id_keyboard);
+            if ((caps & 2) && !g_seats[si].keyboard) {
+                g_seats[si].keyboard = g_wl_next_id++;
+                wl_send_u32_1(g_seats[si].seat, 1 /* get_keyboard */, g_seats[si].keyboard);
             }
         } else if (obj_id == g_id_bar_layer && opcode == 0 /* configure */) {
             uint32_t serial = *(const uint32_t *)p;
@@ -5504,7 +5535,7 @@ static void process_wayland_events(void) {
             wl_send_u32_1(g_id_tip_layer, 6 /* ack_configure */, serial);
             g_tip_configured = true;
             wl_attach_rendered_shm(g_id_tip_surface, g_tip_w, g_tip_h, render_tip_cb);
-        } else if (obj_id == g_id_pointer) {
+        } else if (is_pointer_obj(obj_id)) {
             if (opcode == 0 /* enter */) {
                 uint32_t surf = *(const uint32_t *)(p + 4);
                 int32_t sx = *(const int32_t *)(p + 8) / 256;
@@ -5532,7 +5563,7 @@ static void process_wayland_events(void) {
                 int32_t val = *(const int32_t *)(p + 8);
                 handle_pointer_axis(axis, val);
             }
-        } else if (obj_id == g_id_keyboard) {
+        } else if (is_keyboard_obj(obj_id)) {
             if (opcode == 2 /* leave */) {
                 uint32_t surf = *(const uint32_t *)(p + 4);
                 if (surf == g_id_bar_surface && g_ws_renaming) {

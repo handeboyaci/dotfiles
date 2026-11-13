@@ -79,6 +79,12 @@ cd $HOME/.local/share; rm -rf applications; ln -s $HOME/.dotfiles/applications
 mkdir -p ~/.local/share/icons/hicolor/
 cd ~/.local/share/icons/hicolor/; ln -s ~/.dotfiles/icons 256x256
 
+mkdir -p $HOME/.gemini/jetski/cli
+for f in keybindings.json settings.json; do
+  rm -f $HOME/.gemini/jetski/cli/$f
+  ln -s $HOME/.dotfiles/jetski/$f $HOME/.gemini/jetski/cli/$f
+done
+
 cd $HOME/.dotfiles/tmux/tmux-thumbs
 sh tmux-thumbs-install.sh
 

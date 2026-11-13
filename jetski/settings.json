@@ -1,0 +1,22 @@
+{
+  "allowNonWorkspaceAccess": true,
+  "altScreenMode": "always",
+  "artifactReviewPolicy": "agent-decides",
+  "colorScheme": "tokyo night",
+  "editorMode": "vim",
+  "model": "Gemini 4 Hydrogen (Medium)",
+  "notifications": true,
+  "permissions": {
+    "allow": []
+  },
+  "runningLightSpeed": "fast",
+  "statusLine": {
+    "type": "",
+    "command": "",
+    "enabled": true
+  },
+  "toolPermission": "always-proceed",
+  "trustedWorkspaces": [],
+  "useTerminalCursor": true,
+  "vimInsertFirst": true
+}

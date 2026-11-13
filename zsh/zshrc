@@ -551,7 +551,7 @@ function set-theme {
 set-theme
 if [[ -t 1 && "$TERM" != "dumb" ]]; then
   print -n '\e[3g\r'
-  printf '\eH  %.0s' {1..80}
+  repeat $(( (COLUMNS - 1) / 2 )) print -n '\eH  '
   print -n '\r'
 fi
 # }}}

@@ -89,8 +89,8 @@ bindsym $mod+8 workspace number 8
 bindsym $mod+9 workspace number 9
 bindsym $mod+0 workspace number 10:mail
 
-# renumber current workspace, preserving its :name if any
-set $rename_ws sh -c 'swaymsg rename workspace to "$$(swaymsg -t get_workspaces -r | jq -r ".[]|select(.focused)|.name" | sed "s/^[^:]*/$$1/")"' _
+# renumber current workspace, preserving its :name if any, unless target index is already in use
+set $rename_ws sh -c 'target=$$(swaymsg -t get_workspaces -r | N=$$1 jq -er "if any(.[]; .num == (env.N|tonumber)) then empty else .[] | select(.focused) | .name end" | sed "s/^[^:]*/$$1/") && [ -n "$$target" ] && swaymsg rename workspace to "$$target"' _
 bindsym $mod+Shift+1 exec $rename_ws 1
 bindsym $mod+Shift+2 exec $rename_ws 2
 bindsym $mod+Shift+3 exec $rename_ws 3

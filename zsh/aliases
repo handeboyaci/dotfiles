@@ -17,13 +17,16 @@ alias bc='bc -lq'
 alias units='units -1t'
 alias octave='octave-cli -q'
 alias julia='julia -q'
+# Debian ships fd as `fdfind`, Homebrew as `fd`
+if command -v fdfind >/dev/null 2>&1; then _fd=fdfind; else _fd=fd; fi
 if [[ -z $BASH_VERSION ]]; then
-  alias fd='noglob fdfind'
+  alias fd="noglob $_fd"
   alias notmuch='noglob notmuch'
   alias find='noglob find'
 else
-  alias fd='fdfind'
+  [[ $_fd == fd ]] || alias fd="$_fd"
 fi
+unset _fd
 
 alias dc='cd'
 alias sl='ls'

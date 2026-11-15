@@ -12,7 +12,11 @@ shopt -s histappend checkwinsize globstar
 eval "$(dircolors -b ~/.dotfiles/zsh/dircolors)"
 
 [ -f /usr/share/bash-completion/bash_completion ] && source /usr/share/bash-completion/bash_completion
-[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash
+if [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
+  source /usr/share/doc/fzf/examples/key-bindings.bash
+elif command -v fzf >/dev/null 2>&1; then
+  eval "$(fzf --bash)"
+fi
 
 source $HOME/.dotfiles/zsh/aliases
 

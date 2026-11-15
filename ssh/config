@@ -1,8 +1,9 @@
-Match host *.corp.google.com,*.c.googlers.com,cloud,ofis exec "! ([ -f /proc/$PPID/cmdline ] && tr '\0' '\n' < /proc/$PPID/cmdline | grep -q '^-O') && (gcertstatus --check_remaining=1h --quiet || gcert --disable_svelte)"
-Match host ev exec "nmcli -t -f active,ssid|grep -q 'connected to ev'"
+IgnoreUnknown UseKeychain
+Match host *.corp.google.com,*.c.googlers.com,cloud,ofis exec "! (if [ -r /proc/$PPID/cmdline ]; then tr '\0' '\n' < /proc/$PPID/cmdline | grep -q '^-O'; else ps -o args= -p $PPID | tr ' ' '\n' | grep -qx -- -O; fi) && (gcertstatus --check_remaining=1h --quiet || gcert --disable_svelte)"
+Match host ev exec "nmcli -t -f active,ssid 2>/dev/null|grep -q 'connected to ev'"
   Hostname 192.168.1.12
   Port 22
-Match host hande exec "nmcli -t -f active,ssid|grep -q 'connected to ev'"
+Match host hande exec "nmcli -t -f active,ssid 2>/dev/null|grep -q 'connected to ev'"
   ProxyJump none
 Host ev
   Hostname sncr.duckdns.org
@@ -33,6 +34,7 @@ Host *
   ServerAliveCountMax 2
   IdentitiesOnly yes
   AddKeysToAgent 8h
+  UseKeychain yes
   IdentityFile ~/.ssh/id_github
   IdentityFile ~/.ssh/id_rsa
 

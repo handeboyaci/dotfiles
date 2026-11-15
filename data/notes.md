@@ -146,3 +146,59 @@ sudo usermod -aG video $USER
 # Launch Moonlight normally (automatic two-way clipboard sync + on-demand media streaming)
 # Select/switch webcam & microphone with $mod+s
 
+
+# =============================================================================
+# macOS (Apple silicon): shell + tmux + nvim + Ghostty. Everything above is Linux.
+# =============================================================================
+# System Settings first: Caps Lock -> Control; free Ctrl+Space (Keyboard Shortcuts ->
+# Input Sources); "Use F1, F2, etc. keys as standard function keys" = ON.
+
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# This session only. Do NOT add it to ~/.zprofile as the installer suggests:
+# profile + zsh/zprofile handle PATH (and ~/.zprofile is not read once ZDOTDIR is set).
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew analytics off
+
+# macOS ships BSD ls/cp/sed/grep/find/tar/awk. The GNU ones below are required: profile
+# puts their libexec/gnubin dirs ahead of /usr/bin, so they run under their plain names.
+# zsh: Apple's /bin/zsh has no zsh/pcre (Homebrew's is built with --enable-pcre).
+# rsync: Apple's lacks --info=progress2.
+brew install \
+  zsh bash \
+  coreutils gnu-sed grep findutils gnu-tar gawk \
+  tmux fzf fd ripgrep less rsync \
+  tree-sitter-cli node python \
+  git gh jj rust \
+  uv jq bat curl wget dos2unix
+brew install --cask ghostty
+
+# Neovim: the config uses dev-only features (TextPutPost, multicursor), so stable 0.12.x
+# fails at startup. Try stable first; if the check does not print 1, use HEAD.
+brew install neovim
+nvim --clean --headless -c 'echo exists("##TextPutPost")' -c qa   # must print 1
+# brew uninstall neovim && brew install --HEAD neovim
+
+grep -qx /opt/homebrew/bin/zsh /etc/shells || echo /opt/homebrew/bin/zsh | sudo tee -a /etc/shells
+chsh -s /opt/homebrew/bin/zsh
+gh auth login
+
+git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
+cp $HOME/.dotfiles/fonts/*.ttf $HOME/.dotfiles/fonts/fira/*.ttf $HOME/Library/Fonts/
+cd $HOME/.dotfiles/tmux/tmux-thumbs && cargo build --release
+
+# Symlinks. Existing files are moved to a backup dir, never deleted (ssh keys are gitignored!).
+D=$HOME/.dotfiles; B=$HOME/.dotfiles-backup-$(date +%Y%m%d-%H%M%S)
+link() {
+  if [ -L "$2" ]; then rm "$2"; elif [ -e "$2" ]; then mkdir -p "$B" && mv "$2" "$B/"; fi
+  mkdir -p "$(dirname "$2")" && ln -s "$1" "$2"
+}
+if [ -d $HOME/.ssh ] && [ ! -L $HOME/.ssh ]; then
+  for k in $HOME/.ssh/*; do [ -e "$k" ] && cp -np "$k" $D/ssh/ || true; done
+fi
+for f in bashrc profile gitconfig inputrc tmux.conf ssh; do link $D/$f $HOME/.$f; done
+for f in ghostty jj nvim; do link $D/$f $HOME/.config/$f; done
+for f in keybindings.json settings.json; do link $D/jetski/$f $HOME/.gemini/jetski/cli/$f; done
+link $D/zsh/zshenv $HOME/.zshenv   # last: this one activates everything
+
+# Then, in a new Ghostty window: the two `nvim --headless` bootstrap commands above.

@@ -1,0 +1,49 @@
+# Ghostty (macOS). Port of foot/foot.ini, which stays the Linux terminal config.
+
+# foot: font=Fira Code:style=Medium, bold=Bold, italic=Light (Fira Code has no italics)
+font-family = Fira Code
+font-style = Medium
+font-style-bold = Bold
+font-style-italic = Light
+font-style-bold-italic = Bold
+font-size = 12
+
+background = 000000
+foreground = ffffff
+background-opacity = 0.9
+window-padding-x = 0
+window-padding-y = 0
+confirm-close-surface = false
+
+# Left Option = Alt/Meta (tmux M-`, zsh \ee \em \ek \ej). Right Option stays AltGr so the
+# Turkish Q layout can still type @ # $ { [ ] } \ | ~
+macos-option-as-alt = left
+
+# Outside tmux TERM would be xterm-ghostty, which remote Linux hosts have no terminfo for.
+term = xterm-256color
+
+# tmux `refresh-client -l` (bin/tmux-sync-clipboard on F1) reads the clipboard via OSC 52;
+# the default `ask` would prompt on every sync.
+clipboard-read = allow
+clipboard-write = allow
+
+palette = 0=#000000
+palette = 1=#ff0000
+palette = 2=#00ff00
+palette = 3=#ffff00
+palette = 4=#0000ff
+palette = 5=#ff00ff
+palette = 6=#00ffff
+palette = 7=#ffffff
+palette = 8=#555555
+palette = 9=#ff6666
+palette = 10=#66ff66
+palette = 11=#ffff66
+palette = 12=#6666ff
+palette = 13=#ff66ff
+palette = 14=#66ffff
+palette = 15=#dddddd
+
+keybind = ctrl+shift+c=copy_to_clipboard
+keybind = ctrl+shift+v=paste_from_clipboard
+keybind = shift+enter=esc:[13;2u

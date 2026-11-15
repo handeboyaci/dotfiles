@@ -1,0 +1,7 @@
+# Sourced after /etc/zprofile, login shells only (zsh/.zprofile symlinks here).
+# macOS path_helper puts /usr/bin ahead of Homebrew; move the GNU gnubin dirs (added by
+# profile) and Homebrew back to the front. typeset -U in zshenv drops the later duplicates.
+# No-op on Linux, where HOMEBREW_PREFIX is unset.
+[[ -n $HOMEBREW_PREFIX ]] && path=(${(M)path:#*/libexec/gnubin} $HOMEBREW_PREFIX/bin $HOMEBREW_PREFIX/sbin $path)
+
+# vi: ft=zsh

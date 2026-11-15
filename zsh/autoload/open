@@ -1,5 +1,10 @@
 # vi: ft=zsh
 
+if [[ $OSTYPE == darwin* ]]; then
+  command open "$@"
+  return $?
+fi
+
 if [[ ! -f $1 && ! -d $1 ]]; then
   echo "$1 not found."
   return 1

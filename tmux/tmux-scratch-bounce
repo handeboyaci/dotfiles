@@ -1,0 +1,15 @@
+#!/bin/sh
+# usage: tmux-scratch-bounce <client>; move a non-popup client off a scratch_<id> session
+set -u
+
+c=$1
+t() { tmux -S "${TMUX%%,*}" "$@"; }
+
+target=$(t list-sessions -F '#{session_activity} #{session_id}' \
+  -f '#{&&:#{==:#{session_attached},0},#{!=:#{m/r:^scratch_[0-9]+$,#{session_name}},1}}' \
+  | sort -rn | head -n1 | cut -d' ' -f2)
+
+if [ -z "$target" ] || ! t switch-client -c "$c" -t "$target"; then
+  t switch-client -c "$c" -l 2>/dev/null || t detach-client -t "$c"
+fi
+exec "${0%/*}/tmux-gc-scratch"

@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+sock="${TMUX%%,*}"
+pane_id=$(tmux display-message -p -t "\$${TMUX##*,}:" '#{s/%//:pane_id}')
+session="scratch_${pane_id}"
+popup_tty=$(tty)
+
+unset TMUX
+
+t() { tmux -S "$sock" "$@"; }
+
+if ! t has-session -t "=$session" 2>/dev/null; then
+  t new-session -d -s "$session" \; set status off \; set detach-on-destroy on
+fi
+
+t set -t "=$session:" @scratch_popup_tty "$popup_tty"
+trap 't set -t "=$session:" -u @scratch_popup_tty 2>/dev/null || true' EXIT HUP TERM
+t attach -t "=$session" || true

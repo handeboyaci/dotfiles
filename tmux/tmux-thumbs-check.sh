@@ -13,7 +13,7 @@ prompt_update() {
   if tmux list-clients &>/dev/null; then
     tmux split-window "${cmd}"
   else
-    tmux set-hook -g client-session-changed "split-window '${cmd}'; set-hook -ug client-session-changed"
+    tmux set-hook -g 'client-session-changed[99]' "split-window '${cmd}'; set-hook -ug 'client-session-changed[99]'"
   fi
   exit
 }

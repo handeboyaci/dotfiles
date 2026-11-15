@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+[ -n "${TMUX:-}" ] || exit 0
+t() { tmux -S "${TMUX%%,*}" "$@"; }
+
+scratch_sessions=$(t list-sessions -F '#{session_name}' -f '#{&&:#{m/r:^scratch_[0-9]+$,#{session_name}},#{==:#{session_attached},0}}' 2>/dev/null || true)
+[ -n "$scratch_sessions" ] || exit 0
+
+live_panes=$(t list-panes -a -F 'scratch_#{s/%//:pane_id}' 2>/dev/null || true)
+
+for s in $scratch_sessions; do
+  found=0
+  for p in $live_panes; do
+    if [ "$s" = "$p" ]; then
+      found=1
+      break
+    fi
+  done
+  if [ "$found" -eq 0 ]; then
+    t kill-session -t "=$s" 2>/dev/null || true
+  fi
+done

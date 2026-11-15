@@ -29,6 +29,7 @@ function _tmux_selector() {
   local -a tmux_sessions=()
   if (( list_status == 0 )); then
     tmux_sessions=( ${(f)raw_output} )
+    tmux_sessions=( ${tmux_sessions:#scratch_<->,*} )
   elif [[ "$raw_output" == *"protocol version mismatch"* ]] && (( $+commands[tmx2] )); then
     tmux_cmd="tmx2"
   fi

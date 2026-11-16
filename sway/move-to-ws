@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+n="$1"
+
+target=$(swaymsg -t get_tree -r | N="$n" jq -r '
+  first(.. | objects | select(.type? == "workspace" and .name != "__i3_scratch" and ([.. | objects | select(.focused? == true)] | length > 0)))
+  | if .num == (env.N | tonumber) then
+      empty
+    elif (.focused == true and (.floating_nodes | length) == 0)
+         or ([.. | objects | select(.pid? != null)] | length) <= 1 then
+      if (.name | contains(":")) then
+        env.N + ":" + (.name | split(":")[1:] | join(":"))
+      else
+        env.N
+      end
+    else
+      env.N
+    end
+')
+
+[ -n "$target" ] || exit 0
+
+swaymsg -- "move container to workspace number \"$target\"; workspace number \"$target\""

@@ -89,18 +89,18 @@ bindsym $mod+8 workspace number 8
 bindsym $mod+9 workspace number 9
 bindsym $mod+0 workspace number 10:mail
 
-# renumber current workspace, preserving its :name if any, unless target index is already in use
-set $rename_ws sh -c 'target=$$(swaymsg -t get_workspaces -r | N=$$1 jq -er "if any(.[]; .num == (env.N|tonumber)) then empty else .[] | select(.focused) | .name end" | sed "s/^[^:]*/$$1/") && [ -n "$$target" ] && swaymsg rename workspace to "$$target"' _
-bindsym $mod+Shift+1 exec $rename_ws 1
-bindsym $mod+Shift+2 exec $rename_ws 2
-bindsym $mod+Shift+3 exec $rename_ws 3
-bindsym $mod+Shift+4 exec $rename_ws 4
-bindsym $mod+Shift+5 exec $rename_ws 5
-bindsym $mod+Shift+6 exec $rename_ws 6
-bindsym $mod+Shift+7 exec $rename_ws 7
-bindsym $mod+Shift+8 exec $rename_ws 8
-bindsym $mod+Shift+9 exec $rename_ws 9
-bindsym $mod+Shift+0 exec $rename_ws 10
+# move focused container to workspace N (preserving :name if all containers on the workspace are moved)
+set $move_to_ws $HOME/.dotfiles/sway/move-to-ws
+bindsym $mod+Shift+1 exec $move_to_ws 1
+bindsym $mod+Shift+2 exec $move_to_ws 2
+bindsym $mod+Shift+3 exec $move_to_ws 3
+bindsym $mod+Shift+4 exec $move_to_ws 4
+bindsym $mod+Shift+5 exec $move_to_ws 5
+bindsym $mod+Shift+6 exec $move_to_ws 6
+bindsym $mod+Shift+7 exec $move_to_ws 7
+bindsym $mod+Shift+8 exec $move_to_ws 8
+bindsym $mod+Shift+9 exec $move_to_ws 9
+bindsym $mod+Shift+0 exec $move_to_ws 10
 
 # move between monitors
 bindsym $mod+Up move workspace to output up

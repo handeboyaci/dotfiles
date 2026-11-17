@@ -1,8 +1,12 @@
 [Unit]
 Description=Start the Quiet notification service
-After=graphical-session.target
-PartOf=graphical-session.target
-StartLimitIntervalSec=0
+After=graphical-session.target sway-headless-session.target
+# Stop together with whichever sway session pulled us in.
+PartOf=graphical-session.target sway-headless-session.target
+# Retry while the compositor comes up, but give up instead of looping forever
+# when there is no Wayland display (quiet exits 0 in that case).
+StartLimitIntervalSec=60
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -12,4 +16,4 @@ Restart=always
 RestartSec=3
 
 [Install]
-WantedBy=sway-session.target sway-headless-session.target default.target
+WantedBy=sway-session.target sway-headless-session.target

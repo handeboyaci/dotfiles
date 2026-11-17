@@ -3,13 +3,18 @@ Description=Auto-pause, auto-resume, and Bluetooth profile helper
 After=graphical-session.target mpris-proxy.service
 Wants=mpris-proxy.service
 PartOf=graphical-session.target
+# Safe to enable on every machine: skipped (not failed) unless a binary is
+# installed. Build with `make -C ~/.dotfiles/data bt-media-helper`.
+ConditionFileIsExecutable=|%h/.dotfiles/data/bt-media-helper
+ConditionFileIsExecutable=|%h/.local/bin/bt-media-helper
+ConditionFileIsExecutable=|/usr/local/bin/bt-media-helper
+ConditionFileIsExecutable=|/usr/bin/bt-media-helper
 
 [Service]
 Type=simple
-ExecStart=/bin/sh -c 'if [ -x "$HOME/.dotfiles/data/bt-media-helper" ]; then exec "$HOME/.dotfiles/data/bt-media-helper"; elif [ -x "$HOME/.local/bin/bt-media-helper" ]; then exec "$HOME/.local/bin/bt-media-helper"; elif [ -x "$HOME/.dotfiles/data/pixelbuds-pause" ]; then exec "$HOME/.dotfiles/data/pixelbuds-pause"; else exec /usr/bin/bt-media-helper; fi'
+ExecStart=/bin/sh -c 'for b in "$HOME/.dotfiles/data" "$HOME/.local/bin" /usr/local/bin /usr/bin; do [ -x "$b/bt-media-helper" ] && exec "$b/bt-media-helper"; done; exit 1'
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=sway-session.target
-Alias=pixelbuds-pause.service

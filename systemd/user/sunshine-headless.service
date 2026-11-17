@@ -8,6 +8,7 @@ PartOf=sway-sunshine.service
 
 [Service]
 Type=simple
+LimitNICE=-20
 Environment=WAYLAND_DISPLAY=wayland-1
 Environment=SWAYSOCK=%t/sway-sunshine.sock
 Environment=XDG_SESSION_TYPE=wayland

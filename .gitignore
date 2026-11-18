@@ -26,3 +26,4 @@ data/fullmoon
 *.un~
 applications/chrome-*.desktop
 applications/mimeinfo.cache
+systemd/user/jetski*

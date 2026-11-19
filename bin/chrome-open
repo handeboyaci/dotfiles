@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Open URLs in the current Sway workspace's Chrome window, or a new window."""
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+
+def is_chrome_browser(node: dict) -> bool:
+  """Return True if node is a normal Google Chrome window (not a --app PWA)."""
+  if node.get("nodes") or node.get("floating_nodes"):
+    return False
+  if node.get("app_id") == "google-chrome":
+    return True
+  wp = node.get("window_properties") or {}
+  return wp.get("class") == "Google-chrome" and wp.get("instance") == "google-chrome"
+
+
+def has_focused(node: dict) -> bool:
+  if node.get("focused"):
+    return True
+  return any(
+      has_focused(child)
+      for child in node.get("nodes", []) + node.get("floating_nodes", [])
+  )
+
+
+def find_focused_workspace(node: dict) -> dict | None:
+  if node.get("type") == "workspace" and node.get("name") != "__i3_scratch":
+    if has_focused(node):
+      return node
+  for child in node.get("nodes", []) + node.get("floating_nodes", []):
+    ws = find_focused_workspace(child)
+    if ws is not None:
+      return ws
+  return None
+
+
+def find_mru_chrome_in_workspace(ws: dict) -> int | None:
+  """Return con_id of the most recently focused Chrome window in ws."""
+  if is_chrome_browser(ws):
+    return ws.get("id")
+
+  children = ws.get("nodes", []) + ws.get("floating_nodes", [])
+  by_id = {c["id"]: c for c in children if "id" in c}
+  ordered: list[dict] = []
+  seen: set[int] = set()
+  for cid in ws.get("focus", []):
+    if cid in by_id and cid not in seen:
+      ordered.append(by_id[cid])
+      seen.add(cid)
+  for c in children:
+    cid = c.get("id")
+    if cid not in seen:
+      ordered.append(c)
+
+  for child in ordered:
+    found = find_mru_chrome_in_workspace(child)
+    if found is not None:
+      return found
+  return None
+
+
+def get_mru_profile() -> str | None:
+  """Read the most recently used Chrome profile directory from Local State."""
+  local_state = os.path.expanduser("~/.config/google-chrome/Local State")
+  try:
+    with open(local_state, encoding="utf-8") as f:
+      data = json.load(f)
+  except (OSError, ValueError):
+    return None
+
+  profile = data.get("profile") or {}
+  info_cache = profile.get("info_cache") or {}
+  last_used = profile.get("last_used")
+  if isinstance(last_used, str) and last_used:
+    if not info_cache or last_used in info_cache:
+      return last_used
+
+  if info_cache:
+    return max(
+        info_cache,
+        key=lambda k: (info_cache[k] or {}).get("active_time", 0),
+    )
+  return None
+
+
+def exec_chrome(extra_args: list[str], urls: list[str]) -> None:
+  os.execvp("google-chrome", ["google-chrome", *extra_args, *urls])
+
+
+def main() -> None:
+  urls = sys.argv[1:]
+  if not os.environ.get("SWAYSOCK"):
+    exec_chrome([], urls)
+
+  try:
+    res = subprocess.run(
+        ["swaymsg", "-t", "get_tree", "-r"],
+        capture_output=True,
+        text=True,
+        timeout=2,
+        check=True,
+    )
+    tree = json.loads(res.stdout)
+  except (OSError, subprocess.SubprocessError, ValueError):
+    exec_chrome([], urls)
+
+  ws = find_focused_workspace(tree)
+  if ws is None:
+    exec_chrome([], urls)
+
+  con_id = find_mru_chrome_in_workspace(ws)
+  if con_id is not None:
+    subprocess.run(
+        ["swaymsg", f"[con_id={con_id}] focus"],
+        capture_output=True,
+        timeout=2,
+        check=False,
+    )
+    # Give Chrome's event loop a moment to process the Wayland/X11 activation
+    # so it opens the URL in this window rather than a previously active one.
+    time.sleep(0.05)
+    exec_chrome([], urls)
+
+  profile = get_mru_profile()
+  extra_args = ["--new-window"]
+  if profile:
+    extra_args.append(f"--profile-directory={profile}")
+  exec_chrome(extra_args, urls)
+
+
+if __name__ == "__main__":
+  main()

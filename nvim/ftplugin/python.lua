@@ -3,6 +3,10 @@ vim.bo.shiftwidth = 2
 vim.bo.softtabstop = 2
 vim.bo.tabstop = 2
 
+if vim.fn.executable("basedpyright-langserver") ~= 1 then
+	return
+end
+
 local root_dir = vim.fs.root(0, {
 	"basedpyrightconfig.json",
 	"pyrightconfig.json",

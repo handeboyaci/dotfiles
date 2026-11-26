@@ -1,5 +1,9 @@
 vim.bo.textwidth = 120
 
+if vim.fn.executable("lua-language-server") ~= 1 then
+	return
+end
+
 local runtime_path = vim.split(package.path, ";")
 
 table.insert(runtime_path, "lua/?.lua")

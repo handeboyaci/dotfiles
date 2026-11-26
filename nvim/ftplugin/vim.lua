@@ -1,4 +1,4 @@
-if vim.fn.getcmdwintype() ~= "" then
+if vim.fn.getcmdwintype() ~= "" or vim.fn.executable("vim-language-server") ~= 1 then
 	return
 end
 

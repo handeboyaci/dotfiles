@@ -59,6 +59,7 @@ function _tmux_selector() {
       rm -f -- "$t"
     fi
 
+    (( list_status == 0 )) && tmux set-environment -g PATH "$PATH" 2>/dev/null
     exec env "${env_args[@]}" tmux "$@"
   }
 

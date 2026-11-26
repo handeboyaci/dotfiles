@@ -9,7 +9,11 @@ local name=${@//[^0-9a-zA-Z_]/_} # replace the unallowed chars with an underscor
 
 if [[ -n ${(P)name} ]]; then
   echo "Deleting the definition: ${name}=${(P)name}"
-  command sed -i "/^${name}=/d" $SAVEDDIRS
+  if command sed --version >/dev/null 2>&1; then
+    command sed -i "/^${name}=/d" "$SAVEDDIRS"
+  else
+    command sed -i '' "/^${name}=/d" "$SAVEDDIRS"
+  fi
 fi
 
 unset $name

@@ -1,14 +1,34 @@
 alias clear!='clear&&printf "\e[3J"'
-alias ls='ls --group-directories-first --color=auto'
+if ls --version >/dev/null 2>&1; then
+  alias ls='ls --group-directories-first --color=auto'
+  alias lx='ls -XB'
+else
+  alias ls='ls -G'
+fi
 alias la='ls -AF'
 alias ll='ls -lhAF'
-alias lx='ls -XB'
-alias cp='cp -ivdRp'
+if cp --version >/dev/null 2>&1; then
+  alias cp='cp -ivdRp'
+else
+  alias cp='cp -ivRpP'
+fi
 alias mv='mv -iv'
 alias mkdir='mkdir -p'
-alias sed='sed -r'
-alias grep='grep -P --color=auto'
-alias scp='rsync -az --info=progress2 -e "ssh -q"'
+if sed --version >/dev/null 2>&1; then
+  alias sed='sed -r'
+else
+  alias sed='sed -E'
+fi
+if echo "" | grep -P '' >/dev/null 2>&1; then
+  alias grep='grep -P --color=auto'
+else
+  alias grep='grep -E --color=auto'
+fi
+if rsync --help 2>&1 | grep -q -- '--info='; then
+  alias scp='rsync -az --info=progress2 -e "ssh -q"'
+else
+  alias scp='rsync -az --progress -e "ssh -q"'
+fi
 alias rm='rm -i'
 alias ln='ln -i'
 alias type='type -a'

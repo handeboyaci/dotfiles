@@ -1,6 +1,6 @@
 # vi: fdm=marker
-for p in $HOME/.dotfiles/bin $HOME/.local/bin; do
-  if ! (( $path[(I)$p] )); then
+for p in $HOME/.dotfiles/bin $HOME/.local/bin /usr/local/jpmc/bin; do
+  if [[ -d $p ]] && ! (( $path[(I)$p] )); then
     path=($p $path)
   fi
 done

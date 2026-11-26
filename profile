@@ -15,6 +15,7 @@ case "$OSTYPE" in
       [ -d "$_d" ] && case ":$PATH:" in *":$_d:"*) ;; *) PATH="$_d:$PATH" ;; esac
     done
     unset _f _d
+    [ -d /usr/local/jpmc/bin ] && case ":$PATH:" in *:/usr/local/jpmc/bin:*) ;; *) PATH="/usr/local/jpmc/bin:$PATH" ;; esac
     export BROWSER=open
     ;;
   *)

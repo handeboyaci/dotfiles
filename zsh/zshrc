@@ -627,3 +627,4 @@ function _auto_zcompile() {
 { _auto_zcompile } &!
 
 setup-uv-env
+true

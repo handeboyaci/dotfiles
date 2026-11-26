@@ -3,6 +3,7 @@ if ls --version >/dev/null 2>&1; then
   alias ls='ls --group-directories-first --color=auto'
   alias lx='ls -XB'
 else
+  export LSCOLORS="ExGxFxDxCxegedabagacad"
   alias ls='ls -G'
 fi
 alias la='ls -AF'

@@ -6,6 +6,7 @@ Match host ev exec "nmcli -t -f active,ssid 2>/dev/null|grep -q 'connected to ev
 Match host hande exec "nmcli -t -f active,ssid 2>/dev/null|grep -q 'connected to ev'"
   ProxyJump none
 Host ev
+  User sselcuk
   Hostname sncr.duckdns.org
   Port 2233
   IdentityFile ~/.ssh/id_ev

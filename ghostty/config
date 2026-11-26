@@ -11,6 +11,7 @@ font-size = 12
 background = 000000
 foreground = ffffff
 background-opacity = 0.9
+alpha-blending = linear-corrected
 window-padding-x = 0
 window-padding-y = 0
 confirm-close-surface = false
@@ -47,3 +48,4 @@ palette = 15=#dddddd
 keybind = ctrl+shift+c=copy_to_clipboard
 keybind = ctrl+shift+v=paste_from_clipboard
 keybind = shift+enter=esc:[13;2u
+keybind = ctrl+shift+space=esc:[32;6u

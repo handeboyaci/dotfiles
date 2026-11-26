@@ -147,7 +147,8 @@ vim.opt.switchbuf = 'useopen,usetab'
 vim.opt.foldmethod = 'expr'
 vim.opt.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
 vim.opt.fillchars = { vert = '│', fold = '·', diff = '-' }
-vim.opt.foldtext = require('fold_text').foldtext
+_G.FoldText = require('fold_text').foldtext
+vim.opt.foldtext = 'v:lua.FoldText()'
 vim.opt.foldlevel = 100
 
 -- Matchpairs

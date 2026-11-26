@@ -38,10 +38,6 @@ retrieval_dflt_
 #eo-search-signals-batch-jobs
 geo-search-signals-batch-jobs
 sharded
-google3
 borg
 qrewrite
 #rc
-/google/src
-/google/src
-google/src

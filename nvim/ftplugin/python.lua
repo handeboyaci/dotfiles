@@ -20,13 +20,7 @@ vim.lsp.start({
 	root_dir = root_dir,
 	single_file_support = true,
 	on_attach = function(client, bufnr)
-		if vim.b[bufnr].is_google3_file then
-			vim.defer_fn(function()
-				vim.lsp.buf_detach_client(bufnr, client.id)
-			end, 100)
-		else
-			client.server_capabilities.documentFormattingProvider = false
-			client.server_capabilities.documentRangeFormattingProvider = false
-		end
+		client.server_capabilities.documentFormattingProvider = false
+		client.server_capabilities.documentRangeFormattingProvider = false
 	end,
 })

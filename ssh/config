@@ -1,5 +1,4 @@
 IgnoreUnknown UseKeychain
-Match host *.corp.google.com,*.c.googlers.com,cloud,ofis exec "! (if [ -r /proc/$PPID/cmdline ]; then tr '\0' '\n' < /proc/$PPID/cmdline | grep -q '^-O'; else ps -o args= -p $PPID | tr ' ' '\n' | grep -qx -- -O; fi) && (gcertstatus --check_remaining=1h --quiet || gcert --disable_svelte)"
 Match host ev exec "nmcli -t -f active,ssid 2>/dev/null|grep -q 'connected to ev'"
   Hostname 192.168.1.12
   Port 22
@@ -10,17 +9,6 @@ Host ev
   Hostname sncr.duckdns.org
   Port 2233
   IdentityFile ~/.ssh/id_ev
-Host cloud
-  Hostname sselcuk.c.googlers.com
-  ProxyCommand corp-ssh-helper %h %p
-  ForwardX11 yes
-  ForwardX11Trusted yes
-Host ofis
-  Hostname sselcuk3.nyc.corp.google.com
-  ProxyCommand corp-ssh-helper %h %p
-  ForwardX11 no
-  ForwardX11Trusted no
-  Ciphers aes192-ctr,aes128-ctr
 Host hande
   Hostname 192.168.1.6
   User hande

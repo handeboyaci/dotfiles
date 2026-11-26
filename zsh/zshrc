@@ -11,9 +11,7 @@ export FZF_CTRL_T_OPTS="--preview='less {}'"
 
 () {
   local -A WORKSTATION_REMOTES=(
-    laptop "ofis cloud ev"
-    ofis   "cloud ev"
-    hande  "ev"
+    hande "ev"
   )
   local -a extra_args=()
   if [[ -z $SSH_TTY && -n "${WORKSTATION_REMOTES[$WORKSTATION_NAME]}" ]]; then
@@ -22,31 +20,6 @@ export FZF_CTRL_T_OPTS="--preview='less {}'"
   fi
   source "$ZDOTDIR/tmux-selector/tmux-selector.zsh" "${extra_args[@]}"
 }
-
-if [[ "$WORKSTATION_NAME" == "cloud" ]]; then
-  gcertstatus --nocheck_ssh --quiet || gcert --disable_svelte
-  if [[ -z $SNAP_BASHRC_SOURCED ]]; then
-    local _snap_cfs="/google/data/ro/teams/ix-ml/snap/config/bashrc"
-    local _snap_cache="$HOME/.dotfiles/tmp/snap_bashrc"
-
-    if [[ ! -f "$_snap_cache" ]]; then
-      # Blocking fetch on very first use to guarantee environment
-      cp -f "$_snap_cfs" "$_snap_cache" 2>/dev/null
-    else
-      # Background refresh if cache is older than 24h
-      local -a _snap_dumps=( "$_snap_cache"(N.mh-24) )
-      if (( ! $#_snap_dumps )); then
-        { cp -f "$_snap_cfs" "$_snap_cache" 2>/dev/null } &!
-      fi
-    fi
-
-    if [[ -r "$_snap_cache" ]]; then
-      source "$_snap_cache"
-    fi
-  fi
-  export SNAP_DEFAULT_FOR_SYNC=true
-  export SNAP_DEFAULT_FOR_NEW_WORKSPACE=true
-fi
 
 # Use GCR's underlying OpenSSH agent socket in interactive shells
 # to avoid background GUI askpass hangs across SSH and tmux
@@ -554,10 +527,7 @@ bindkey -M vicmd J vi-join-custom
 # theme {{{
 function set-theme {
   # bold (pink # if sudo) green name (@ host if SSH) | green
-  local cl='%F{black}⠀%f'
-  PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@$WORKSTATION_NAME}%f | $GREEN"
-  PS1+='%(1v.$CITC_NAME %f%b(%(2v.'$cl'%2v. 📤) @'$cl'%1v ) %B| .)'
-  PS1+='$GREEN%(1v.${CITC_PWD+//$CITC_PWD}.%d)'
+  PS1="%B$PINK%(!.%# .)$GREEN%n${SSH_CONNECTION+@$WORKSTATION_NAME}%f | $GREEN%d"
   PS1+=$'\n%{\r%}$PROMPT_COLOR❯%b%f '
 
   b=" %f|$PINK "
@@ -596,7 +566,6 @@ fi
 for i ($ZDOTDIR/autoload/^_*(:t)) autoload -U $i
 
 source "$ZDOTDIR/aliases"
-[[ -d /google/src/cloud && -f "$ZDOTDIR/g4d/setup.zsh" ]] && source "$ZDOTDIR/g4d/setup.zsh"
 
 SAVEDDIRS="$HOME/.dotfiles/tmp/dirs"
 source "$ZDOTDIR/savedir/setup.zsh"
@@ -650,13 +619,6 @@ function _auto_zcompile() {
     "$ZDOTDIR/autoload/open"
     "$ZDOTDIR/autoload/_bluetoothctl"
   )
-  if [[ -d /google/src/cloud ]]; then
-    files+=(
-      "$ZDOTDIR/g4d/async.zsh"
-      "$ZDOTDIR/autoload/_blaze"
-      "$ZDOTDIR/autoload/_g4_generated_completion"
-    )
-  fi
   local f
   for f in $files; do
     if [[ -s "$f" && (! -s "${f}.zwc" || "$f" -nt "${f}.zwc") ]]; then

@@ -124,9 +124,13 @@ vim.opt.wildignore = '*.o,*~,*.sw*'
 vim.opt.wildignorecase = true
 
 -- Completeopt and popup menu
-vim.opt.completeopt = 'menu,menuone,noselect,popup'
-vim.opt.pumborder = 'rounded'
-vim.opt.pummaxwidth = 80
+vim.opt.completeopt = vim.fn.has('nvim-0.11') == 1 and 'menu,menuone,noselect,popup' or 'menu,menuone,noselect'
+if vim.fn.exists('+pumborder') == 1 then
+  vim.opt.pumborder = 'rounded'
+end
+if vim.fn.exists('+pummaxwidth') == 1 then
+  vim.opt.pummaxwidth = 80
+end
 
 -- Tabline and match
 vim.opt.showtabline = 0

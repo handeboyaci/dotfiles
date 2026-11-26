@@ -68,7 +68,7 @@ function _G.StatusLine()
 		stl = stl .. vim.fn.pathshorten(relpath) .. "/"
 	end
 
-	local diag_status = vim.diagnostic.status()
+	local diag_status = vim.diagnostic.status and vim.diagnostic.status() or ""
 	local diag_part = (diag_status ~= "" and (" " .. diag_status .. " |") or "")
 	stl = stl .. "%t%([%M%R%H%W]%)%=" .. diag_part .. " %P col %c %y"
 

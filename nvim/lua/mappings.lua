@@ -23,10 +23,13 @@ vim.keymap.set('n', 'ZL', function()
   vim.cmd.normal({ '<C-L>', bang = true })
 end, { desc = 'Redraw, clear search highlights, and clear multicursors' })
 
--- Restore multicursors
-vim.keymap.set('n', 'g<C-Q>', function()
-  require('vim._core.mcursor').restore()
-end, { desc = 'Restore multicursors' })
+-- Restore multicursors (Neovim 0.12+)
+local ok_mcursor, mcursor = pcall(require, 'vim._core.mcursor')
+if ok_mcursor then
+  vim.keymap.set('n', 'g<C-Q>', function()
+    mcursor.restore()
+  end, { desc = 'Restore multicursors' })
+end
 
 -- Swap column / standard visual mode
 vim.keymap.set('n', 'v', '<C-v>')

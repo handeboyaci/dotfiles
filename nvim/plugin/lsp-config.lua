@@ -15,7 +15,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		)
 
 
-		if client.server_capabilities.completionProvider ~= nil then
+		if vim.lsp.completion and client.server_capabilities.completionProvider ~= nil then
 			vim.lsp.completion.enable(true, client.id, args.buf, { autotrigger = true })
 		end
 
@@ -69,14 +69,16 @@ vim.api.nvim_create_autocmd("LspAttach", {
 	end,
 })
 
-vim.api.nvim_create_autocmd("FileType", {
-	desc = "Re-apply LSP buffer defaults (omnifunc, tagfunc, formatexpr) on reload",
-	callback = function(args)
-		for _, client in ipairs(vim.lsp.get_clients({ bufnr = args.buf })) do
-			vim.lsp._set_defaults(client, args.buf)
-		end
-	end,
-})
+if vim.lsp._set_defaults then
+	vim.api.nvim_create_autocmd("FileType", {
+		desc = "Re-apply LSP buffer defaults (omnifunc, tagfunc, formatexpr) on reload",
+		callback = function(args)
+			for _, client in ipairs(vim.lsp.get_clients({ bufnr = args.buf })) do
+				vim.lsp._set_defaults(client, args.buf)
+			end
+		end,
+	})
+end
 
 vim.keymap.set("", "<Leader>e", vim.diagnostic.open_float, { noremap = true, silent = true })
 

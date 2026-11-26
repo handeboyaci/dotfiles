@@ -1,6 +1,6 @@
 # in jupyterlab vim extension, remove modifyEdgeSomething
 
-git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
+git clone --recursive https://github.com/sencer/dotfiles.git $HOME/.dotfiles
 
 VERSION=20
 
@@ -183,7 +183,7 @@ grep -qx /opt/homebrew/bin/zsh /etc/shells || echo /opt/homebrew/bin/zsh | sudo 
 chsh -s /opt/homebrew/bin/zsh
 gh auth login
 
-git clone --recursive git@github.com:sencer/dotfiles.git $HOME/.dotfiles
+git clone --recursive https://github.com/sencer/dotfiles.git $HOME/.dotfiles
 cp $HOME/.dotfiles/fonts/*.ttf $HOME/.dotfiles/fonts/fira/*.ttf $HOME/Library/Fonts/
 cd $HOME/.dotfiles/tmux/tmux-thumbs && cargo build --release
 

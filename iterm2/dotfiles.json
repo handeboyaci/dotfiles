@@ -1,0 +1,134 @@
+{
+  "Profiles": [
+    {
+      "Name": "Dotfiles",
+      "Guid": "8D4C9B3A-5F2E-4A1D-9C6B-7E8F0A1B2C3D",
+      "Normal Font": "FiraCode-Medium 12",
+      "Use Bold Font": true,
+      "Use Italic Font": true,
+      "Use Non-ASCII Font": false,
+      "Terminal Type": "xterm-256color",
+      "Option Key Sends": 2,
+      "Right Option Key Sends": 0,
+      "Transparency": 0.1,
+      "Background Color": {
+        "Red Component": 0.0,
+        "Green Component": 0.0,
+        "Blue Component": 0.0,
+        "Color Space": "sRGB"
+      },
+      "Foreground Color": {
+        "Red Component": 1.0,
+        "Green Component": 1.0,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 0 Color": {
+        "Red Component": 0.0,
+        "Green Component": 0.0,
+        "Blue Component": 0.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 1 Color": {
+        "Red Component": 1.0,
+        "Green Component": 0.0,
+        "Blue Component": 0.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 2 Color": {
+        "Red Component": 0.0,
+        "Green Component": 1.0,
+        "Blue Component": 0.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 3 Color": {
+        "Red Component": 1.0,
+        "Green Component": 1.0,
+        "Blue Component": 0.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 4 Color": {
+        "Red Component": 0.0,
+        "Green Component": 0.0,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 5 Color": {
+        "Red Component": 1.0,
+        "Green Component": 0.0,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 6 Color": {
+        "Red Component": 0.0,
+        "Green Component": 1.0,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 7 Color": {
+        "Red Component": 1.0,
+        "Green Component": 1.0,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 8 Color": {
+        "Red Component": 0.3333333333333333,
+        "Green Component": 0.3333333333333333,
+        "Blue Component": 0.3333333333333333,
+        "Color Space": "sRGB"
+      },
+      "Ansi 9 Color": {
+        "Red Component": 1.0,
+        "Green Component": 0.4,
+        "Blue Component": 0.4,
+        "Color Space": "sRGB"
+      },
+      "Ansi 10 Color": {
+        "Red Component": 0.4,
+        "Green Component": 1.0,
+        "Blue Component": 0.4,
+        "Color Space": "sRGB"
+      },
+      "Ansi 11 Color": {
+        "Red Component": 1.0,
+        "Green Component": 1.0,
+        "Blue Component": 0.4,
+        "Color Space": "sRGB"
+      },
+      "Ansi 12 Color": {
+        "Red Component": 0.4,
+        "Green Component": 0.4,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 13 Color": {
+        "Red Component": 1.0,
+        "Green Component": 0.4,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 14 Color": {
+        "Red Component": 0.4,
+        "Green Component": 1.0,
+        "Blue Component": 1.0,
+        "Color Space": "sRGB"
+      },
+      "Ansi 15 Color": {
+        "Red Component": 0.8666666666666667,
+        "Green Component": 0.8666666666666667,
+        "Blue Component": 0.8666666666666667,
+        "Color Space": "sRGB"
+      },
+      "Keyboard Map": {
+        "0xd-0x20000": {
+          "Action": 10,
+          "Text": "[13;2u"
+        },
+        "0x20-0x60000": {
+          "Action": 10,
+          "Text": "[32;6u"
+        }
+      }
+    }
+  ]
+}

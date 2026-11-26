@@ -202,3 +202,15 @@ for f in keybindings.json settings.json; do link $D/jetski/$f $HOME/.gemini/jets
 link $D/zsh/zshenv $HOME/.zshenv   # last: this one activates everything
 
 # Then, in a new Ghostty window: the two `nvim --headless` bootstrap commands above.
+
+## ITerm
+# When Ghostty cannot be installed, configure iTerm2 instead:
+$HOME/.dotfiles/iterm2/setup.sh
+# Notes:
+# - Uses a Dynamic Profile (iterm2/dotfiles.json) for colors, FiraCode-Medium 12,
+#   10% transparency, Left Option = Esc+ / Right Option = Normal, xterm-256color,
+#   and Shift+Enter / Ctrl+Shift+Space CSI u sequences.
+# - Sets iTerm2 defaults for clipboard access (OSC 52 writes), zero margins, and
+#   disables quit/close prompts.
+# - Limitations vs Ghostty: iTerm2 does not support a separate Light italic font
+#   weight, and OSC 52 clipboard reads (tmux refresh-client -l) may still prompt.
